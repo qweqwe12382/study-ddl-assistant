@@ -65,6 +65,7 @@ const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/
 
 export const exportsApi = {
   tasksCsvUrl: () => `${apiBaseUrl}/exports/tasks.csv`,
+  tasksCalendarUrl: () => `${apiBaseUrl}/exports/tasks.ics`,
   materialsMarkdownUrl: () => `${apiBaseUrl}/exports/materials.md`,
   studyPlanMarkdownUrl: (id) => `${apiBaseUrl}/exports/study-plans/${id}.md`,
 }

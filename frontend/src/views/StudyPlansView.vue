@@ -6,9 +6,10 @@
         <p>根据课程资料、标签和未完成任务，生成一份可以随时调整的每日清单。</p>
       </div>
       <div class="page-actions">
-        <el-button @click="download(exportsApi.tasksCsvUrl())">导出 DDL CSV</el-button>
-        <el-button @click="download(exportsApi.materialsMarkdownUrl())">导出资料 Markdown</el-button>
-        <el-button :disabled="!currentPlan" @click="download(exportsApi.studyPlanMarkdownUrl(currentPlan.id))">导出计划 Markdown</el-button>
+        <el-button @click="downloadFile(exportsApi.tasksCsvUrl())">导出 DDL CSV</el-button>
+        <el-button @click="downloadFile(exportsApi.tasksCalendarUrl())">导出待办日历</el-button>
+        <el-button @click="downloadFile(exportsApi.materialsMarkdownUrl())">导出资料 Markdown</el-button>
+        <el-button :disabled="!currentPlan" @click="downloadFile(exportsApi.studyPlanMarkdownUrl(currentPlan.id))">导出计划 Markdown</el-button>
       </div>
     </div>
 
@@ -114,9 +115,26 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  ElAlert,
+  ElCard,
+  ElDatePicker,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElInputNumber,
+  ElMessage,
+  ElMessageBox,
+  ElOption,
+  ElProgress,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
 
 import { coursesApi, exportsApi, studyPlansApi } from '../api'
+import { downloadFile } from '../utils/download'
+import { toDateInputValue } from '../utils/format'
 
 const loading = ref(false)
 const plansLoading = ref(false)
@@ -146,7 +164,7 @@ const completedMinutes = computed(() => currentPlan.value?.items?.reduce((total,
 function defaultExamDate() {
   const value = new Date()
   value.setDate(value.getDate() + 14)
-  return value.toISOString().slice(0, 10)
+  return toDateInputValue(value)
 }
 
 function syncFormFromPlan(plan) {
@@ -274,16 +292,6 @@ async function archivePlan() {
   } catch (err) {
     if (err !== 'cancel' && err !== 'close') ElMessage.error(err.message)
   }
-}
-
-function download(url) {
-  const link = document.createElement('a')
-  link.href = url
-  link.target = '_blank'
-  link.rel = 'noreferrer'
-  document.body.appendChild(link)
-  link.click()
-  link.remove()
 }
 
 onMounted(loadData)

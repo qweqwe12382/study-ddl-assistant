@@ -5,14 +5,21 @@
         <h1>DDL 任务</h1>
         <p>手动记录课程任务，先把重要日期放进一个清单。</p>
       </div>
-      <el-button type="primary" @click="openCreate">新增任务</el-button>
+      <div class="page-actions">
+        <el-button @click="downloadFile(exportsApi.tasksCsvUrl())">导出 CSV</el-button>
+        <el-button @click="downloadFile(exportsApi.tasksCalendarUrl())">导出待办日历</el-button>
+        <el-button type="primary" @click="openCreate">新增任务</el-button>
+      </div>
     </div>
 
     <el-alert v-if="error" :title="error" type="error" show-icon closable class="mb-18" @close="error = ''" />
 
     <el-card class="table-card" shadow="never" v-loading="loading">
       <div class="table-toolbar">
-        <h2>任务清单 <el-tag size="small" effect="plain">{{ tasks.length }}</el-tag></h2>
+        <h2>
+          任务清单
+          <el-tag size="small" effect="plain">{{ filteredTasks.length }}<span v-if="hasActiveFilters"> / {{ tasks.length }}</span></el-tag>
+        </h2>
         <div class="toolbar-actions">
           <el-select v-model="statusFilter" clearable placeholder="全部状态" style="width: 140px">
             <el-option label="未开始" value="not_started" />
@@ -21,10 +28,11 @@
             <el-option label="已逾期" value="overdue" />
           </el-select>
           <el-input v-model="keyword" placeholder="搜索任务" clearable style="width: 180px" />
+          <el-button v-if="hasActiveFilters" link @click="resetFilters">清除筛选</el-button>
         </div>
       </div>
       <div class="table-wrap">
-        <el-table :data="filteredTasks" empty-text="还没有任务记录">
+        <el-table :data="filteredTasks" :empty-text="tableEmptyText">
           <el-table-column label="任务名称" min-width="240">
             <template #default="{ row }">
               <div class="row-title">{{ row.name }}</div>
@@ -112,9 +120,25 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  ElAlert,
+  ElCard,
+  ElDatePicker,
+  ElDialog,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElMessage,
+  ElMessageBox,
+  ElOption,
+  ElRate,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
 
-import { coursesApi, materialsApi, tasksApi } from '../api'
+import { coursesApi, exportsApi, materialsApi, tasksApi } from '../api'
+import { downloadFile } from '../utils/download'
 import { formatDateTime, isOverdue, statusLabel, statusType } from '../utils/format'
 
 const loading = ref(false)
@@ -128,6 +152,8 @@ const courses = ref([])
 const materials = ref([])
 const tasks = ref([])
 const form = reactive(emptyForm())
+const hasActiveFilters = computed(() => Boolean(keyword.value.trim() || statusFilter.value))
+const tableEmptyText = computed(() => hasActiveFilters.value ? '没有符合当前筛选条件的任务' : '还没有任务记录')
 
 const filteredTasks = computed(() => {
   const value = keyword.value.trim().toLowerCase()
@@ -137,6 +163,11 @@ const filteredTasks = computed(() => {
     return matchStatus && matchKeyword
   })
 })
+
+function resetFilters() {
+  keyword.value = ''
+  statusFilter.value = ''
+}
 
 function emptyForm() {
   return {

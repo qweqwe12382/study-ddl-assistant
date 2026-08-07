@@ -1,8 +1,11 @@
 import csv
+from datetime import date, datetime, timedelta, timezone
 from io import StringIO
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from icalendar import Alarm, Calendar, Event, Timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -11,15 +14,115 @@ from app.models.material import Material
 from app.models.study_plan import StudyPlan
 from app.models.task import Task
 from app.services.study_plan import decode_plan_content
+from app.services.task_service import sync_overdue_tasks
 
 router = APIRouter(prefix="/api/exports", tags=["exports"])
+CALENDAR_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
 
-def _download(content: str, *, filename: str, media_type: str) -> Response:
+def _download(content: str | bytes, *, filename: str, media_type: str) -> Response:
     return Response(
         content=content,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _calendar_datetime(value: datetime) -> datetime:
+    """Represent stored wall-clock deadlines in the application's local timezone."""
+
+    if value.tzinfo is None:
+        return value.replace(tzinfo=CALENDAR_TIMEZONE)
+    return value.astimezone(CALENDAR_TIMEZONE)
+
+
+@router.get("/tasks.ics")
+def export_tasks_icalendar(
+    include_completed: bool = Query(default=False),
+    course_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Export dated DDL tasks as importable calendar events with reminders."""
+
+    sync_overdue_tasks(db)
+    statement = (
+        select(Task)
+        .options(selectinload(Task.course), selectinload(Task.material))
+        .where(Task.due_at.is_not(None))
+        .order_by(Task.due_at.asc(), Task.created_at.asc())
+    )
+    if not include_completed:
+        statement = statement.where(Task.status != "completed")
+    if course_id is not None:
+        statement = statement.where(Task.course_id == course_id)
+    tasks = list(db.scalars(statement).all())
+
+    calendar = Calendar()
+    calendar.add("prodid", "-//Learning Assistant//DDL Calendar//CN")
+    calendar.add("version", "2.0")
+    calendar.add("calscale", "GREGORIAN")
+    calendar.add("method", "PUBLISH")
+    calendar.add("x-wr-calname", "学伴管家 DDL")
+    calendar.add("x-wr-timezone", "Asia/Shanghai")
+    event_datetimes = [_calendar_datetime(task.due_at) for task in tasks if task.due_at]
+    years = [value.year for value in event_datetimes] or [datetime.now(CALENDAR_TIMEZONE).year]
+    first_year = max(1, min(years) - 1)
+    last_year = min(9999, max(years) + 2)
+    calendar.add_component(
+        Timezone.from_tzinfo(
+            CALENDAR_TIMEZONE,
+            first_date=date(first_year, 1, 1),
+            last_date=date(last_year, 12, 31),
+        )
+    )
+
+    generated_at = datetime.now(timezone.utc)
+    status_labels = {
+        "not_started": "未开始",
+        "in_progress": "进行中",
+        "completed": "已完成",
+        "overdue": "已逾期",
+    }
+    for task, due_at in zip(tasks, event_datetimes, strict=True):
+        course_name = task.course.name if task.course else "未归类课程"
+        source_name = task.material.original_filename if task.material else task.source_material_name
+        description = [
+            f"课程：{course_name}",
+            f"状态：{status_labels.get(task.status, task.status)}",
+            f"优先级：{task.priority}/5",
+        ]
+        if task.task_type:
+            description.append(f"类型：{task.task_type}")
+        if source_name:
+            description.append(f"来源资料：{source_name}")
+        if task.description:
+            description.extend(["", task.description])
+
+        event = Event()
+        event.add("uid", f"task-{task.id}@learning-assistant.local")
+        event.add("dtstamp", generated_at)
+        event.add("dtstart", due_at)
+        event.add("dtend", due_at + timedelta(minutes=30))
+        event.add("summary", f"[DDL] {task.name}")
+        event.add("description", "\n".join(description))
+        event.add("categories", [course_name, task.task_type or "DDL"])
+        event.add("status", "CONFIRMED")
+
+        alarm = Alarm()
+        alarm.add("action", "DISPLAY")
+        alarm.add("trigger", timedelta(days=-1))
+        alarm.add("description", f"明天截止：{task.name}")
+        event.add_component(alarm)
+        calendar.add_component(event)
+
+    return _download(
+        calendar.to_ical(),
+        filename="ddl-tasks.ics",
+        media_type="text/calendar; charset=utf-8",
     )
 
 

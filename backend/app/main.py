@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import logging
+import re
 from time import perf_counter
 from uuid import uuid4
 
@@ -16,6 +17,7 @@ from app.services.demo_data import ensure_demo_data
 
 
 logger = logging.getLogger("learning_assistant.api")
+REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -55,7 +57,8 @@ app.add_exception_handler(HTTPException, http_exception_handler)
 
 @app.middleware("http")
 async def request_logging_middleware(request: Request, call_next):
-    request_id = request.headers.get("X-Request-ID") or uuid4().hex[:16]
+    supplied_request_id = request.headers.get("X-Request-ID", "")
+    request_id = supplied_request_id if REQUEST_ID_PATTERN.fullmatch(supplied_request_id) else uuid4().hex[:16]
     started = perf_counter()
     try:
         response = await call_next(request)

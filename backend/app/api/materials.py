@@ -124,17 +124,18 @@ def list_materials(
     tag: str | None = Query(default=None, max_length=50),
     db: Session = Depends(get_db),
 ) -> list[MaterialSearchRead]:
-    materials = list(db.scalars(select(Material).order_by(Material.created_at.desc())).all())
+    statement = select(Material).order_by(Material.created_at.desc())
+    if course_id is not None:
+        statement = statement.where(Material.course_id == course_id)
+    if material_type:
+        statement = statement.where(Material.material_type == material_type)
+    if processing_status:
+        statement = statement.where(Material.processing_status == processing_status)
+    materials = list(db.scalars(statement).all())
     keyword = q.strip() if q else None
     normalized_tag = tag.strip().casefold() if tag else None
     results: list[MaterialSearchRead] = []
     for material in materials:
-        if course_id is not None and material.course_id != course_id:
-            continue
-        if material_type and material.material_type != material_type:
-            continue
-        if processing_status and material.processing_status != processing_status:
-            continue
         if normalized_tag and not any(normalized_tag == item.casefold() for item in (material.tags or [])):
             continue
         result = _search_material(material, keyword)

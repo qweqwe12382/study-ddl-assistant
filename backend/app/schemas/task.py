@@ -8,6 +8,8 @@ TaskStatus = Literal["not_started", "in_progress", "completed", "overdue"]
 
 
 class TaskBase(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     course_id: int | None = None
     material_id: int | None = None
     name: str = Field(min_length=1, max_length=200)
@@ -26,6 +28,8 @@ class TaskCreate(TaskBase):
 
 
 class TaskUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     course_id: int | None = None
     material_id: int | None = None
     name: str | None = Field(default=None, min_length=1, max_length=200)

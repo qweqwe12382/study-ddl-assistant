@@ -227,7 +227,23 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  ElAlert,
+  ElCard,
+  ElCheckbox,
+  ElDatePicker,
+  ElDialog,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElMessage,
+  ElMessageBox,
+  ElOption,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
+  ElUpload,
+} from 'element-plus'
 import { useRoute } from 'vue-router'
 
 import { coursesApi, materialsApi } from '../api'

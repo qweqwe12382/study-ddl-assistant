@@ -48,7 +48,7 @@
           <router-link to="/tasks">查看全部</router-link>
         </div>
         <div v-if="upcomingTasks.length">
-          <div v-for="task in upcomingTasks" :key="task.id" class="task-row clickable-row" @click="$router.push('/tasks')">
+          <div v-for="task in upcomingTasks" :key="task.id" class="task-row clickable-row" role="link" tabindex="0" @click="goToTasks" @keydown.enter="goToTasks" @keydown.space.prevent="goToTasks">
             <div class="row-main">
               <div class="row-title">{{ task.name }}</div>
               <div class="row-meta">{{ task.course_name || '未归类课程' }} · {{ dueLabel(task) }}</div>
@@ -59,7 +59,7 @@
         <div v-else class="empty-state">未来 7 天没有待处理任务。</div>
         <div v-if="overdueTasks.length" class="dashboard-subsection">
           <div class="subsection-title">逾期提醒</div>
-          <div v-for="task in overdueTasks" :key="task.id" class="task-row clickable-row" @click="$router.push('/tasks')">
+          <div v-for="task in overdueTasks" :key="task.id" class="task-row clickable-row" role="link" tabindex="0" @click="goToTasks" @keydown.enter="goToTasks" @keydown.space.prevent="goToTasks">
             <div class="row-main">
               <div class="row-title">{{ task.name }}</div>
               <div class="row-meta">{{ task.course_name || '未归类课程' }} · 已逾期 {{ formatDateTime(task.due_at) }}</div>
@@ -75,7 +75,7 @@
           <router-link to="/materials">进入资料库</router-link>
         </div>
         <div v-if="recentMaterials.length">
-          <div v-for="material in recentMaterials" :key="material.id" class="material-row clickable-row" @click="$router.push({ path: '/materials', query: { q: material.original_filename } })">
+          <div v-for="material in recentMaterials" :key="material.id" class="material-row clickable-row" role="link" tabindex="0" @click="goToMaterial(material)" @keydown.enter="goToMaterial(material)" @keydown.space.prevent="goToMaterial(material)">
             <div class="row-main">
               <div class="row-title">{{ material.original_filename }}</div>
               <div class="row-meta">{{ material.course_name || '未归类课程' }} · {{ materialType(material) }}</div>
@@ -91,13 +91,15 @@
 
 <script setup>
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { ElAlert, ElCard, ElMessage } from 'element-plus'
 import { Clock, Collection, List, WarningFilled } from '@element-plus/icons-vue'
 
 import { dashboardApi } from '../api'
 import { formatDateTime, isOverdue, statusLabel, statusType } from '../utils/format'
 
 const loading = ref(true)
+const router = useRouter()
 const error = ref('')
 const dashboard = ref({
   active_task_count: 0,
@@ -113,6 +115,14 @@ const dashboard = ref({
 const upcomingTasks = ref([])
 const overdueTasks = ref([])
 const recentMaterials = ref([])
+
+function goToTasks() {
+  router.push('/tasks')
+}
+
+function goToMaterial(material) {
+  router.push({ path: '/materials', query: { q: material.original_filename } })
+}
 
 function dueLabel(task) {
   if (isOverdue(task)) return '已逾期 · ' + formatDateTime(task.due_at)
@@ -148,4 +158,5 @@ onMounted(loadDashboard)
 .subsection-title { margin-bottom: 4px; color: #e45656; font-size: 12px; font-weight: 700; }
 .clickable-row { cursor: pointer; }
 .clickable-row:hover .row-title { color: #5964ed; }
+.clickable-row:focus-visible { border-radius: 8px; }
 </style>

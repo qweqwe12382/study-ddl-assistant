@@ -71,7 +71,19 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  ElAlert,
+  ElCard,
+  ElColorPicker,
+  ElDialog,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElMessage,
+  ElMessageBox,
+  ElTable,
+  ElTableColumn,
+} from 'element-plus'
 
 import { coursesApi, resetApi } from '../api'
 

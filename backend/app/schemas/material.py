@@ -8,6 +8,8 @@ ProcessingStatus = Literal["pending", "processing", "processed", "failed"]
 
 
 class MaterialManualCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     course_id: int | None = None
     original_filename: str = Field(min_length=1, max_length=255)
     file_type: str | None = Field(default=None, max_length=30)
@@ -17,6 +19,8 @@ class MaterialManualCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
     source_time: datetime | None = None
 class MaterialUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     course_id: int | None = None
     original_filename: str | None = Field(default=None, min_length=1, max_length=255)
     file_type: str | None = Field(default=None, max_length=30)

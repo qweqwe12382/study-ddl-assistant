@@ -1,4 +1,5 @@
 <template>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
   <el-container class="app-shell">
     <el-aside width="240px" class="app-sidebar">
       <div class="brand">
@@ -40,13 +41,24 @@
 
     <el-container>
       <el-header class="app-header">
-        <div>
+        <div class="header-context">
           <div class="header-kicker">PERSONAL STUDY SPACE</div>
           <div class="header-title">{{ $route.meta.title || '学习总览' }}</div>
         </div>
+        <div class="mobile-brand" aria-label="学伴管家">
+          <span class="mobile-brand-mark">学</span>
+          <span>学伴管家</span>
+        </div>
         <div class="header-actions">
-          <el-tag :type="connectionType" effect="plain">{{ connectionLabel }}</el-tag>
-          <el-button link class="connection-retry" @click="checkConnection">
+          <el-tag :type="connectionType" effect="plain" aria-live="polite">{{ connectionLabel }}</el-tag>
+          <el-button
+            link
+            class="connection-retry"
+            :loading="connectionState === 'checking'"
+            :disabled="connectionState === 'checking'"
+            aria-label="重新检查 API 连接"
+            @click="checkConnection"
+          >
             <el-icon><Refresh /></el-icon>
             重试
           </el-button>
@@ -54,11 +66,34 @@
         </div>
       </el-header>
 
-      <el-main class="app-main">
+      <el-main id="main-content" class="app-main" tabindex="-1">
         <router-view />
       </el-main>
     </el-container>
   </el-container>
+
+  <nav class="mobile-nav" aria-label="移动端主导航">
+    <router-link to="/">
+      <el-icon aria-hidden="true"><House /></el-icon>
+      <span>总览</span>
+    </router-link>
+    <router-link to="/materials">
+      <el-icon aria-hidden="true"><Collection /></el-icon>
+      <span>资料</span>
+    </router-link>
+    <router-link to="/tasks">
+      <el-icon aria-hidden="true"><List /></el-icon>
+      <span>任务</span>
+    </router-link>
+    <router-link to="/study-plans">
+      <el-icon aria-hidden="true"><Calendar /></el-icon>
+      <span>计划</span>
+    </router-link>
+    <router-link to="/settings">
+      <el-icon aria-hidden="true"><Setting /></el-icon>
+      <span>设置</span>
+    </router-link>
+  </nav>
 </template>
 
 <script setup>

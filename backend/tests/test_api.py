@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import fitz
 from docx import Document
 from PIL import Image, ImageDraw
+from icalendar import Calendar
 
 
 class _BrokenProvider:
@@ -51,6 +52,14 @@ def test_m7_health_check_returns_request_id(client):
 
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "m7-health-check"
+
+
+def test_request_id_rejects_unbounded_client_values(client):
+    response = client.get("/api/health", headers={"X-Request-ID": "x" * 200})
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] != "x" * 200
+    assert len(response.headers["X-Request-ID"]) == 16
 
 
 def test_m7_health_check_reports_database_failure(client):
@@ -156,6 +165,18 @@ def test_course_crud(client):
     listed = client.get("/api/courses")
     assert listed.status_code == 200
     assert len(listed.json()) == 1
+
+
+def test_text_fields_are_trimmed_and_whitespace_names_are_rejected(client):
+    created = client.post("/api/courses", json={"name": "  数据结构  ", "teacher": "  王老师  "})
+    invalid_course = client.post("/api/courses", json={"name": "   "})
+    invalid_task = client.post("/api/tasks", json={"name": "\t "})
+
+    assert created.status_code == 201
+    assert created.json()["name"] == "数据结构"
+    assert created.json()["teacher"] == "王老师"
+    assert invalid_course.status_code == 422
+    assert invalid_task.status_code == 422
 
 
 def test_material_and_task_crud(client):
@@ -1020,6 +1041,49 @@ def test_m6_exports_tasks_materials_and_study_plan(client):
     assert "复习清单" in plan_md.text
     assert "数据库重点.txt" in plan_md.text
     assert "数据库练习题" in plan_md.text
+
+
+def test_tasks_icalendar_export_has_timezone_alarm_and_active_filter(client):
+    course = client.post("/api/courses", json={"name": "操作系统"}).json()
+    active = client.post(
+        "/api/tasks",
+        json={
+            "course_id": course["id"],
+            "name": "提交进程调度实验",
+            "task_type": "实验",
+            "description": "检查报告和源代码",
+            "due_at": "2026-09-01T20:30:00",
+            "priority": 5,
+        },
+    ).json()
+    client.post(
+        "/api/tasks",
+        json={"course_id": course["id"], "name": "已完成作业", "due_at": "2026-09-02T20:30:00", "status": "completed"},
+    )
+    client.post("/api/tasks", json={"course_id": course["id"], "name": "待确定日期的任务"})
+
+    response = client.get("/api/exports/tasks.ics")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/calendar")
+    assert 'filename="ddl-tasks.ics"' in response.headers["content-disposition"]
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    calendar = Calendar.from_ical(response.content)
+    assert len(calendar.walk("VTIMEZONE")) == 1
+    events = calendar.walk("VEVENT")
+    assert len(events) == 1
+    event = events[0]
+    assert str(event["uid"]) == f"task-{active['id']}@learning-assistant.local"
+    assert str(event["summary"]) == "[DDL] 提交进程调度实验"
+    assert event.decoded("dtstart").utcoffset() == timedelta(hours=8)
+    assert "检查报告和源代码" in str(event["description"])
+    alarms = event.walk("VALARM")
+    assert len(alarms) == 1
+    assert alarms[0].decoded("trigger") == timedelta(days=-1)
+
+    with_completed = client.get("/api/exports/tasks.ics", params={"include_completed": True})
+    assert len(Calendar.from_ical(with_completed.content).walk("VEVENT")) == 2
 
 
 def test_m7_demo_seed_is_idempotent():
