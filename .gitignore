@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+.venv/
+.pytest_cache/
+.pytest-tmp/
+.ruff_cache/
+
+# Environment and local data
+.env
+data/*.db
+data/*.sqlite*
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# IDE and OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Tool output
+.claude_resources.json

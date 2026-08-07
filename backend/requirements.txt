@@ -1,0 +1,14 @@
+fastapi==0.141.1
+uvicorn[standard]==0.52.1
+pydantic==2.13.4
+SQLAlchemy==2.0.51
+PyMuPDF==1.28.0
+python-docx==1.2.0
+python-multipart==0.0.32
+pytest==9.1.1
+python-dotenv==1.2.2
+icalendar==7.2.2
+requests==2.34.2
+openai==2.53.0
+pandas==3.0.5
+rapidocr-onnxruntime==1.2.3
