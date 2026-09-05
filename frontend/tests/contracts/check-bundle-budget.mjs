@@ -43,6 +43,19 @@ const checks = [
     budget: 5 * 1024,
   },
   {
+    key: 'quickAddJs',
+    label: 'Quick Add JS',
+    pattern: /^QuickTaskAdd(?:-[^/]+)?\.js$/,
+    // The concise-view quick add bar loads as its own tiny chunk.
+    budget: 6 * 1024,
+  },
+  {
+    key: 'quickAddCss',
+    label: 'Quick Add CSS',
+    pattern: /^QuickTaskAdd(?:-[^/]+)?\.css$/,
+    budget: 2 * 1024,
+  },
+  {
     key: 'focusJs',
     label: 'Focus JS',
     pattern: /^FocusView(?:-[^/]+)?\.js$/,

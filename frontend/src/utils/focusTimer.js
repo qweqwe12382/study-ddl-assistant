@@ -5,6 +5,16 @@ export const FOCUS_PRESET_MINUTES = [15, 25, 45]
 const MIN_RECORDABLE_MINUTES = 15
 const MAX_ACTUAL_MINUTES = 10080
 
+export const CUSTOM_MINUTES_MIN = 15
+export const CUSTOM_MINUTES_MAX = 240
+
+/** Clamp a custom focus duration to the supported 15-240 range, or null. */
+export function normalizeCustomMinutes(value) {
+  const parsed = typeof value === 'number' ? Math.floor(value) : Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed < CUSTOM_MINUTES_MIN || parsed > CUSTOM_MINUTES_MAX) return null
+  return parsed
+}
+
 export function formatClock(totalSeconds) {
   const safe = Number.isFinite(totalSeconds) && totalSeconds > 0 ? Math.floor(totalSeconds) : 0
   const minutes = Math.floor(safe / 60)

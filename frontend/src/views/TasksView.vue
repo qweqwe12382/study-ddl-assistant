@@ -26,6 +26,8 @@
     </div>
     <div v-if="loading" class="sr-only" role="status" aria-live="polite">正在加载任务列表…</div>
 
+    <QuickTaskAdd v-if="isConciseView" :courses="courses" @created="loadData" />
+
     <TaskAgenda
       v-if="isConciseView"
       class="task-agenda-section"
@@ -298,7 +300,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ElAlert,
@@ -321,6 +323,9 @@ import {
 import { agentApi, coursesApi, exportsApi, materialsApi, tasksApi } from '../api'
 import TaskAgenda from '../components/TaskAgenda.vue'
 import EditConflictCard from '../components/EditConflictCard.vue'
+
+// 简洁视图的快速添加栏独立分块，避免撑大任务页主包（预算见 bundle:check）。
+const QuickTaskAdd = defineAsyncComponent(() => import('../components/QuickTaskAdd.vue'))
 import { useViewMode } from '../composables/useViewMode'
 import { downloadFile } from '../utils/download'
 import { formatDateTime, isOverdue, statusLabel, statusType } from '../utils/format'

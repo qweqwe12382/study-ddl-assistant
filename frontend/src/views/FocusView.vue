@@ -42,6 +42,20 @@
           >
             {{ preset }} 分钟
           </button>
+          <label class="custom-minutes" :class="{ active: isCustomDuration }">
+            <input
+              v-model="customMinutesDraft"
+              type="number"
+              min="15"
+              max="240"
+              step="5"
+              inputmode="numeric"
+              aria-label="自定义专注分钟（15 到 240）"
+              :disabled="phase === 'running'"
+              @change="applyCustomMinutes"
+            >
+            分钟
+          </label>
         </div>
 
         <p class="focus-clock" role="timer" aria-label="专注剩余时间">{{ clock }}</p>
@@ -105,6 +119,7 @@ import {
   formatClock,
   isRecordable,
   mergeActualMinutes,
+  normalizeCustomMinutes,
   recordLabel,
   sessionMinutes,
 } from '../utils/focusTimer'
@@ -115,6 +130,7 @@ const errorMessage = ref('')
 const tasks = ref([])
 const selectedId = ref(null)
 const durationMinutes = ref(25)
+const customMinutesDraft = ref('')
 const phase = ref('idle')
 const elapsedSeconds = ref(0)
 const recording = ref(false)
@@ -131,6 +147,7 @@ const progressPercent = computed(() => {
 })
 const canRecord = computed(() => isRecordable(elapsedSeconds.value))
 const recordedLabel = computed(() => recordLabel(sessionMinutes(elapsedSeconds.value)))
+const isCustomDuration = computed(() => !FOCUS_PRESET_MINUTES.includes(durationMinutes.value))
 
 function stopTicker() {
   if (ticker) {
@@ -180,6 +197,18 @@ function applyPreset(minutes) {
   if (phase.value === 'running') return
   durationMinutes.value = minutes
   resetTimer()
+}
+
+function applyCustomMinutes() {
+  const normalized = normalizeCustomMinutes(customMinutesDraft.value)
+  if (normalized === null) {
+    customMinutesDraft.value = ''
+    errorMessage.value = '自定义时长需在 15 到 240 分钟之间'
+    return
+  }
+  errorMessage.value = ''
+  customMinutesDraft.value = String(normalized)
+  applyPreset(normalized)
 }
 
 function taskBaseline(task) {
@@ -253,6 +282,10 @@ onUnmounted(stopTicker)
 .preset-chip { min-height: 38px; padding: 0 14px; border: 1px solid var(--ledger-line); border-radius: 99px; background: #fff; color: #51617f; font-size: 12px; font-weight: 700; cursor: pointer; }
 .preset-chip.active { color: #fff; border-color: var(--ledger-indigo); background: var(--ledger-indigo); }
 .preset-chip:disabled { opacity: .55; cursor: default; }
+.custom-minutes { display: inline-flex; align-items: center; gap: 5px; min-height: 38px; padding: 0 11px; border: 1px dashed #cbd4e0; border-radius: 99px; color: #51617f; font-size: 12px; font-weight: 650; }
+.custom-minutes.active { color: #fff; border-style: solid; border-color: var(--ledger-indigo); background: var(--ledger-indigo); }
+.custom-minutes input { width: 58px; border: 0; background: transparent; color: inherit; font-size: 12.5px; font-weight: 700; text-align: center; }
+.custom-minutes input:disabled { opacity: .55; }
 .focus-clock { margin: 26px 0 10px; color: var(--ledger-ink); font: 700 64px/1.05 Bahnschrift, "Segoe UI", sans-serif; font-variant-numeric: tabular-nums; letter-spacing: .02em; }
 .focus-track { height: 8px; overflow: hidden; border-radius: 99px; background: #e7ebf3; }
 .focus-fill { display: block; height: 100%; border-radius: 99px; background: var(--ledger-indigo); transition: width 1s linear; }

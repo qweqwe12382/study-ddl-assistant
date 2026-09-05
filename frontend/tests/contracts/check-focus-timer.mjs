@@ -5,11 +5,20 @@ import {
   formatClock,
   isRecordable,
   mergeActualMinutes,
+  normalizeCustomMinutes,
   recordLabel,
   sessionMinutes,
 } from '../../src/utils/focusTimer.js'
 
 assert.deepEqual(FOCUS_PRESET_MINUTES, [15, 25, 45])
+
+assert.equal(normalizeCustomMinutes('30'), 30)
+assert.equal(normalizeCustomMinutes(50), 50)
+assert.equal(normalizeCustomMinutes('14'), null)
+assert.equal(normalizeCustomMinutes('241'), null)
+assert.equal(normalizeCustomMinutes('abc'), null)
+assert.equal(normalizeCustomMinutes(''), null)
+assert.equal(normalizeCustomMinutes(15.9), 15)
 
 assert.equal(formatClock(0), '00:00')
 assert.equal(formatClock(65), '01:05')
