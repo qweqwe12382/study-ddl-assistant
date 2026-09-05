@@ -33,6 +33,7 @@
 
 * { box-sizing: border-box; }
 html { min-width: 0; scroll-padding: 16px; background: var(--ledger-canvas); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
 body {
   min-width: 0;
   margin: 0;

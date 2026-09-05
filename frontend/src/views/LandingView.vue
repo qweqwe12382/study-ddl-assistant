@@ -80,27 +80,27 @@
       </section>
 
       <section id="workflow" class="workflow-section" aria-labelledby="workflow-title">
-        <div class="section-heading">
+        <div v-reveal class="section-heading">
           <p class="section-kicker">一条能走完的学习闭环</p>
           <h2 id="workflow-title">从“我好像看过”到“我知道下一步”</h2>
           <p>学伴管家不只给出回答，而是把结果整理成可核对、可修改、可完成的学习记录。</p>
         </div>
         <div class="workflow-grid">
-          <article>
+          <article v-reveal>
             <span class="step-number">01</span>
             <div class="step-icon">↓</div>
             <h3>先把资料收好</h3>
             <p>上传课程通知、课件和作业要求。原文件与识别结果都会保留在资料中。</p>
             <small>支持批量上传与失败重试</small>
           </article>
-          <article>
+          <article v-reveal="110">
             <span class="step-number">02</span>
             <div class="step-icon">◇</div>
             <h3>关键内容先核对</h3>
             <p>截止时间、课程和任务名称都能查看原文依据。你确认或修改后，才会进入正式任务列表。</p>
             <small>不确定的字段会明确标记</small>
           </article>
-          <article>
+          <article v-reveal="220">
             <span class="step-number">03</span>
             <div class="step-icon">✓</div>
             <h3>变成今天的行动</h3>
@@ -111,7 +111,7 @@
       </section>
 
       <section class="agent-section" aria-labelledby="agent-title">
-        <div class="agent-demo">
+        <div v-reveal class="agent-demo">
           <div class="agent-demo-head"><span>今日行动台</span><small>09:42 更新</small></div>
           <article class="focus-card">
             <span class="risk-tag">距截止 8 小时</span>
@@ -122,7 +122,7 @@
           <div class="mini-row"><span class="mini-check">✓</span><div><strong>高等数学习题 6</strong><small>已完成 · 实际 42 分钟</small></div></div>
           <div class="mini-row"><span class="mini-dot"></span><div><strong>英语展示资料</strong><small>待确认 1 个日期字段</small></div></div>
         </div>
-        <div class="agent-copy">
+        <div v-reveal="120" class="agent-copy">
           <p class="section-kicker">不只是回答，更帮你落实下一步</p>
           <h2 id="agent-title">该提醒时提醒，<br>该让你决定时停下来。</h2>
           <p>学伴管家会解释为什么这件事更紧急、依据来自哪里，以及执行后会改变什么。遇到信息不完整，它会把问题留给你确认，而不是假装确定。</p>
@@ -135,18 +135,18 @@
       </section>
 
       <section id="boundaries" class="boundary-section" aria-labelledby="boundary-title">
-        <div>
+        <div v-reveal>
           <p class="section-kicker">清楚的边界，比“全自动”更可靠</p>
           <h2 id="boundary-title">你的学习决定，始终由你确认。</h2>
         </div>
         <div class="boundary-list">
-          <article><span>不替你提交</span><p>系统不会登录学校平台或代交作业。</p></article>
-            <article><span>不隐藏来源</span><p>识别字段和学伴管家建议保留可回看的依据入口。</p></article>
-          <article><span>不混用账号数据</span><p>每个注册账号使用独立学习工作区。</p></article>
+          <article v-reveal><span>不替你提交</span><p>系统不会登录学校平台或代交作业。</p></article>
+            <article v-reveal="90"><span>不隐藏来源</span><p>识别字段和学伴管家建议保留可回看的依据入口。</p></article>
+          <article v-reveal="180"><span>不混用账号数据</span><p>每个注册账号使用独立学习工作区。</p></article>
         </div>
       </section>
 
-      <section class="closing-section">
+      <section v-reveal class="closing-section">
         <p>下一条群通知，不必再靠记忆。</p>
         <h2>把资料放进来，今天从哪一步开始会很清楚。</h2>
         <router-link class="button button-light button-large" :to="authSession.user ? '/app' : '/register'">
@@ -165,6 +165,41 @@
 
 <script setup>
 import { authSession } from '../auth/session'
+
+let revealObserver = null
+
+function getRevealObserver() {
+  if (!revealObserver) {
+    revealObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          entry.target.classList.add('is-revealed')
+          revealObserver.unobserve(entry.target)
+        }
+      },
+      { threshold: 0.16, rootMargin: '0px 0px -7% 0px' },
+    )
+  }
+  return revealObserver
+}
+
+const vReveal = {
+  mounted(el, binding) {
+    const delay = Number(binding.value)
+    if (Number.isFinite(delay) && delay > 0) el.style.setProperty('--reveal-delay', `${delay}ms`)
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    el.classList.add('reveal-item')
+    if (reducedMotion || typeof IntersectionObserver === 'undefined') {
+      el.classList.add('is-revealed')
+      return
+    }
+    getRevealObserver().observe(el)
+  },
+  unmounted(el) {
+    revealObserver?.unobserve(el)
+  },
+}
 </script>
 
 <style scoped>
@@ -280,7 +315,47 @@ import { authSession } from '../auth/session'
 .closing-section .button { margin-top: 31px; }
 .landing-footer { max-width: 1184px; display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 35px; margin: 0 auto; padding: 26px 28px 42px; color: #7a8499; border-top: 1px solid var(--landing-line); font-size: 11px; }
 .landing-footer p { margin: 0; }
+/* ---- 动效：入场编排、滚动渐显与悬停微交互（独立 translate/scale 属性，不与既有 transform 冲突） ---- */
+.landing-page ::selection { color: var(--landing-ink); background: var(--landing-yellow); }
+@keyframes landing-rise { from { opacity: 0; translate: 0 22px; } }
+@keyframes landing-pop { from { opacity: 0; scale: .92; translate: 0 16px; } }
+@keyframes landing-note { from { opacity: 0; scale: .78; rotate: -12deg; } }
+@keyframes landing-slide-right { from { opacity: 0; translate: 46px 28px; } }
+@keyframes landing-underline { from { scale: 0 1; } }
+@keyframes landing-status-pulse { 0%, 100% { box-shadow: 0 0 0 4px rgba(32, 168, 137, .13); } 50% { box-shadow: 0 0 0 8px rgba(32, 168, 137, .04); } }
+@keyframes landing-risk-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255, 200, 87, 0); } 50% { box-shadow: 0 0 0 6px rgba(255, 200, 87, .25); } }
+.reveal-item { opacity: 0; translate: 0 30px; transition: opacity .62s ease, translate .62s cubic-bezier(.22, 1, .36, 1); transition-delay: var(--reveal-delay, 0ms); }
+.reveal-item.is-revealed { opacity: 1; translate: none; }
+.hero-copy .section-kicker { animation: landing-rise .55s cubic-bezier(.22, 1, .36, 1) .05s backwards; }
+.hero-copy h1 { animation: landing-rise .6s cubic-bezier(.22, 1, .36, 1) .13s backwards; }
+.hero-copy h1 em::after { transform-origin: left center; animation: landing-underline .5s cubic-bezier(.22, 1, .36, 1) .8s backwards; }
+.hero-lead { animation: landing-rise .6s cubic-bezier(.22, 1, .36, 1) .22s backwards; }
+.hero-actions { animation: landing-rise .6s cubic-bezier(.22, 1, .36, 1) .32s backwards; }
+.trust-list { animation: landing-rise .6s cubic-bezier(.22, 1, .36, 1) .42s backwards; }
+.week-ledger { animation: landing-slide-right .75s cubic-bezier(.22, 1, .36, 1) .3s backwards; }
+.ledger-status i { animation: landing-status-pulse 2.8s ease-in-out 2.4s 5; }
+.ledger-card { transition: translate .2s ease; }
+.ledger-card:hover { translate: 0 -3px; }
+.ledger-card.card-blue { animation: landing-pop .55s cubic-bezier(.34, 1.45, .64, 1) .9s backwards; }
+.ledger-card.card-mint { animation: landing-pop .55s cubic-bezier(.34, 1.45, .64, 1) 1.2s backwards; }
+.source-pill { animation: landing-rise .4s ease 1.5s backwards; }
+.card-mint .source-pill { animation-delay: 1.75s; }
+.ledger-note { animation: landing-note .5s cubic-bezier(.34, 1.45, .64, 1) 2s backwards; }
+.risk-tag { animation: landing-risk-pulse 2.4s ease-in-out 1s 5; }
+.focus-actions button { transition: background .18s ease, border-color .18s ease, color .18s ease; }
+.focus-actions button:hover { border-color: #fff; color: #fff; }
+.focus-actions button:first-child:hover { color: var(--landing-ink); border-color: var(--landing-mint); filter: brightness(1.07); }
+.landing-nav nav a { background: linear-gradient(currentColor, currentColor) no-repeat left calc(100% - 12px) / 0% 2px; transition: color .18s ease, background-size .25s ease; }
+.landing-nav nav a:hover { background-size: 100% 2px; }
+.button-primary span { transition: translate .2s ease; }
+.button-primary:hover span { translate: 4px 0; }
+.workflow-grid article { transition: translate .22s ease, box-shadow .22s ease, border-color .22s ease; }
+.workflow-grid article:hover { translate: 0 -6px; border-color: #b9c6e4; box-shadow: 0 18px 38px rgba(22, 33, 61, .09); }
+.step-icon { transition: scale .25s ease; }
+.workflow-grid article:hover .step-icon { scale: 1.1; }
+.boundary-list article { transition: translate .2s ease; }
+.boundary-list article:hover { translate: 6px 0; }
 @media (max-width: 980px) { .landing-nav nav { display: none; } .hero-section { min-height: 0; grid-template-columns: 1fr; padding-top: 55px; } .hero-copy { max-width: 720px; } .week-ledger { max-width: 650px; width: 100%; margin: 10px auto 0; } .workflow-grid { grid-template-columns: 1fr; } .workflow-grid article, .workflow-grid article:nth-child(2) { min-height: 245px; transform: none; } .agent-section { grid-template-columns: 1fr; gap: 65px; } .agent-demo { width: 100%; max-width: 650px; } .boundary-section { grid-template-columns: 1fr; gap: 40px; } }
 @media (max-width: 680px) { .landing-nav { min-height: 70px; padding: 13px 16px; } .landing-brand small, .welcome-name, .landing-account .text-link { display: none; } .landing-account { margin-left: auto; } .landing-nav .button { min-height: 42px; padding: 0 14px; } .hero-section { gap: 48px; padding: 47px 16px 70px; } .hero-copy h1 { font-size: clamp(43px, 13vw, 60px); } .hero-lead { font-size: 15px; } .hero-actions { align-items: stretch; flex-direction: column; } .hero-actions .button { width: 100%; } .trust-list { align-items: flex-start; flex-direction: column; } .week-ledger { min-height: 470px; padding: 20px 14px 26px; border-radius: 18px; box-shadow: 9px 11px 0 #dfe6f8; transform: none; } .ledger-topline strong { font-size: 17px; } .ledger-status { display: none; } .ledger-days { margin-left: 40px; } .ledger-card { width: 73%; } .ledger-card.card-blue { left: 15%; } .ledger-card.card-mint { left: 22%; } .ledger-note { right: 9px; width: 180px; } .campus-strip { justify-content: flex-start; overflow-x: auto; } .workflow-section { padding: 85px 16px 95px; } .workflow-grid article { padding: 23px; } .workflow-grid small { right: 23px; left: 23px; } .agent-section { padding: 85px 16px; } .agent-demo { box-shadow: 7px 8px 0 var(--landing-blue); } .boundary-section { padding: 90px 16px; } .boundary-list article { grid-template-columns: 1fr; gap: 8px; } .closing-section { margin: 0 16px 55px; padding: 38px 25px; border-radius: 20px; } .landing-footer { grid-template-columns: 1fr; gap: 14px; padding: 24px 16px 35px; } }
-@media (prefers-reduced-motion: reduce) { .button { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .landing-page *, .landing-page *::before, .landing-page *::after { animation: none !important; transition: none !important; } .reveal-item { opacity: 1; translate: none; } }
 </style>
