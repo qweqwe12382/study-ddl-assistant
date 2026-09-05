@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from datetime import date, timedelta
 from typing import Any
 
 from app.models.material import Material
 from app.models.task import Task
 from app.schemas.study_plan import StudyPlanItem
+from app.services.source_identity import new_navigation_key, valid_navigation_key
 
 
 MAX_PLAN_DAYS = 366
@@ -64,6 +66,7 @@ def _focus_entries(materials: list[Material], tasks: list[Task]) -> list[dict[st
                 "detail": points[0],
                 "knowledge_points": points,
                 "material_id": material.id,
+                "navigation_key": material.navigation_key,
                 "task_id": None,
             }
         )
@@ -78,6 +81,7 @@ def _focus_entries(materials: list[Material], tasks: list[Task]) -> list[dict[st
                 "knowledge_points": [task.task_type] if task.task_type else [],
                 "material_id": None,
                 "task_id": task.id,
+                "navigation_key": task.navigation_key,
             }
         )
     return entries
@@ -90,6 +94,7 @@ def generate_review_items(
     daily_minutes: int,
     materials: list[Material],
     tasks: list[Task],
+    calibration_factor: float | None = None,
 ) -> tuple[list[StudyPlanItem], list[str]]:
     """Generate one editable session per available day.
 
@@ -118,11 +123,22 @@ def generate_review_items(
             f"复习主题较多，每天最多安排 {MAX_FOCUSES_PER_DAY} 个主题，建议手动调整重点。"
         )
 
-    estimated_minutes = max(90, len(materials) * 60 + len([task for task in tasks if task.status != "completed"]) * 30)
+    unfinished = [task for task in tasks if task.status != "completed"]
+    raw_task_minutes = sum(
+        task.remaining_minutes if task.remaining_minutes is not None
+        else (task.estimated_minutes if task.estimated_minutes is not None else 30)
+        for task in unfinished
+    )
+    adjusted_task_minutes = round(raw_task_minutes * calibration_factor) if calibration_factor is not None else raw_task_minutes
+    estimated_minutes = max(90, len(materials) * 60 + adjusted_task_minutes)
     available_minutes = total_days * daily_minutes
     if estimated_minutes > available_minutes:
         warnings.append(
             f"预计复习内容约需 {estimated_minutes} 分钟，可用时间为 {available_minutes} 分钟，时间可能不足。"
+        )
+    if calibration_factor is not None:
+        warnings.append(
+            f"已按该课程完成反馈校准系数 {calibration_factor:g} 调整未完成任务工作量（原始 {raw_task_minutes} 分钟）。"
         )
 
     if entries:
@@ -169,6 +185,7 @@ def generate_review_items(
         items.append(
             StudyPlanItem(
                 id=f"day-{index + 1}",
+                navigation_key=new_navigation_key(),
                 date=start_date + timedelta(days=index),
                 phase=phase,
                 title=title[:200],
@@ -177,6 +194,10 @@ def generate_review_items(
                 knowledge_points=knowledge_points[:20],
                 source_material_ids=source_material_ids[:50],
                 source_task_ids=source_task_ids[:50],
+                source_material_refs=[{"source_id": focus["material_id"], "navigation_key": focus["navigation_key"]}
+                                      for focus in focuses if focus["material_id"] and valid_navigation_key(focus.get("navigation_key"))][:50],
+                source_task_refs=[{"source_id": focus["task_id"], "navigation_key": focus["navigation_key"]}
+                                  for focus in focuses if focus["task_id"] and valid_navigation_key(focus.get("navigation_key"))][:50],
             )
         )
     return items, warnings
@@ -189,12 +210,19 @@ def encode_plan_content(
     material_count: int = 0,
     task_count: int = 0,
 ) -> str:
+    for item in items:
+        if not valid_navigation_key(item.navigation_key):
+            item.navigation_key = new_navigation_key()
+    baseline_items = {item.id: item.model_dump(mode="json") for item in items}
     payload = {
-        "version": 1,
+        "version": 2,
         "items": [item.model_dump(mode="json") for item in items],
         "warnings": warnings,
         "material_count": material_count,
         "task_count": task_count,
+        # A baseline is evidence, not a heuristic: a later plan-delta may only
+        # touch an item still byte-equivalent to this generated version.
+        "agent": {"baseline_items": baseline_items, "manual_item_ids": [], "adjustment_log": []},
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -209,3 +237,50 @@ def decode_plan_content(content: str | None) -> tuple[list[StudyPlanItem], list[
         return items, warnings, int(payload.get("material_count", 0)), int(payload.get("task_count", 0))
     except (TypeError, ValueError, json.JSONDecodeError):
         return [], ["计划内容无法读取，请重新生成或手动补充。"], 0, 0
+
+
+def decode_plan_agent_metadata(content: str | None) -> dict[str, Any]:
+    """Read optional M8.4 protection metadata without invalidating v1 plans."""
+
+    try:
+        payload = json.loads(content or "{}")
+        agent = payload.get("agent") if isinstance(payload, dict) else None
+        if not isinstance(agent, dict):
+            return {"baseline_items": {}, "manual_item_ids": [], "adjustment_log": []}
+        baseline = agent.get("baseline_items", {})
+        manual = agent.get("manual_item_ids", [])
+        log = agent.get("adjustment_log", [])
+        return {
+            "baseline_items": baseline if isinstance(baseline, dict) else {},
+            "manual_item_ids": [str(value) for value in manual if isinstance(value, str)],
+            "adjustment_log": log if isinstance(log, list) else [],
+        }
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {"baseline_items": {}, "manual_item_ids": [], "adjustment_log": []}
+
+
+def encode_plan_content_with_metadata(
+    items: list[StudyPlanItem], warnings: list[str], *, material_count: int, task_count: int,
+    metadata: dict[str, Any],
+) -> str:
+    """Write the normal plan payload while retaining explicit user protections."""
+
+    payload = {
+        "version": 2,
+        "items": [item.model_dump(mode="json") for item in items],
+        "warnings": warnings,
+        "material_count": material_count,
+        "task_count": task_count,
+        "agent": {
+            "baseline_items": metadata.get("baseline_items", {}),
+            "manual_item_ids": sorted(set(str(value) for value in metadata.get("manual_item_ids", []))),
+            "adjustment_log": list(metadata.get("adjustment_log", []))[-50:],
+        },
+    }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def plan_content_fingerprint(content: str | None) -> str:
+    """Stable plan-version token used to reject stale delta acceptance."""
+
+    return sha256((content or "").encode("utf-8")).hexdigest()

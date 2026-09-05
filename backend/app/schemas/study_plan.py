@@ -8,10 +8,18 @@ StudyPlanStatus = Literal["draft", "active", "completed", "archived"]
 StudyPlanItemStatus = Literal["not_started", "in_progress", "completed"]
 
 
+class PlanSourceIdentity(BaseModel):
+    """A current source identity retained inside a plan item snapshot."""
+
+    source_id: int = Field(gt=0)
+    navigation_key: str = Field(pattern=r"^[0-9a-f]{32}$")
+
+
 class StudyPlanItem(BaseModel):
     """One editable daily review session stored inside a study plan snapshot."""
 
     id: str = Field(min_length=1, max_length=80)
+    navigation_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
     date: date
     phase: str = Field(min_length=1, max_length=40)
     title: str = Field(min_length=1, max_length=200)
@@ -21,6 +29,8 @@ class StudyPlanItem(BaseModel):
     knowledge_points: list[str] = Field(default_factory=list, max_length=20)
     source_material_ids: list[int] = Field(default_factory=list, max_length=50)
     source_task_ids: list[int] = Field(default_factory=list, max_length=50)
+    source_material_refs: list[PlanSourceIdentity] = Field(default_factory=list, max_length=50)
+    source_task_refs: list[PlanSourceIdentity] = Field(default_factory=list, max_length=50)
 
 
 class StudyPlanGenerate(BaseModel):
@@ -42,6 +52,8 @@ class StudyPlanRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    navigation_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    revision: int = Field(ge=1)
     course_id: int | None
     title: str
     exam_date: date | None

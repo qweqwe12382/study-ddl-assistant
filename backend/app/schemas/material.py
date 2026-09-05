@@ -34,6 +34,8 @@ class MaterialRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    navigation_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    revision: int = Field(ge=1)
     course_id: int | None
     original_filename: str
     stored_path: str | None

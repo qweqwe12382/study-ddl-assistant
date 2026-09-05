@@ -1,0 +1,29 @@
+{
+    email {$TLS_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+    encode gzip
+
+    handle /api* {
+        reverse_proxy api:8000
+    }
+
+    handle /docs* {
+        reverse_proxy api:8000
+    }
+
+    handle /redoc* {
+        reverse_proxy api:8000
+    }
+
+    handle /openapi.json {
+        reverse_proxy api:8000
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}

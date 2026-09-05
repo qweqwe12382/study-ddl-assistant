@@ -4,16 +4,19 @@ import re
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.orm.exc import StaleDataError
 
-from app.api import courses, dashboard, exports, health, materials, reset, study_plans, tasks
-from app.api.errors import http_exception_handler, validation_exception_handler
+from app.api import academic_calendar, agent, auth, courses, dashboard, exports, health, materials, reset, settings as settings_api, study_plans, study_preferences, tasks
+from app.auth_database import init_auth_db
+from app.api.errors import http_exception_handler, stale_data_exception_handler, validation_exception_handler
 from app.config import ensure_runtime_directories, settings
 from app.database import SessionLocal, init_db
 from app.services.demo_data import ensure_demo_data
+from app.services.auth import get_current_user
 
 
 logger = logging.getLogger("learning_assistant.api")
@@ -28,6 +31,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     ensure_runtime_directories()
+    init_auth_db()
     init_db()
     if settings.demo_mode:
         with SessionLocal() as db:
@@ -53,6 +57,7 @@ app.add_middleware(
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(StaleDataError, stale_data_exception_handler)
 
 
 @app.middleware("http")
@@ -67,6 +72,9 @@ async def request_logging_middleware(request: Request, call_next):
         raise
     duration_ms = (perf_counter() - started) * 1000
     response.headers["X-Request-ID"] = request_id
+    if request.url.path.startswith("/api/academic-calendar/integrations/njust"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     logger.info(
         "request_completed request_id=%s method=%s path=%s status=%s duration_ms=%.1f",
         request_id,
@@ -91,10 +99,16 @@ async def unhandled_exception_handler(_request: Request, _exc: Exception) -> JSO
 
 
 app.include_router(health.router)
-app.include_router(courses.router)
-app.include_router(materials.router)
-app.include_router(tasks.router)
-app.include_router(dashboard.router)
-app.include_router(study_plans.router)
-app.include_router(exports.router)
-app.include_router(reset.router)
+app.include_router(auth.router)
+protected = [Depends(get_current_user)]
+app.include_router(courses.router, dependencies=protected)
+app.include_router(academic_calendar.router, dependencies=protected)
+app.include_router(materials.router, dependencies=protected)
+app.include_router(tasks.router, dependencies=protected)
+app.include_router(dashboard.router, dependencies=protected)
+app.include_router(study_plans.router, dependencies=protected)
+app.include_router(exports.router, dependencies=protected)
+app.include_router(reset.router, dependencies=protected)
+app.include_router(settings_api.router, dependencies=protected)
+app.include_router(study_preferences.router, dependencies=protected)
+app.include_router(agent.router, dependencies=protected)

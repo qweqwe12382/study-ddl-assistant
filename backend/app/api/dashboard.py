@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
@@ -11,7 +11,8 @@ from app.models.task import Task
 from app.schemas.dashboard import DashboardMaterialRead, DashboardRead, DashboardTaskRead
 from app.schemas.material import MaterialSearchRead
 from app.schemas.task import TaskRead
-from app.services.task_service import _as_utc, sync_overdue_tasks
+from app.services.task_service import sync_overdue_tasks
+from app.time import as_utc, utc_now
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -23,6 +24,7 @@ def _task_payload(task: Task) -> DashboardTaskRead:
             "course_name": task.course.name if task.course else None,
             "material_name": task.material.original_filename if task.material else task.source_material_name,
             "source_available": task.material is not None,
+            "material_navigation_key": task.material.navigation_key if task.material else None,
         }
     )
     return DashboardTaskRead.model_validate(payload)
@@ -37,7 +39,7 @@ def _material_payload(material: Material) -> DashboardMaterialRead:
 @router.get("", response_model=DashboardRead)
 def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
     sync_overdue_tasks(db)
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     next_week = now + timedelta(days=7)
     tasks = list(
         db.scalars(select(Task).options(selectinload(Task.course), selectinload(Task.material))).all()
@@ -45,14 +47,14 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
     active = [task for task in tasks if task.status != "completed"]
     overdue = [
         task for task in active
-        if task.status == "overdue" or (task.due_at and _as_utc(task.due_at) < now)
+        if task.status == "overdue" or (task.due_at and as_utc(task.due_at) < now)
     ]
     upcoming = [
         task for task in active
-        if task.due_at and now <= _as_utc(task.due_at) <= next_week
+        if task.due_at and now <= as_utc(task.due_at) <= next_week
     ]
-    upcoming.sort(key=lambda task: (_as_utc(task.due_at), -task.priority, task.id))
-    overdue.sort(key=lambda task: (_as_utc(task.due_at) if task.due_at else now, -task.priority, task.id))
+    upcoming.sort(key=lambda task: (as_utc(task.due_at), -task.priority, task.id))
+    overdue.sort(key=lambda task: (as_utc(task.due_at) if task.due_at else now, -task.priority, task.id))
     recent_materials = list(
         db.scalars(
             select(Material).options(selectinload(Material.course)).order_by(Material.created_at.desc()).limit(5)

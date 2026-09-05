@@ -3,8 +3,16 @@ import axios from 'axios'
 const http = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
   timeout: 10000,
+  withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
+
+function readCookie(name) {
+  if (typeof document === 'undefined') return ''
+  const prefix = `${encodeURIComponent(name)}=`
+  const entry = document.cookie.split('; ').find((item) => item.startsWith(prefix))
+  return entry ? decodeURIComponent(entry.slice(prefix.length)) : ''
+}
 
 http.interceptors.request.use((config) => {
   if (typeof window !== 'undefined' && config.data instanceof window.FormData && config.headers) {
@@ -12,6 +20,11 @@ http.interceptors.request.use((config) => {
     // makes FastAPI treat the upload body as an invalid request.
     if (typeof config.headers.delete === 'function') config.headers.delete('Content-Type')
     else delete config.headers['Content-Type']
+  }
+  const method = String(config.method || 'get').toLowerCase()
+  if (['post', 'put', 'patch', 'delete'].includes(method) && config.headers) {
+    const csrfToken = readCookie('study_csrf')
+    if (csrfToken) config.headers['X-CSRF-Token'] = csrfToken
   }
   return config
 })
@@ -33,7 +46,13 @@ http.interceptors.response.use(
       detailMessage || error.response?.data?.error?.message || error.response?.data?.detail || '请求失败，请检查后端服务'
     const requestId = error.response?.headers?.['x-request-id']
     if (requestId && error.response.status >= 500) message += `（请求 ID：${requestId}）`
-    return Promise.reject(new Error(message))
+    const apiError = new Error(message)
+    apiError.code = error.response?.data?.error?.code || error.code
+    apiError.status = error.response.status
+    if (apiError.status === 401 && typeof window !== 'undefined') {
+      window.dispatchEvent(new window.CustomEvent('study-auth-expired'))
+    }
+    return Promise.reject(apiError)
   },
 )
 

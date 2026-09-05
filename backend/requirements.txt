@@ -9,6 +9,7 @@ pytest==9.1.1
 python-dotenv==1.2.2
 icalendar==7.2.2
 requests==2.34.2
+beautifulsoup4==4.13.4
 openai==2.53.0
 pandas==3.0.5
 rapidocr-onnxruntime==1.2.3

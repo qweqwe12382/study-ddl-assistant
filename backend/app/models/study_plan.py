@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.services.source_identity import new_navigation_key, prevent_navigation_key_change
 from app.time import utc_now
 
 
@@ -13,6 +14,8 @@ class StudyPlan(Base):
     __tablename__ = "study_plans"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    navigation_key: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True, default=new_navigation_key)
+    revision: Mapped[int] = mapped_column(nullable=False, default=1)
     course_id: Mapped[int | None] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     exam_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -25,3 +28,8 @@ class StudyPlan(Base):
     )
 
     course = relationship("Course", back_populates="study_plans")
+
+    __mapper_args__ = {"version_id_col": revision}
+
+
+event.listen(StudyPlan.navigation_key, "set", prevent_navigation_key_change, retval=True, active_history=True)

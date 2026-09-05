@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,16 @@ from app.models.material import Material
 from app.models.study_plan import StudyPlan
 from app.models.task import Task
 from app.schemas.study_plan import StudyPlanGenerate, StudyPlanItem, StudyPlanRead, StudyPlanUpdate
-from app.services.study_plan import decode_plan_content, encode_plan_content, generate_review_items
+from app.services.study_plan import (
+    decode_plan_agent_metadata,
+    decode_plan_content,
+    encode_plan_content,
+    encode_plan_content_with_metadata,
+    generate_review_items,
+)
+from app.services.agent_feedback import calibration_payload
+from app.services.edit_concurrency import check_edit_precondition
+from app.services.source_identity import new_navigation_key
 
 router = APIRouter(prefix="/api/study-plans", tags=["study-plans"])
 
@@ -29,6 +38,8 @@ def _read_payload(plan: StudyPlan) -> StudyPlanRead:
     completed_items = [item for item in items if item.status == "completed"]
     return StudyPlanRead(
         id=plan.id,
+        navigation_key=plan.navigation_key,
+        revision=plan.revision,
         course_id=plan.course_id,
         title=plan.title,
         exam_date=plan.exam_date,
@@ -99,12 +110,14 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
         ).all()
     )
     try:
+        calibration_factor = calibration_payload(db, payload.course_id)["factor"]
         items, warnings = generate_review_items(
             start_date=date.today(),
             exam_date=payload.exam_date,
             daily_minutes=payload.daily_minutes,
             materials=materials,
             tasks=tasks,
+            calibration_factor=calibration_factor,
         )
     except ValueError as error:
         raise _invalid_plan(str(error), code="PLAN_RANGE_TOO_LARGE") from error
@@ -137,10 +150,15 @@ def get_study_plan(plan_id: int, db: Session = Depends(get_db)) -> StudyPlanRead
 
 
 @router.post("/{plan_id}/archive", response_model=StudyPlanRead)
-def archive_study_plan(plan_id: int, db: Session = Depends(get_db)) -> StudyPlanRead:
+def archive_study_plan(
+    plan_id: int,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    db: Session = Depends(get_db),
+) -> StudyPlanRead:
     plan = db.get(StudyPlan, plan_id)
     if plan is None:
         raise _not_found()
+    check_edit_precondition(db, plan, if_match)
     plan.status = "archived"
     commit_or_rollback(db)
     db.refresh(plan)
@@ -148,15 +166,33 @@ def archive_study_plan(plan_id: int, db: Session = Depends(get_db)) -> StudyPlan
 
 
 @router.patch("/{plan_id}", response_model=StudyPlanRead)
-def update_study_plan(plan_id: int, payload: StudyPlanUpdate, db: Session = Depends(get_db)) -> StudyPlanRead:
+def update_study_plan(
+    plan_id: int,
+    payload: StudyPlanUpdate,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    db: Session = Depends(get_db),
+) -> StudyPlanRead:
     plan = db.get(StudyPlan, plan_id)
     if plan is None:
         raise _not_found()
 
+    check_edit_precondition(db, plan, if_match)
     current_items, warnings, material_count, task_count = decode_plan_content(plan.plan_content)
+    metadata = decode_plan_agent_metadata(plan.plan_content)
     changed_fields = payload.model_fields_set
     target_exam_date = payload.exam_date if "exam_date" in changed_fields else plan.exam_date
     items = payload.items if "items" in changed_fields and payload.items is not None else current_items
+    if len({item.id for item in items}) != len(items):
+        raise _invalid_plan("计划项编号不能重复", code="DUPLICATE_PLAN_ITEM_ID")
+    if "items" in changed_fields and payload.items is not None:
+        saved_by_id = {item.id: item for item in current_items}
+        for item in items:
+            saved = saved_by_id.get(item.id)
+            # Identity and evidence come from saved server state, not editable
+            # request JSON. Re-added IDs receive a new generation.
+            item.navigation_key = saved.navigation_key if saved and saved.navigation_key else new_navigation_key()
+            item.source_material_refs = [ref for ref in saved.source_material_refs if ref.source_id in item.source_material_ids] if saved else []
+            item.source_task_refs = [ref for ref in saved.source_task_refs if ref.source_id in item.source_task_ids] if saved else []
     _validate_item_dates(items, target_exam_date)
 
     if "title" in changed_fields and payload.title is not None:
@@ -168,11 +204,22 @@ def update_study_plan(plan_id: int, payload: StudyPlanUpdate, db: Session = Depe
     if "status" in changed_fields and payload.status is not None:
         plan.status = payload.status
     if "items" in changed_fields and payload.items is not None:
-        plan.plan_content = encode_plan_content(
+        # Mark an item as manual only from an explicit baseline comparison. Old
+        # v1 plans have no baseline, therefore every item is conservatively
+        # protected from agent plan deltas rather than guessed as generated.
+        baseline = metadata["baseline_items"]
+        protected = set(metadata["manual_item_ids"])
+        for item in payload.items:
+            baseline_item = baseline.get(item.id)
+            if baseline_item is None or baseline_item != item.model_dump(mode="json"):
+                protected.add(item.id)
+        metadata["manual_item_ids"] = sorted(protected)
+        plan.plan_content = encode_plan_content_with_metadata(
             items,
             warnings,
             material_count=material_count,
             task_count=task_count,
+            metadata=metadata,
         )
 
     commit_or_rollback(db)

@@ -7,7 +7,13 @@
     "dev": "vite --configLoader runner",
     "build": "vite build --configLoader runner",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "navigation:check": "node tests/contracts/check-material-source-navigation.mjs",
+    "edit:check": "node tests/contracts/check-edit-precondition.mjs",
+    "onboarding:check": "node tests/contracts/check-first-learning-loop-placement.mjs",
+    "plan-delta:check": "node tests/contracts/check-plan-delta-display.mjs",
+    "bundle:check": "node tests/contracts/check-bundle-budget.mjs",
+    "verify": "npm run lint && npm run navigation:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run build && npm run bundle:check"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

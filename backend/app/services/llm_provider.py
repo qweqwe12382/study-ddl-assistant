@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any, Protocol
 
 from app.config import settings
@@ -44,7 +45,47 @@ _TASK_HINTS = (
     "due",
     "report",
     "lab",
+    "ddl",
 )
+
+_FILENAME_TASK_SUFFIX = re.compile(
+    r"^(?P<course>.+?)\s*[-_—–]\s*"
+    r"(?P<hint>作业|实验|报告|考试|测验|DDL)"
+    r"(?:通知|安排|要求|报告)?$",
+    re.IGNORECASE,
+)
+
+
+def _filename_stem(filename: str) -> str:
+    return Path(filename or "").stem.strip()
+
+
+def _has_task_hint(value: str) -> bool:
+    lowered = value.lower()
+    return any(hint in value or hint in lowered for hint in _TASK_HINTS)
+
+
+def _course_name_from_filename(filename: str) -> str | None:
+    stem = _filename_stem(filename)
+    match = _FILENAME_TASK_SUFFIX.fullmatch(stem)
+    if not match:
+        return None
+    course = match.group("course").strip(" -_—–·。")
+    if not course or course.casefold() in {"通知", "课程", "course", "作业", "实验", "报告", "考试", "ddl"}:
+        return None
+    return course[:120]
+
+
+def _filename_task_name(filename: str) -> str:
+    stem = _filename_stem(filename)
+    if not stem:
+        return "待确认任务"
+    course = _course_name_from_filename(filename)
+    if course:
+        suffix = stem[len(course) :].strip(" -_—–·")
+        if suffix:
+            return suffix[:200]
+    return stem[:200]
 
 
 class RuleBasedProvider:
@@ -52,22 +93,43 @@ class RuleBasedProvider:
 
     def extract(self, text: str, filename: str) -> dict[str, Any]:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
+        filename_stem = _filename_stem(filename)
+        filename_course = _course_name_from_filename(filename)
+        filename_has_task_hint = _has_task_hint(filename_stem)
+
         course_name = None
         for line in lines:
             match = re.search(r"(?:课程(?:名称)?|course)\s*[：:]\s*(.+)", line, re.IGNORECASE)
             if match:
                 course_name = match.group(1).strip(" 。")[:120]
                 break
+        course_name = course_name or filename_course
 
         tasks: list[dict[str, Any]] = []
         for index, line in enumerate(lines):
-            lowered = line.lower()
-            if not any(hint in line or hint in lowered for hint in _TASK_HINTS):
+            line_has_task_hint = _has_task_hint(line)
+            if not line_has_task_hint and not (filename_has_task_hint and _has_date_text(line)):
                 continue
-            name = re.sub(r"(?:截止|交作业|提交时间|due|submit(?: by)?)\s*[：:：]?\s*.+$", "", line, flags=re.IGNORECASE)
-            name = name.strip(" -：:，,。;") or line[:200]
+
+            if line_has_task_hint:
+                name = re.sub(
+                    r"(?:截止|交作业|提交时间|due|submit(?: by)?)\s*[：:：]?\s*.+$",
+                    "",
+                    line,
+                    flags=re.IGNORECASE,
+                )
+                name = name.strip(" -：:，,。;") or line[:200]
+            else:
+                # The date is still evidenced by the body; the filename only
+                # supplies the conservative task label/type.
+                name = _filename_task_name(filename)
+
             task_type = self._task_type(line)
+            filename_task_type = self._task_type(filename_stem)
+            if task_type in {"其他", "DDL"} and filename_task_type != "其他":
+                task_type = filename_task_type
             confidence = 0.88 if _has_date_text(line) else 0.58
+            combined_line = f"{filename_stem}\n{line}".lower()
             tasks.append(
                 {
                     "candidate_id": f"rule-{index + 1}",
@@ -76,7 +138,9 @@ class RuleBasedProvider:
                     "task_type": task_type,
                     "description": line[:500],
                     "due_at": _find_date_text(line),
-                    "priority": 4 if any(word in line for word in ("考试", "截止", "exam", "due")) else 3,
+                    "priority": 4
+                    if any(word in combined_line for word in ("考试", "截止", "exam", "due", "ddl"))
+                    else 3,
                     "source_quote": line[:1000],
                     "confidence": confidence,
                 }
@@ -84,12 +148,13 @@ class RuleBasedProvider:
 
         tags: list[str] = []
         for label, words in {
-            "DDL": ("截止", "due", "submit"),
+            "DDL": ("截止", "due", "submit", "ddl"),
             "作业": ("作业", "assignment", "homework"),
             "实验": ("实验", "lab"),
+            "报告": ("报告", "report"),
             "考试": ("考试", "exam", "quiz"),
         }.items():
-            if any(word in text.lower() for word in words):
+            if any(word in f"{filename_stem}\n{text}".lower() for word in words):
                 tags.append(label)
         return {
             "course_name": course_name,
@@ -109,6 +174,8 @@ class RuleBasedProvider:
             return "报告"
         if "作业" in line or "assignment" in lowered or "homework" in lowered:
             return "作业"
+        if "ddl" in lowered or "截止" in line or "due" in lowered or "submit" in lowered:
+            return "DDL"
         return "其他"
 
 
@@ -176,7 +243,15 @@ class OpenAICompatibleProvider:
             raise ProviderError("LLM_REQUEST_FAILED", "模型调用失败，请稍后重试或使用本地规则抽取") from exc
 
 
-def get_provider() -> LLMProvider:
-    if settings.llm_api_key and settings.llm_model:
+def external_provider_available() -> bool:
+    return bool(settings.llm_api_key and settings.llm_model)
+
+
+def get_provider(provider_name: str = "local-rules") -> LLMProvider:
+    if provider_name == "local-rules":
+        return RuleBasedProvider()
+    if provider_name == "openai-compatible":
+        if not external_provider_available():
+            raise ProviderError("LLM_NOT_CONFIGURED", "外部 AI API 尚未配置，请先设置 LLM_API_KEY 和 LLM_MODEL")
         return OpenAICompatibleProvider()
-    return RuleBasedProvider()
+    raise ProviderError("INVALID_EXTRACTION_PROVIDER", "不支持的抽取方式")

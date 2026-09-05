@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.task import Task
-
-
-def _as_utc(value: datetime) -> datetime:
-    """Normalize naive SQLite timestamps and aware timestamps to UTC."""
-
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+from app.services.agent_feedback import create_plan_delta_candidates
+from app.time import as_utc, utc_now
 
 
 def sync_overdue_tasks(db: Session) -> int:
@@ -25,7 +17,7 @@ def sync_overdue_tasks(db: Session) -> int:
     untouched, so a completed task cannot be made overdue by a later refresh.
     """
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     candidates = db.scalars(
         select(Task).where(
             Task.status.in_(["not_started", "in_progress"]),
@@ -34,8 +26,9 @@ def sync_overdue_tasks(db: Session) -> int:
     ).all()
     changed = 0
     for task in candidates:
-        if task.due_at and _as_utc(task.due_at) < now:
+        if task.due_at and as_utc(task.due_at) < now:
             task.status = "overdue"
+            create_plan_delta_candidates(db, task, "task_overdue", now=now)
             changed += 1
     if changed:
         db.commit()

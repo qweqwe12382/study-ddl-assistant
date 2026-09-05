@@ -1,0 +1,813 @@
+<template>
+  <section class="academic-calendar-page" :aria-busy="loading">
+    <div class="page-intro calendar-intro">
+      <div>
+        <div class="calendar-kicker">TERM LEDGER / 学期日程</div>
+        <h1>课表与考试</h1>
+        <p>按周查看固定课程，把考试时间、地点和座位集中在一处管理。</p>
+      </div>
+      <div class="page-actions">
+        <el-button class="integration-entry" @click="integrationDialogVisible = true">导入教务日程</el-button>
+        <el-button :disabled="!courses.length" @click="openClassDialog()">添加上课时间</el-button>
+        <el-button type="primary" :disabled="!courses.length" @click="openExamDialog()">添加考试</el-button>
+      </div>
+    </div>
+
+    <div v-if="!courses.length && !loading" class="course-gate" role="status">
+      <div class="course-gate-mark" aria-hidden="true">课</div>
+      <div>
+        <strong>先建立课程，再安排上课与考试</strong>
+        <p>可以先在设置中添加课程，也可以导入教务日程，预览后再保存。</p>
+      </div>
+      <router-link to="/settings?focus=courses">先添加课程</router-link>
+    </div>
+
+    <div v-if="error" class="calendar-error" role="alert">
+      <span>{{ error }}</span>
+      <button type="button" @click="loadPage">重新读取</button>
+    </div>
+
+    <template v-if="courses.length">
+      <section class="today-ribbon" aria-labelledby="today-ribbon-title">
+        <div class="today-stamp">
+          <span>{{ todayLabel.month }}</span>
+          <strong>{{ todayLabel.day }}</strong>
+          <small>{{ todayLabel.weekday }}</small>
+        </div>
+        <div class="today-copy">
+          <span class="section-eyebrow">第 {{ selectedWeek }} 周 · {{ todayLabel.weekday }}</span>
+          <h2 id="today-ribbon-title">{{ todayHeadline }}</h2>
+          <p>{{ todayDetail }}</p>
+        </div>
+        <div class="nearest-exam" :class="{ 'is-empty': !nearestExam }">
+          <span>最近考试</span>
+          <strong>{{ nearestExam ? nearestExam.course_name : '暂未录入' }}</strong>
+          <small>{{ nearestExam ? `${countdownLabel(nearestExam.starts_at)} · ${formatDateTime(nearestExam.starts_at)}` : '添加后会在这里显示倒计时' }}</small>
+        </div>
+      </section>
+
+      <section class="schedule-ledger" aria-labelledby="schedule-title">
+        <header class="ledger-header">
+          <div>
+            <span class="section-eyebrow">WEEKLY TIMETABLE</span>
+            <h2 id="schedule-title">第 {{ selectedWeek }} 周课表</h2>
+          <p>选择周次即可查看单双周课程；保存前会提示时间冲突。</p>
+          </div>
+          <div class="week-switcher" aria-label="切换课表周次">
+            <button type="button" :disabled="selectedWeek <= 1" aria-label="查看上一周" @click="changeWeek(-1)">←</button>
+            <label>
+              <span class="sr-only">课表周次</span>
+              <el-input-number v-model="selectedWeek" :min="1" :max="30" :controls="false" aria-label="课表周次" />
+            </label>
+            <button type="button" :disabled="selectedWeek >= 30" aria-label="查看下一周" @click="changeWeek(1)">→</button>
+          </div>
+        </header>
+
+        <div class="desktop-week-board">
+          <section
+            v-for="day in weekdays"
+            :key="day.value"
+            class="day-column"
+            :class="{ 'is-today': day.value === todayWeekday }"
+            :aria-labelledby="`weekday-${day.value}`"
+          >
+            <header>
+              <span>{{ day.short }}</span>
+              <strong :id="`weekday-${day.value}`">{{ day.label }}</strong>
+              <small>{{ sessionsFor(day.value).length }} 节</small>
+            </header>
+            <div class="day-session-list">
+              <button
+                v-for="item in sessionsFor(day.value)"
+                :key="item.id"
+                type="button"
+                class="class-ticket"
+                :style="{ '--course-color': safeCourseColor(item.course_color) }"
+                :aria-label="`编辑 ${item.course_name}，${formatTimeRange(item)}`"
+                @click="openClassDialog(item)"
+              >
+                <span class="ticket-time">{{ formatTimeRange(item) }}</span>
+                <strong>{{ item.course_name }}</strong>
+                <span>{{ item.location || '地点待补充' }}</span>
+                <small>{{ weekPatternLabel(item.week_pattern) }} · {{ item.start_week }}–{{ item.end_week }} 周</small>
+              </button>
+              <button v-if="!sessionsFor(day.value).length" type="button" class="empty-day" @click="openClassDialog(null, day.value)">
+                <span aria-hidden="true">＋</span>
+                添加课程
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <div class="mobile-week-board">
+          <div class="mobile-day-tabs" role="tablist" aria-label="选择星期">
+            <button
+              v-for="day in weekdays"
+              :id="`day-tab-${day.value}`"
+              :key="day.value"
+              type="button"
+              role="tab"
+              :aria-selected="activeWeekday === day.value"
+              :aria-controls="`day-panel-${day.value}`"
+              :class="{ 'is-active': activeWeekday === day.value, 'is-today': day.value === todayWeekday }"
+              @click="activeWeekday = day.value"
+            >
+              <span>{{ day.short }}</span>
+              <strong>{{ sessionsFor(day.value).length }}</strong>
+            </button>
+          </div>
+          <div :id="`day-panel-${activeWeekday}`" class="mobile-day-panel" role="tabpanel" :aria-labelledby="`day-tab-${activeWeekday}`">
+            <div class="mobile-day-heading">
+              <div>
+                <span>{{ activeDay?.label }}</span>
+                <strong>{{ sessionsFor(activeWeekday).length ? `${sessionsFor(activeWeekday).length} 节课` : '当天无课' }}</strong>
+              </div>
+              <el-button @click="openClassDialog(null, activeWeekday)">添加</el-button>
+            </div>
+            <button
+              v-for="item in sessionsFor(activeWeekday)"
+              :key="item.id"
+              type="button"
+              class="mobile-class-row"
+              :style="{ '--course-color': safeCourseColor(item.course_color) }"
+              @click="openClassDialog(item)"
+            >
+              <span class="mobile-class-time">{{ formatTimeRange(item) }}</span>
+              <span class="mobile-class-main">
+                <strong>{{ item.course_name }}</strong>
+                <small>{{ item.location || '地点待补充' }} · {{ weekPatternLabel(item.week_pattern) }}</small>
+              </span>
+              <span aria-hidden="true">›</span>
+            </button>
+            <div v-if="!sessionsFor(activeWeekday).length" class="mobile-empty-day">这一页留白，正好安排自习或休息。</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="exam-ledger" aria-labelledby="exam-title">
+        <header class="exam-header">
+          <div>
+            <span class="section-eyebrow">EXAM TICKETS</span>
+            <h2 id="exam-title">考试安排</h2>
+            <p>按时间顺序查看地点和座位；过去的考试可按需展开。</p>
+          </div>
+          <label class="past-exam-toggle">
+            <el-checkbox v-model="includePastExams">显示已结束考试</el-checkbox>
+          </label>
+        </header>
+
+        <div v-if="exams.length" class="exam-list">
+          <article v-for="exam in exams" :key="exam.id" class="exam-ticket" :class="{ 'is-past': isPastExam(exam) }">
+            <div class="exam-date-block">
+              <span>{{ examDateParts(exam.starts_at).month }}</span>
+              <strong>{{ examDateParts(exam.starts_at).day }}</strong>
+              <small>{{ examDateParts(exam.starts_at).weekday }}</small>
+            </div>
+            <div class="exam-main">
+              <div class="exam-tags">
+                <span>{{ examTypeLabel(exam.exam_type) }}</span>
+                <span>{{ countdownLabel(exam.starts_at) }}</span>
+              </div>
+              <h3>{{ exam.course_name }}</h3>
+              <p>{{ exam.title }}</p>
+              <dl>
+                <div><dt>时间</dt><dd>{{ formatExamRange(exam) }}</dd></div>
+                <div><dt>地点</dt><dd>{{ exam.location || '待补充' }}</dd></div>
+                <div><dt>座位</dt><dd>{{ exam.seat_number || '待补充' }}</dd></div>
+              </dl>
+            </div>
+            <div class="exam-actions">
+              <button type="button" @click="openExamDialog(exam)">编辑</button>
+              <button type="button" class="danger-action" @click="removeExam(exam)">删除</button>
+            </div>
+          </article>
+        </div>
+        <div v-else class="exam-empty">
+          <span aria-hidden="true">EXAM / —</span>
+          <strong>{{ includePastExams ? '还没有考试记录' : '近期没有考试安排' }}</strong>
+          <p>添加考试后，这里会按日期显示倒计时、考场和座位。</p>
+          <el-button type="primary" @click="openExamDialog()">添加第一场考试</el-button>
+        </div>
+      </section>
+    </template>
+
+    <el-dialog v-model="classDialogVisible" :title="editingClass ? '编辑上课时间' : '添加上课时间'" width="560px" destroy-on-close>
+      <el-form label-position="top" class="dialog-form" @submit.prevent="saveClassSession">
+        <div class="form-grid two-columns">
+          <el-form-item label="课程" required>
+            <el-select v-model="classForm.course_id" placeholder="选择课程" style="width: 100%">
+              <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="星期" required>
+            <el-select v-model="classForm.weekday" style="width: 100%">
+              <el-option v-for="day in weekdays" :key="day.value" :label="day.label" :value="day.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="上课时间" required>
+            <el-input v-model="classForm.start_time" type="time" />
+          </el-form-item>
+          <el-form-item label="下课时间" required>
+            <el-input v-model="classForm.end_time" type="time" />
+          </el-form-item>
+          <el-form-item label="开始周" required>
+            <el-input-number v-model="classForm.start_week" :min="1" :max="30" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="结束周" required>
+            <el-input-number v-model="classForm.end_week" :min="1" :max="30" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="周次规则" required>
+            <el-select v-model="classForm.week_pattern" style="width: 100%">
+              <el-option label="每周" value="all" />
+              <el-option label="仅单周" value="odd" />
+              <el-option label="仅双周" value="even" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="教室或地点">
+            <el-input v-model="classForm.location" maxlength="120" placeholder="例如：博学楼 B203" />
+          </el-form-item>
+        </div>
+        <el-form-item label="备注">
+          <el-input v-model="classForm.note" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="实验课、线上会议号等可选信息" />
+        </el-form-item>
+        <div class="dialog-actions">
+          <el-button v-if="editingClass" type="danger" plain :loading="deleting" @click="removeClassSession(editingClass)">删除这节课</el-button>
+          <span class="dialog-actions-spacer"></span>
+          <el-button @click="classDialogVisible = false">取消</el-button>
+          <el-button type="primary" native-type="submit" :loading="saving">{{ editingClass ? '保存修改' : '加入课表' }}</el-button>
+        </div>
+      </el-form>
+    </el-dialog>
+
+    <el-dialog v-model="examDialogVisible" :title="editingExam ? '编辑考试' : '添加考试'" width="560px" destroy-on-close>
+      <el-form label-position="top" class="dialog-form" @submit.prevent="saveExam">
+        <div class="form-grid two-columns">
+          <el-form-item label="课程" required>
+            <el-select v-model="examForm.course_id" placeholder="选择课程" style="width: 100%">
+              <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="考试类型" required>
+            <el-select v-model="examForm.exam_type" style="width: 100%">
+              <el-option label="随堂测验" value="quiz" />
+              <el-option label="期中考试" value="midterm" />
+              <el-option label="期末考试" value="final" />
+              <el-option label="其他考试" value="other" />
+            </el-select>
+          </el-form-item>
+        </div>
+        <el-form-item label="考试名称" required>
+          <el-input v-model="examForm.title" maxlength="160" placeholder="例如：数据结构期末考试" />
+        </el-form-item>
+        <div class="form-grid two-columns">
+          <el-form-item label="开始时间" required>
+            <el-date-picker v-model="examForm.starts_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" format="YYYY-MM-DD HH:mm" placeholder="选择日期和时间" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="结束时间">
+            <el-date-picker v-model="examForm.ends_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" format="YYYY-MM-DD HH:mm" placeholder="可选" style="width: 100%" />
+          </el-form-item>
+          <el-form-item label="考场">
+            <el-input v-model="examForm.location" maxlength="120" placeholder="例如：第一教学楼 101" />
+          </el-form-item>
+          <el-form-item label="座位号">
+            <el-input v-model="examForm.seat_number" maxlength="50" placeholder="例如：A-18" />
+          </el-form-item>
+        </div>
+        <el-form-item label="备注">
+          <el-input v-model="examForm.note" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="携带物品、考试范围等可选信息" />
+        </el-form-item>
+        <div class="dialog-actions">
+          <span class="dialog-actions-spacer"></span>
+          <el-button @click="examDialogVisible = false">取消</el-button>
+          <el-button type="primary" native-type="submit" :loading="saving">{{ editingExam ? '保存修改' : '加入考试安排' }}</el-button>
+        </div>
+      </el-form>
+    </el-dialog>
+
+    <AcademicIntegrationDialog
+      v-if="integrationDialogVisible"
+      v-model="integrationDialogVisible"
+      @synced="handleIntegrationSynced"
+    />
+  </section>
+</template>
+
+<script setup>
+import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
+import {
+  ElButton,
+  ElCheckbox,
+  ElDatePicker,
+  ElDialog,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElInputNumber,
+  ElMessage,
+  ElMessageBox,
+  ElOption,
+  ElSelect,
+} from 'element-plus'
+
+import { academicCalendarApi, coursesApi } from '../api'
+import { editBaseline, editRequestConfig } from '../utils/editPrecondition'
+import { formatDateTime } from '../utils/format'
+
+const AcademicIntegrationDialog = defineAsyncComponent(() => import('../components/AcademicIntegrationDialog.vue'))
+
+const weekdays = [
+  { value: 1, short: '一', label: '星期一' },
+  { value: 2, short: '二', label: '星期二' },
+  { value: 3, short: '三', label: '星期三' },
+  { value: 4, short: '四', label: '星期四' },
+  { value: 5, short: '五', label: '星期五' },
+  { value: 6, short: '六', label: '星期六' },
+  { value: 7, short: '日', label: '星期日' },
+]
+
+const chinaTimeZone = 'Asia/Shanghai'
+const weekdayKey = new Intl.DateTimeFormat('en-US', { timeZone: chinaTimeZone, weekday: 'short' }).format(new Date())
+const todayWeekday = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[weekdayKey] || 1
+const savedWeek = Number.parseInt(window.localStorage.getItem('study-academic-week') || '', 10)
+const selectedWeek = ref(Number.isInteger(savedWeek) && savedWeek >= 1 && savedWeek <= 30 ? savedWeek : 1)
+const activeWeekday = ref(todayWeekday)
+const includePastExams = ref(false)
+const loading = ref(false)
+const saving = ref(false)
+const deleting = ref(false)
+const error = ref('')
+const courses = ref([])
+const classSessions = ref([])
+const exams = ref([])
+const classDialogVisible = ref(false)
+const examDialogVisible = ref(false)
+const integrationDialogVisible = ref(false)
+const editingClass = ref(null)
+const editingExam = ref(null)
+let loadRequestId = 0
+
+const classForm = reactive(emptyClassForm())
+const examForm = reactive(emptyExamForm())
+const activeDay = computed(() => weekdays.find((day) => day.value === activeWeekday.value))
+const nearestExam = computed(() => exams.value.find((exam) => !isPastExam(exam)) || null)
+const todaySessions = computed(() => sessionsFor(todayWeekday).filter((item) => item.end_time.slice(0, 5) >= currentTime()))
+const todayHeadline = computed(() => {
+  const next = todaySessions.value[0]
+  if (next) return `下一节：${next.course_name}`
+  const total = sessionsFor(todayWeekday).length
+  return total ? '今天的课程已经结束' : '今天没有固定课程'
+})
+const todayDetail = computed(() => {
+  const next = todaySessions.value[0]
+  if (next) return `${formatTimeRange(next)} · ${next.location || '地点待补充'}${next.teacher ? ` · ${next.teacher}` : ''}`
+  return nearestExam.value ? `可以把空档留给 ${nearestExam.value.course_name} 的考试准备。` : '可以把空档留给复习、资料整理或休息。'
+})
+const todayLabel = computed(() => examDateParts(new Date().toISOString()))
+
+function emptyClassForm(weekday = todayWeekday) {
+  return {
+    course_id: courses.value?.[0]?.id || null,
+    weekday,
+    start_time: '08:00',
+    end_time: '09:40',
+    location: '',
+    start_week: 1,
+    end_week: 18,
+    week_pattern: 'all',
+    note: '',
+  }
+}
+
+function emptyExamForm() {
+  return {
+    course_id: courses.value?.[0]?.id || null,
+    title: '',
+    exam_type: 'final',
+    starts_at: '',
+    ends_at: '',
+    location: '',
+    seat_number: '',
+    note: '',
+  }
+}
+
+function assignForm(target, source) {
+  Object.keys(target).forEach((key) => { target[key] = source[key] ?? '' })
+}
+
+function sessionsFor(weekday) {
+  return classSessions.value.filter((item) => item.weekday === weekday)
+}
+
+function safeCourseColor(value) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : '#5964ed'
+}
+
+function weekPatternLabel(value) {
+  return { all: '每周', odd: '单周', even: '双周' }[value] || '每周'
+}
+
+function examTypeLabel(value) {
+  return { quiz: '随堂测验', midterm: '期中考试', final: '期末考试', other: '其他考试' }[value] || '考试'
+}
+
+function formatTimeRange(item) {
+  return `${item.start_time.slice(0, 5)}–${item.end_time.slice(0, 5)}`
+}
+
+function formatExamRange(exam) {
+  if (!exam.ends_at) return formatDateTime(exam.starts_at)
+  const start = new Date(exam.starts_at)
+  const end = new Date(exam.ends_at)
+  const startParts = chinaParts(start)
+  const endParts = chinaParts(end)
+  const sameDay = startParts.dateKey === endParts.dateKey
+  const endOptions = sameDay ? { hour: '2-digit', minute: '2-digit' } : {
+    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  }
+  const endText = new Intl.DateTimeFormat('zh-CN', { timeZone: chinaTimeZone, ...endOptions }).format(end)
+  return `${formatDateTime(exam.starts_at)} – ${endText}`
+}
+
+function examDateParts(value) {
+  const date = new Date(value)
+  return {
+    month: new Intl.DateTimeFormat('zh-CN', { timeZone: chinaTimeZone, month: 'short' }).format(date),
+    day: new Intl.DateTimeFormat('zh-CN', { timeZone: chinaTimeZone, day: '2-digit' }).format(date),
+    weekday: new Intl.DateTimeFormat('zh-CN', { timeZone: chinaTimeZone, weekday: 'short' }).format(date),
+  }
+}
+
+function countdownLabel(value) {
+  const target = chinaParts(new Date(value))
+  const today = chinaParts(new Date())
+  const targetDay = Date.UTC(target.year, target.month - 1, target.day)
+  const localToday = Date.UTC(today.year, today.month - 1, today.day)
+  const days = Math.round((targetDay - localToday) / 86400000)
+  if (days < 0) return '已结束'
+  if (days === 0) return '今天'
+  if (days === 1) return '明天'
+  return `还有 ${days} 天`
+}
+
+function isPastExam(exam) {
+  return new Date(exam.ends_at || exam.starts_at).getTime() < Date.now()
+}
+
+function currentTime() {
+  const now = chinaParts(new Date())
+  return `${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')}`
+}
+
+function toLocalDatetime(value) {
+  if (!value) return ''
+  const date = chinaParts(new Date(value))
+  const part = (number) => String(number).padStart(2, '0')
+  return `${date.year}-${part(date.month)}-${part(date.day)}T${part(date.hour)}:${part(date.minute)}:00`
+}
+
+function chinaParts(value) {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: chinaTimeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(value).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
+  const year = Number(parts.year)
+  const month = Number(parts.month)
+  const day = Number(parts.day)
+  return {
+    year,
+    month,
+    day,
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    dateKey: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+  }
+}
+
+function normalizeOptional(value) {
+  const trimmed = String(value || '').trim()
+  return trimmed || null
+}
+
+async function loadPage() {
+  const requestId = ++loadRequestId
+  loading.value = true
+  error.value = ''
+  try {
+    const [courseRows, overview] = await Promise.all([
+      coursesApi.list(),
+      academicCalendarApi.overview(selectedWeek.value, includePastExams.value),
+    ])
+    if (requestId !== loadRequestId) return
+    courses.value = Array.isArray(courseRows) ? courseRows : []
+    classSessions.value = Array.isArray(overview?.class_sessions) ? overview.class_sessions : []
+    exams.value = Array.isArray(overview?.exams) ? overview.exams : []
+  } catch (loadError) {
+    if (requestId !== loadRequestId) return
+    courses.value = []
+    classSessions.value = []
+    exams.value = []
+    error.value = loadError.message
+  } finally {
+    if (requestId === loadRequestId) loading.value = false
+  }
+}
+
+function changeWeek(delta) {
+  selectedWeek.value = Math.min(30, Math.max(1, selectedWeek.value + delta))
+}
+
+function openClassDialog(item = null, weekday = activeWeekday.value) {
+  if (!courses.value.length) return
+  editingClass.value = item ? { ...item } : null
+  assignForm(classForm, item ? {
+    ...item,
+    start_time: item.start_time.slice(0, 5),
+    end_time: item.end_time.slice(0, 5),
+  } : emptyClassForm(weekday))
+  classDialogVisible.value = true
+}
+
+function openExamDialog(item = null) {
+  if (!courses.value.length) return
+  editingExam.value = item ? { ...item } : null
+  assignForm(examForm, item ? {
+    ...item,
+    starts_at: toLocalDatetime(item.starts_at),
+    ends_at: toLocalDatetime(item.ends_at),
+  } : emptyExamForm())
+  examDialogVisible.value = true
+}
+
+async function saveClassSession() {
+  if (!classForm.course_id || !classForm.start_time || !classForm.end_time) {
+    ElMessage.warning('请填写课程、星期和上下课时间')
+    return
+  }
+  if (classForm.end_time <= classForm.start_time) {
+    ElMessage.warning('下课时间必须晚于上课时间')
+    return
+  }
+  if (classForm.end_week < classForm.start_week) {
+    ElMessage.warning('结束周不能早于开始周')
+    return
+  }
+  const payload = {
+    ...classForm,
+    location: normalizeOptional(classForm.location),
+    note: normalizeOptional(classForm.note),
+  }
+  saving.value = true
+  try {
+    if (editingClass.value) {
+      const config = editRequestConfig(editBaseline(editingClass.value))
+      await academicCalendarApi.updateClassSession(editingClass.value.id, payload, config)
+      ElMessage.success('课程时间已更新')
+    } else {
+      await academicCalendarApi.createClassSession(payload)
+      ElMessage.success('课程已加入课表')
+    }
+    classDialogVisible.value = false
+    await loadPage()
+  } catch (saveError) {
+    ElMessage.error(saveError.message)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveExam() {
+  if (!examForm.course_id || !examForm.title.trim() || !examForm.starts_at) {
+    ElMessage.warning('请填写课程、考试名称和开始时间')
+    return
+  }
+  if (examForm.ends_at && examForm.ends_at <= examForm.starts_at) {
+    ElMessage.warning('结束时间必须晚于开始时间')
+    return
+  }
+  const payload = {
+    ...examForm,
+    title: examForm.title.trim(),
+    ends_at: examForm.ends_at || null,
+    location: normalizeOptional(examForm.location),
+    seat_number: normalizeOptional(examForm.seat_number),
+    note: normalizeOptional(examForm.note),
+  }
+  saving.value = true
+  try {
+    if (editingExam.value) {
+      const config = editRequestConfig(editBaseline(editingExam.value))
+      await academicCalendarApi.updateExam(editingExam.value.id, payload, config)
+      ElMessage.success('考试安排已更新')
+    } else {
+      await academicCalendarApi.createExam(payload)
+      ElMessage.success('考试已加入日程')
+    }
+    examDialogVisible.value = false
+    await loadPage()
+  } catch (saveError) {
+    ElMessage.error(saveError.message)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeClassSession(item) {
+  try {
+    await ElMessageBox.confirm(`确定从课表删除“${item.course_name}”这节课吗？`, '删除课程时间', {
+      confirmButtonText: '删除', cancelButtonText: '保留', type: 'warning',
+    })
+  } catch {
+    return
+  }
+  deleting.value = true
+  try {
+    await academicCalendarApi.removeClassSession(item.id, editRequestConfig(editBaseline(item)))
+    classDialogVisible.value = false
+    ElMessage.success('课程时间已删除')
+    await loadPage()
+  } catch (removeError) {
+    ElMessage.error(removeError.message)
+  } finally {
+    deleting.value = false
+  }
+}
+
+async function removeExam(item) {
+  try {
+    await ElMessageBox.confirm(`确定删除“${item.title}”吗？`, '删除考试安排', {
+      confirmButtonText: '删除', cancelButtonText: '保留', type: 'warning',
+    })
+  } catch {
+    return
+  }
+  try {
+    await academicCalendarApi.removeExam(item.id, editRequestConfig(editBaseline(item)))
+    examDialogVisible.value = false
+    ElMessage.success('考试安排已删除')
+    await loadPage()
+  } catch (removeError) {
+    ElMessage.error(removeError.message)
+  }
+}
+
+async function handleIntegrationSynced(syncInfo = {}) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(syncInfo.semester_start || '')) {
+    const [year, month, day] = syncInfo.semester_start.split('-').map(Number)
+    const semesterStart = Date.UTC(year, month - 1, day)
+    const today = chinaParts(new Date())
+    const chinaToday = Date.UTC(today.year, today.month - 1, today.day)
+    const importedWeek = Math.min(30, Math.max(1, Math.floor((chinaToday - semesterStart) / 604800000) + 1))
+    if (importedWeek !== selectedWeek.value) {
+      selectedWeek.value = importedWeek
+      return
+    }
+  }
+  await loadPage()
+}
+
+watch(selectedWeek, (value) => {
+  window.localStorage.setItem('study-academic-week', String(value))
+  loadPage()
+})
+watch(includePastExams, loadPage)
+onMounted(loadPage)
+</script>
+
+<style scoped>
+.academic-calendar-page { --calendar-blue: #3157e6; --calendar-mint: #78e5cc; --calendar-yellow: #ffc857; color: var(--ledger-ink); }
+.calendar-kicker, .section-eyebrow, .ticket-time, .today-stamp, .exam-date-block, .week-switcher { font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-variant-numeric: tabular-nums; }
+.calendar-intro h1 { font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0; }
+.calendar-kicker, .section-eyebrow { color: #5a6882; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.course-gate, .calendar-error { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding: 18px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 6px; }
+.course-gate-mark { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; color: #fff; background: var(--calendar-blue); border-radius: 4px; font-weight: 800; }
+.course-gate > div:nth-child(2) { min-width: 0; flex: 1; }
+.course-gate strong { font-size: 15px; }
+.course-gate p { margin: 5px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.55; }
+.course-gate a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border: 1px solid #cbd4e2; border-radius: 4px; font-size: 13px; font-weight: 700; }
+.calendar-error { justify-content: space-between; color: #9f3c3c; border-color: #e2b8b8; background: #fff8f7; }
+.calendar-error button { min-height: 40px; padding: 0 12px; color: #923737; background: #fff; border: 1px solid #d9a7a7; border-radius: 4px; cursor: pointer; }
+.today-ribbon { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, .42fr); align-items: stretch; margin-bottom: 18px; overflow: hidden; background: #16213d; border: 1px solid #16213d; border-radius: 7px; box-shadow: var(--ledger-shadow); }
+.today-stamp { display: grid; align-content: center; min-width: 104px; padding: 16px 20px; color: #16213d; background: var(--calendar-mint); text-align: center; }
+.today-stamp span, .today-stamp small { font-size: 10px; font-weight: 700; letter-spacing: .05em; }
+.today-stamp strong { margin: 3px 0; font-size: 22px; font-weight: 700; line-height: 1; }
+.today-copy { min-width: 0; padding: 18px 22px; color: #fff; }
+.today-copy .section-eyebrow { color: #aab8d2; }
+.today-copy h2 { margin: 6px 0 5px; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 16px; font-weight: 700; }
+.today-copy p { margin: 0; color: #c9d2e4; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.nearest-exam { display: grid; align-content: center; gap: 5px; padding: 17px 21px; background: #fffefb; border-left: 1px dashed #73809b; }
+.nearest-exam span { color: #68758c; font-size: 11px; font-weight: 700; }
+.nearest-exam strong { color: #26334d; font-size: 14px; overflow-wrap: anywhere; }
+.nearest-exam small { color: #5e6b80; line-height: 1.45; }
+.nearest-exam.is-empty { background: #f2f4f8; }
+.schedule-ledger, .exam-ledger { margin-bottom: 18px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 7px; box-shadow: var(--ledger-shadow); }
+.ledger-header, .exam-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 22px; border-bottom: 1px solid var(--ledger-line); }
+.ledger-header h2, .exam-header h2 { margin: 5px 0 0; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 16px; font-weight: 700; }
+.ledger-header p, .exam-header p { margin: 5px 0 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.5; }
+.week-switcher { display: grid; grid-template-columns: 44px 66px 44px; gap: 6px; }
+.week-switcher :deep(.el-input-number) { width: 100%; min-width: 0; }
+.week-switcher button { min-height: 44px; color: #34415a; background: #fff; border: 1px solid #cbd4e1; border-radius: 4px; cursor: pointer; }
+.week-switcher button:disabled { color: #a4adba; background: #f3f5f8; cursor: not-allowed; }
+.week-switcher :deep(.el-input__wrapper) { min-height: 44px; padding: 0 8px; }
+.desktop-week-board { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 0; }
+.day-column { min-width: 0; border-right: 1px solid #e1e6ee; }
+.day-column:last-child { border-right: 0; }
+.day-column > header { display: grid; grid-template-columns: auto 1fr; gap: 2px 7px; min-height: 67px; padding: 12px 11px; background: #f6f8fb; border-bottom: 1px solid #e1e6ee; }
+.day-column > header span { grid-row: span 2; display: grid; place-items: center; width: 27px; height: 35px; color: #536077; background: #fff; border: 1px solid #d8dee8; border-radius: 3px; font-weight: 700; }
+.day-column > header strong { min-width: 0; font-size: 12px; }
+.day-column > header small { color: #7b8597; font-size: 10px; }
+.day-column.is-today > header { background: #eef0ff; }
+.day-column.is-today > header span { color: #fff; background: var(--calendar-blue); border-color: var(--calendar-blue); }
+.day-session-list { display: flex; flex-direction: column; gap: 8px; min-height: 238px; padding: 9px; }
+.class-ticket { position: relative; width: 100%; min-height: 116px; padding: 11px 10px 10px 13px; overflow: hidden; color: #27344e; background: #fff; border: 1px solid #dce2eb; border-radius: 5px; cursor: pointer; text-align: left; }
+.class-ticket::before { position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--course-color); content: ""; }
+.class-ticket:hover { border-color: #aebae0; transform: translateY(-1px); }
+.class-ticket .ticket-time { display: block; color: #58667f; font-size: 10px; font-weight: 700; }
+.class-ticket strong { display: block; margin-top: 7px; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
+.class-ticket > span:not(.ticket-time), .class-ticket small { display: block; margin-top: 6px; color: #66738a; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+.empty-day { display: grid; place-items: center; gap: 4px; min-height: 82px; color: #7b879a; background: transparent; border: 1px dashed #d0d7e2; border-radius: 5px; cursor: pointer; font-size: 11px; }
+.empty-day span { font-size: 20px; line-height: 1; }
+.empty-day:hover { color: var(--calendar-blue); border-color: #aeb8e7; background: #f7f8ff; }
+.mobile-week-board { display: none; }
+.exam-header { align-items: flex-end; }
+.past-exam-toggle { display: inline-flex; align-items: center; min-height: 44px; }
+.exam-list { padding: 0 22px 12px; }
+.exam-ticket { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; gap: 18px; align-items: stretch; padding: 18px 0; border-bottom: 1px dashed #d7dee8; }
+.exam-ticket:last-child { border-bottom: 0; }
+.exam-ticket.is-past { opacity: .66; }
+.exam-date-block { display: grid; align-content: center; padding: 10px; color: #16213d; background: #fff4d8; border: 1px solid #efdba8; border-radius: 4px; text-align: center; }
+.exam-date-block span, .exam-date-block small { font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+.exam-date-block strong { margin: 3px 0; font-size: 20px; font-weight: 700; line-height: 1; }
+.exam-main { min-width: 0; }
+.exam-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.exam-tags span { padding: 3px 7px; color: #4e5c73; background: #eef1f6; border-radius: 3px; font-size: 10px; font-weight: 700; }
+.exam-tags span:last-child { color: #85551e; background: #fff2d7; }
+.exam-main h3 { margin: 8px 0 2px; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.exam-main > p { margin: 0; color: #66738a; font-size: 12px; overflow-wrap: anywhere; }
+.exam-main dl { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 12px 0 0; }
+.exam-main dl div { min-width: 150px; }
+.exam-main dt { color: #7b8799; font-size: 10px; }
+.exam-main dd { margin: 3px 0 0; color: #3f4d65; font-size: 12px; overflow-wrap: anywhere; }
+.exam-actions { display: flex; align-items: center; gap: 6px; }
+.exam-actions button { min-width: 52px; min-height: 44px; color: #46536a; background: #fff; border: 1px solid #d0d7e1; border-radius: 4px; cursor: pointer; }
+.exam-actions button:hover { color: var(--calendar-blue); border-color: #aeb8e7; }
+.exam-actions .danger-action:hover { color: #a13e3e; border-color: #d9aaaa; }
+.exam-empty { display: grid; justify-items: center; padding: 40px 20px 44px; text-align: center; }
+.exam-empty > span { color: #7a8598; font-family: Bahnschrift, "Arial Narrow", sans-serif; font-size: 11px; letter-spacing: .12em; }
+.exam-empty strong { margin-top: 10px; font-size: 16px; }
+.exam-empty p { margin: 7px 0 18px; color: var(--ledger-muted); font-size: 13px; }
+.form-grid.two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
+.dialog-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.dialog-actions-spacer { flex: 1; }
+
+@media (max-width: 1100px) {
+  .desktop-week-board { display: none; }
+  .mobile-week-board { display: block; }
+  .mobile-day-tabs { display: grid; grid-template-columns: repeat(7, minmax(48px, 1fr)); overflow-x: auto; border-bottom: 1px solid var(--ledger-line); }
+  .mobile-day-tabs button { min-width: 48px; min-height: 58px; padding: 7px 4px; color: #657188; background: #f7f8fb; border: 0; border-right: 1px solid #e2e7ef; cursor: pointer; }
+  .mobile-day-tabs button:last-child { border-right: 0; }
+  .mobile-day-tabs span, .mobile-day-tabs strong { display: block; }
+  .mobile-day-tabs span { font-size: 11px; }
+  .mobile-day-tabs strong { margin-top: 3px; font-size: 14px; }
+  .mobile-day-tabs button.is-active { color: #fff; background: #3157e6; }
+  .mobile-day-tabs button.is-today:not(.is-active) { color: #26344e; box-shadow: inset 0 -3px var(--calendar-mint); }
+  .mobile-day-panel { padding: 16px; }
+  .mobile-day-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+  .mobile-day-heading div { display: grid; gap: 3px; }
+  .mobile-day-heading span { color: #67748a; font-size: 11px; }
+  .mobile-day-heading strong { font-size: 15px; }
+  .mobile-class-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 13px; width: 100%; min-height: 72px; margin-top: 8px; padding: 10px 12px; color: #334158; background: #fff; border: 1px solid #dce2eb; border-left: 5px solid var(--course-color); border-radius: 5px; cursor: pointer; text-align: left; }
+  .mobile-class-time { font-family: Bahnschrift, "Arial Narrow", sans-serif; font-size: 11px; font-weight: 700; }
+  .mobile-class-main { min-width: 0; display: grid; gap: 5px; }
+  .mobile-class-main strong, .mobile-class-main small { overflow-wrap: anywhere; }
+  .mobile-class-main small { color: #66738a; line-height: 1.4; }
+  .mobile-empty-day { padding: 24px 10px; color: #778397; background: #f8f9fb; border: 1px dashed #d5dce6; border-radius: 5px; text-align: center; font-size: 12px; }
+}
+
+@media (max-width: 760px) {
+  .today-ribbon { grid-template-columns: 78px minmax(0, 1fr); }
+  .today-stamp { min-width: 78px; padding: 14px 10px; }
+  .today-copy { padding: 17px 15px; }
+  .calendar-intro h1 { font-size: 20px; }
+  .today-copy h2 { font-size: 15px; }
+  .nearest-exam { grid-column: 1 / -1; min-height: 78px; border-top: 1px dashed #73809b; border-left: 0; }
+  .ledger-header, .exam-header { align-items: flex-start; flex-direction: column; padding: 18px 16px; }
+  .week-switcher { width: 100%; grid-template-columns: 48px minmax(0, 1fr) 48px; }
+  .past-exam-toggle { min-height: 32px; }
+  .exam-list { padding: 0 16px 8px; }
+  .exam-ticket { grid-template-columns: 68px minmax(0, 1fr); gap: 12px; }
+  .exam-date-block { min-height: 78px; }
+  .exam-main dl { display: grid; grid-template-columns: 1fr; gap: 7px; }
+  .exam-main dl div { min-width: 0; }
+  .exam-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .form-grid.two-columns { grid-template-columns: minmax(0, 1fr); }
+  .dialog-actions { align-items: stretch; flex-wrap: wrap; }
+  .dialog-actions-spacer { display: none; }
+  .dialog-actions .el-button { flex: 1 1 auto; margin-left: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .class-ticket { transition: none; }
+  .class-ticket:hover { transform: none; }
+}
+</style>

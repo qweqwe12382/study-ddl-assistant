@@ -2,21 +2,33 @@ from pathlib import Path
 import secrets
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.api.utils import commit_or_rollback, require_entity
+from app.models.agent import AgentEvent
 from app.models.course import Course
 from app.models.material import Material
 from app.models.task import Task
-from app.schemas.extraction import ExtractionConfirm, ExtractionRead
+from app.schemas.extraction import (
+    ExtractionConfirm,
+    ExtractionPolicyRead,
+    ExtractionProviderOption,
+    ExtractionRead,
+    ExtractionRequest,
+)
 from app.schemas.material import MaterialManualCreate, MaterialRead, MaterialSearchRead, MaterialUpdate
 from app.config import settings
 from app.services.file_parser import ALLOWED_FILE_TYPES, FileProcessingError, PreparedUpload, extract_text, prepare_upload
 from app.services.extraction import ExtractionError, extract_material, mark_extraction_failed, stored_result
+from app.services.agent_feedback import create_plan_delta_candidates
+from app.services.llm_provider import external_provider_available
+from app.services.edit_concurrency import check_edit_precondition
+from app.models.user import User
+from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/api/materials", tags=["materials"])
 logger = logging.getLogger("learning_assistant.materials")
@@ -76,6 +88,32 @@ def _parse_and_update(material: Material, prepared: PreparedUpload, db: Session)
         material.processing_status = "failed"
         material.processing_error = error.message
     db.add(material)
+
+
+def _auto_extract_local(material: Material) -> None:
+    """Run the local candidate extractor after a successful file parse.
+
+    Upload and retry must remain successful when candidate extraction fails. The
+    parser result is still useful to the user, so extraction failure is stored on
+    the material instead of aborting the surrounding upload transaction. The
+    provider name is explicit here to prevent an automatic path from ever
+    selecting an externally configured provider.
+    """
+
+    if material.processing_status != "processed":
+        return
+    try:
+        extract_material(material, "local-rules")
+    except ExtractionError as error:
+        material.extraction_provider = "local-rules"
+        mark_extraction_failed(material, error)
+    except Exception:
+        logger.exception("Local extraction failed for material %s", material.original_filename)
+        material.extraction_provider = "local-rules"
+        mark_extraction_failed(
+            material,
+            ExtractionError("LOCAL_EXTRACTION_FAILED", "本地规则抽取失败，请稍后重试"),
+        )
 
 
 def _match_snippets(text: str, keyword: str, *, radius: int = 80) -> list[str]:
@@ -173,12 +211,37 @@ def upload_policy() -> dict[str, object]:
     }
 
 
+@router.get("/extraction-policy", response_model=ExtractionPolicyRead)
+def extraction_policy() -> ExtractionPolicyRead:
+    external_available = external_provider_available()
+    return ExtractionPolicyRead(
+        providers=[
+            ExtractionProviderOption(
+                id="local-rules",
+                label="本地规则",
+                description="在本机使用关键词和日期规则，不发送资料正文。",
+                available=True,
+                sends_data_externally=False,
+            ),
+            ExtractionProviderOption(
+                id="openai-compatible",
+                label="外部 AI API",
+                description="使用后端配置的 OpenAI-compatible API 辅助理解复杂通知。",
+                available=external_available,
+                sends_data_externally=True,
+                model=settings.llm_model or None,
+            ),
+        ]
+    )
+
+
 @router.post("/upload", response_model=list[MaterialRead], status_code=status.HTTP_201_CREATED)
 def upload_materials(
     files: list[UploadFile] = File(...),
     course_id: int | None = Form(default=None),
     material_type: str | None = Form(default=None),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> list[Material]:
     """Store and parse one or more supported learning-material files."""
 
@@ -208,22 +271,27 @@ def upload_materials(
 
     materials: list[Material] = []
     written_paths: list[Path] = []
+    workspace_prefix = "" if current_user.workspace_key == "legacy" else current_user.workspace_key
+    workspace_upload_dir = settings.upload_dir / workspace_prefix
+    workspace_upload_dir.mkdir(parents=True, exist_ok=True)
     try:
         for prepared in prepared_files:
             stored_name = f"{secrets.token_hex(16)}.{prepared.file_type}"
-            target = settings.upload_dir / stored_name
+            stored_path = str(Path(workspace_prefix) / stored_name) if workspace_prefix else stored_name
+            target = settings.upload_dir / stored_path
             _write_atomically(target, prepared.content)
             written_paths.append(target)
             material = Material(
                 course_id=course_id,
                 original_filename=prepared.original_filename,
-                stored_path=stored_name,
+                stored_path=stored_path,
                 file_type=prepared.file_type,
                 material_type=material_type or None,
                 tags=[],
                 processing_status="pending",
             )
             _parse_and_update(material, prepared, db)
+            _auto_extract_local(material)
             materials.append(material)
         commit_or_rollback(db)
     except HTTPException:
@@ -263,10 +331,19 @@ def download_material(material_id: int, db: Session = Depends(get_db)) -> FileRe
 
 
 @router.post("/{material_id}/retry", response_model=MaterialRead)
-def retry_material(material_id: int, db: Session = Depends(get_db)) -> Material:
+def retry_material(material_id: int, db: Session = Depends(get_db), if_match: str | None = Header(default=None)) -> Material:
     material = db.get(Material, material_id)
     if material is None:
         raise _not_found()
+    check_edit_precondition(db, material, if_match)
+    if material.extraction_status == "confirmed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "EXTRACTION_ALREADY_CONFIRMED",
+                "message": "该资料的抽取结果已经确认，不能通过重试覆盖已确认快照",
+            },
+        )
     path = _stored_path(material)
     content = path.read_bytes()
     try:
@@ -279,6 +356,7 @@ def retry_material(material_id: int, db: Session = Depends(get_db)) -> Material:
         db.refresh(material)
         return material
     _parse_and_update(material, prepared, db)
+    _auto_extract_local(material)
     commit_or_rollback(db)
     db.refresh(material)
     return material
@@ -291,6 +369,8 @@ def _extraction_response(material: Material) -> ExtractionRead:
     payload.update(
         {
             "material_id": material.id,
+            "material_navigation_key": material.navigation_key,
+            "material_revision": material.revision,
             "status": material.extraction_status,
             "provider": material.extraction_provider,
             "error": material.extraction_error,
@@ -302,12 +382,18 @@ def _extraction_response(material: Material) -> ExtractionRead:
 
 
 @router.post("/{material_id}/extract", response_model=ExtractionRead)
-def extract_material_endpoint(material_id: int, db: Session = Depends(get_db)) -> ExtractionRead:
+def extract_material_endpoint(
+    material_id: int,
+    payload: ExtractionRequest | None = None,
+    db: Session = Depends(get_db),
+    if_match: str | None = Header(default=None),
+) -> ExtractionRead:
     material = db.get(Material, material_id)
     if material is None:
         raise _not_found()
+    check_edit_precondition(db, material, if_match)
     try:
-        extract_material(material)
+        extract_material(material, payload.provider if payload else None)
     except ExtractionError as error:
         if error.code != "EXTRACTION_ALREADY_CONFIRMED":
             mark_extraction_failed(material, error)
@@ -341,10 +427,11 @@ def _resolve_candidate_course(db: Session, material: Material, candidate, defaul
     return default_course_id if default_course_id is not None else material.course_id
 
 
-def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session) -> ExtractionRead:
+def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session, if_match: str | None = None) -> ExtractionRead:
     material = db.get(Material, material_id)
     if material is None:
         raise _not_found()
+    check_edit_precondition(db, material, if_match)
     if material.extraction_status == "confirmed":
         raise HTTPException(status_code=409, detail={"code": "EXTRACTION_ALREADY_CONFIRMED", "message": "该资料的抽取结果已经确认"})
     try:
@@ -388,6 +475,8 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
                 description=candidate.description,
                 due_at=candidate.due_at,
                 priority=candidate.priority,
+                estimated_minutes=candidate.estimated_minutes,
+                remaining_minutes=candidate.remaining_minutes,
                 confidence=candidate.confidence,
                 need_review=False,
                 source_quote=candidate.source_quote,
@@ -397,6 +486,10 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
         )
     db.add_all(created)
     db.flush()
+    # Confirmed extraction is a first-class task creation path, so it must
+    # produce the same M8.4 plan-difference audit as manual task creation.
+    for task in created:
+        create_plan_delta_candidates(db, task, "task_created")
     material.extraction_status = "confirmed"
     material.material_type = payload.material_type if payload.material_type is not None else stored.material_type or material.material_type
     if payload.tags is not None:
@@ -411,6 +504,17 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
     result_payload["warnings"] = list(dict.fromkeys(warning for candidate in selected for warning in candidate.warnings))
     result_payload["confirmed_task_ids"] = [task.id for task in created]
     material.extraction_result = result_payload
+    # The confirmation event belongs to the same transaction as the formal
+    # tasks.  It is intentionally aggregate-only: detailed extraction content
+    # remains on the material's audited result and is never used by the public
+    # activity projection.
+    db.add(AgentEvent(
+        event_type="material_extraction_confirmed",
+        entity_type="material",
+        entity_id=material.id,
+        entity_navigation_key=material.navigation_key,
+        payload={"batch_id": batch_id, "confirmed_task_count": len(created)},
+    ))
     try:
         commit_or_rollback(db)
     except HTTPException as error:
@@ -422,20 +526,21 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
 
 
 @router.post("/{material_id}/extraction/confirm", response_model=ExtractionRead)
-def confirm_extraction_endpoint(material_id: int, payload: ExtractionConfirm, db: Session = Depends(get_db)) -> ExtractionRead:
-    return confirm_extraction(material_id, payload, db)
+def confirm_extraction_endpoint(material_id: int, payload: ExtractionConfirm, db: Session = Depends(get_db), if_match: str | None = Header(default=None)) -> ExtractionRead:
+    return confirm_extraction(material_id, payload, db, if_match)
 
 
 @router.post("/{material_id}/confirm-extraction", response_model=ExtractionRead, include_in_schema=False)
-def confirm_extraction_alias(material_id: int, payload: ExtractionConfirm, db: Session = Depends(get_db)) -> ExtractionRead:
-    return confirm_extraction(material_id, payload, db)
+def confirm_extraction_alias(material_id: int, payload: ExtractionConfirm, db: Session = Depends(get_db), if_match: str | None = Header(default=None)) -> ExtractionRead:
+    return confirm_extraction(material_id, payload, db, if_match)
 
 
 @router.patch("/{material_id}", response_model=MaterialRead)
-def update_material(material_id: int, payload: MaterialUpdate, db: Session = Depends(get_db)) -> Material:
+def update_material(material_id: int, payload: MaterialUpdate, db: Session = Depends(get_db), if_match: str | None = Header(default=None)) -> Material:
     material = db.get(Material, material_id)
     if material is None:
         raise _not_found()
+    check_edit_precondition(db, material, if_match)
     changes = payload.model_dump(exclude_unset=True)
     if material.stored_path and "file_type" in changes and changes["file_type"] != material.file_type:
         raise HTTPException(
@@ -466,10 +571,11 @@ def update_material(material_id: int, payload: MaterialUpdate, db: Session = Dep
 
 
 @router.delete("/{material_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_material(material_id: int, db: Session = Depends(get_db)) -> None:
+def delete_material(material_id: int, db: Session = Depends(get_db), if_match: str | None = Header(default=None)) -> None:
     material = db.get(Material, material_id)
     if material is None:
         raise _not_found()
+    check_edit_precondition(db, material, if_match)
     stored_path = _resolve_stored_path(material)
     for task in material.tasks:
         task.material_id = None

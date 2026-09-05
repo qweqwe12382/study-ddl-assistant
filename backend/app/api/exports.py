@@ -1,7 +1,6 @@
 import csv
 from datetime import date, datetime, timedelta, timezone
 from io import StringIO
-from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -15,9 +14,10 @@ from app.models.study_plan import StudyPlan
 from app.models.task import Task
 from app.services.study_plan import decode_plan_content
 from app.services.task_service import sync_overdue_tasks
+from app.time import LOCAL_TIMEZONE, as_local
 
 router = APIRouter(prefix="/api/exports", tags=["exports"])
-CALENDAR_TIMEZONE = ZoneInfo("Asia/Shanghai")
+CALENDAR_TIMEZONE = LOCAL_TIMEZONE
 
 
 def _download(content: str | bytes, *, filename: str, media_type: str) -> Response:
@@ -35,9 +35,7 @@ def _download(content: str | bytes, *, filename: str, media_type: str) -> Respon
 def _calendar_datetime(value: datetime) -> datetime:
     """Represent stored wall-clock deadlines in the application's local timezone."""
 
-    if value.tzinfo is None:
-        return value.replace(tzinfo=CALENDAR_TIMEZONE)
-    return value.astimezone(CALENDAR_TIMEZONE)
+    return as_local(value)
 
 
 @router.get("/tasks.ics")
@@ -192,14 +190,14 @@ def export_study_plan_markdown(plan_id: int, db: Session = Depends(get_db)) -> R
             detail={"code": "STUDY_PLAN_NOT_FOUND", "message": "复习计划不存在"},
         )
     items, warnings, material_count, task_count = decode_plan_content(plan.plan_content)
-    material_ids = {material_id for item in items for material_id in item.source_material_ids}
-    task_ids = {task_id for item in items for task_id in item.source_task_ids}
+    material_ids = {ref.source_id for item in items for ref in item.source_material_refs}
+    task_ids = {ref.source_id for item in items for ref in item.source_task_refs}
     source_materials = {
-        material.id: material.original_filename
+        (material.id, material.navigation_key): material.original_filename
         for material in db.scalars(select(Material).where(Material.id.in_(material_ids))).all()
     } if material_ids else {}
     source_tasks = {
-        task.id: task.name
+        (task.id, task.navigation_key): task.name
         for task in db.scalars(select(Task).where(Task.id.in_(task_ids))).all()
     } if task_ids else {}
     lines = [
@@ -219,10 +217,14 @@ def export_study_plan_markdown(plan_id: int, db: Session = Depends(get_db)) -> R
     for item in items:
         sources = []
         if item.source_material_ids:
-            labels = [source_materials.get(value, f"#{value}") for value in item.source_material_ids]
+            identities = {ref.source_id: ref.navigation_key for ref in item.source_material_refs}
+            labels = [source_materials.get((value, identities[value]), f"#{value}（来源已失效）")
+                      if value in identities else f"#{value}（历史来源未验证）" for value in item.source_material_ids]
             sources.append(f"资料：{'、'.join(labels)}")
         if item.source_task_ids:
-            labels = [source_tasks.get(value, f"#{value}") for value in item.source_task_ids]
+            identities = {ref.source_id: ref.navigation_key for ref in item.source_task_refs}
+            labels = [source_tasks.get((value, identities[value]), f"#{value}（来源已失效）")
+                      if value in identities else f"#{value}（历史来源未验证）" for value in item.source_task_ids]
             sources.append(f"任务：{'、'.join(labels)}")
         source_label = f"；来源：{'、'.join(sources)}" if sources else ""
         lines.extend(

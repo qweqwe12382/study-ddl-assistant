@@ -1,6 +1,8 @@
 from collections.abc import Generator
+from contextlib import asynccontextmanager
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 # Keep the documented `python -m pytest backend/tests -q` command working
 # without requiring callers to set PYTHONPATH first.
@@ -12,9 +14,10 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.database import Base, get_db
+from app.database import Base, get_db, get_system_db
 from app.config import settings
 from app.main import app
+from app.services.auth import get_current_user
 
 
 @pytest.fixture
@@ -54,7 +57,24 @@ def client() -> Generator[TestClient, None, None]:
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
-    test_engine.dispose()
+    app.dependency_overrides[get_system_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id="test-admin", email="test@example.com", display_name="测试用户", workspace_key="legacy", is_admin=True
+    )
+    original_lifespan_context = app.router.lifespan_context
+
+    @asynccontextmanager
+    async def isolated_lifespan(_app):
+        # TestClient would otherwise run the production lifespan, which calls
+        # init_db against SessionLocal/data. The dependency override below is
+        # intentionally the only database used by API tests.
+        yield
+
+    app.router.lifespan_context = isolated_lifespan
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.router.lifespan_context = original_lifespan_context
+        app.dependency_overrides.clear()
+        test_engine.dispose()

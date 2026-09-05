@@ -1,0 +1,48 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: online/backend.Dockerfile
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: sqlite:////app/data/app.db
+      AUTH_DATABASE_URL: sqlite:////app/data/auth.db
+      AUTH_COOKIE_SECURE: "true"
+      UPLOAD_DIR: /app/data/uploads
+      DEMO_MODE: "false"
+    volumes:
+      - online_data:/app/data
+      - ./.env:/app/.env
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: online/frontend.Dockerfile
+    env_file:
+      - .env
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+      TLS_EMAIL: ${TLS_EMAIL}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  online_data:
+    name: learning-assistant-online-data
+  caddy_data:
+    name: learning-assistant-online-caddy-data
+  caddy_config:
+    name: learning-assistant-online-caddy-config

@@ -4,6 +4,9 @@ import {
   ElAvatar,
   ElButton,
   ElContainer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
   ElHeader,
   ElIcon,
   ElLoading,
@@ -12,7 +15,7 @@ import {
   ElMenuItem,
   ElTag,
 } from 'element-plus'
-import 'element-plus/dist/index.css'
+import './element-plus.css'
 import './styles.css'
 
 import App from './App.vue'
@@ -25,6 +28,9 @@ const elementComponents = [
   ElAvatar,
   ElButton,
   ElContainer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
   ElHeader,
   ElIcon,
   ElMain,

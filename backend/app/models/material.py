@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, JSON, DateTime, ForeignKey, String, Text
+from sqlalchemy import BigInteger, JSON, DateTime, ForeignKey, String, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.services.source_identity import new_navigation_key, prevent_navigation_key_change
 from app.time import utc_now
 
 
@@ -13,6 +14,8 @@ class Material(Base):
     __tablename__ = "materials"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    navigation_key: Mapped[str] = mapped_column(String(32), nullable=False, unique=True, index=True, default=new_navigation_key)
+    revision: Mapped[int] = mapped_column(nullable=False, default=1)
     course_id: Mapped[int | None] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), nullable=True, index=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     stored_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -38,3 +41,8 @@ class Material(Base):
 
     course = relationship("Course", back_populates="materials")
     tasks = relationship("Task", back_populates="material")
+
+    __mapper_args__ = {"version_id_col": revision}
+
+
+event.listen(Material.navigation_key, "set", prevent_navigation_key_change, retval=True, active_history=True)

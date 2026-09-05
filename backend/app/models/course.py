@@ -25,3 +25,5 @@ class Course(Base):
     materials = relationship("Material", back_populates="course", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="course", cascade="all, delete-orphan")
     study_plans = relationship("StudyPlan", back_populates="course", cascade="all, delete-orphan")
+    class_sessions = relationship("ClassSession", back_populates="course", cascade="all, delete-orphan")
+    exams = relationship("Exam", back_populates="course", cascade="all, delete-orphan")

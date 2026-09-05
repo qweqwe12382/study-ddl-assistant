@@ -16,9 +16,10 @@ $backendCommand = "& '$pythonPath' -m uvicorn app.main:app --app-dir '$backendPa
 $frontendCommand = "Set-Location -LiteralPath '$frontendRoot'; & npm.cmd run dev -- --host 127.0.0.1"
 
 # Keep service windows hidden so one command starts a quiet local demo.
-Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $backendCommand
-Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $frontendCommand
+Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -WorkingDirectory $projectRoot -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $backendCommand
+Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -WorkingDirectory $frontendRoot -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', $frontendCommand
 
 Write-Host 'Backend: http://127.0.0.1:8000/docs'
 Write-Host 'Frontend: http://127.0.0.1:5173/'
 Write-Host 'Set DEMO_MODE=true in .env before starting to load demo data.'
+Write-Host "This script can be called from any PowerShell: & '$PSCommandPath'"

@@ -6,7 +6,10 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm.exc import StaleDataError
 from sqlalchemy.orm import Session
+
+from app.services.edit_concurrency import edit_conflict
 
 
 def require_entity(
@@ -32,6 +35,25 @@ def commit_or_rollback(db: Session) -> None:
 
     try:
         db.commit()
+    except StaleDataError as exc:
+        db.rollback()
+        raise edit_conflict() from exc
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "DATABASE_CONSTRAINT_ERROR", "message": "数据与现有记录冲突"},
+        ) from exc
+
+
+def flush_or_rollback(db: Session) -> None:
+    """Flush target mutations so an ORM optimistic-lock conflict is a 409."""
+
+    try:
+        db.flush()
+    except StaleDataError as exc:
+        db.rollback()
+        raise edit_conflict() from exc
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(

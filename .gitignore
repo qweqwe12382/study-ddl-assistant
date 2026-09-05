@@ -9,14 +9,26 @@ __pycache__/
 
 # Environment and local data
 .env
+.tmp/
 data/*.db
 data/*.sqlite*
+data/users/
 data/uploads/*
 !data/uploads/.gitkeep
+
+# Competition materials: large datasets and personal registration form stay out of git
+competition/大赛资料/
+competition/*.docx
 
 # Frontend
 frontend/node_modules/
 frontend/dist/
+
+# Android
+android/.gradle/
+android/local.properties
+android/**/build/
+android/captures/
 
 # IDE and OS
 .vscode/*
