@@ -44,6 +44,13 @@ export async function register(payload) {
   return user
 }
 
+export async function demoLogin() {
+  const user = await authApi.demoLogin()
+  authSession.user = user
+  authSession.status = 'ready'
+  return user
+}
+
 export async function logout() {
   try {
     await authApi.logout()

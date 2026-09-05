@@ -8,6 +8,7 @@ export const authApi = {
   me: () => http.get('/auth/me'),
   register: (payload) => http.post('/auth/register', payload),
   login: (payload) => http.post('/auth/login', payload),
+  demoLogin: () => http.post('/auth/demo-login'),
   logout: () => http.post('/auth/logout'),
 }
 

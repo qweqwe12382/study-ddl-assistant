@@ -16,7 +16,7 @@ _M8 智能体能力增强开发版 · 文档状态：维护中 · 最后核对�
 | 后端基线 | Python 3.14.6、FastAPI、SQLite |
 | 前端基线 | Node.js 24.19.0、Vue 3、Vite、Element Plus |
 | Android 基线 | Kotlin 2.2.21、Jetpack Compose、SDK 36、Gradle 8.13；最低 Android 8.0（API 26） |
-| 自动化基线 | 后端完整 197 项测试通过；前端 `npm run verify` 通过；Android `testDebugUnitTest`、`lintDebug` 与 `assembleDebug` 通过，并在 API 36.1 模拟器完成登录、今日、课表考试、DDL 及带 CSRF 的任务完成闭环。仅有既存 Starlette/httpx 弃用及前端 `@vueuse` PURE annotation 警告；详细证据见开发进度 |
+| 自动化基线 | 后端完整 200 项测试通过；前端 `npm run verify` 通过；Android `testDebugUnitTest`、`lintDebug` 与 `assembleDebug` 通过，并在 API 36.1 模拟器完成登录、今日、课表考试、DDL 及带 CSRF 的任务完成闭环。仅有既存 Starlette/httpx 弃用及前端 `@vueuse` PURE annotation 警告；详细证据见开发进度 |
 | 当前里程碑 | M8.32“Android 学习航线视觉优化”已完成（M8 智能体能力增强进行中） |
 | 当前产品状态 | 已具备统一 Agent Center、今日决策台、容量行动、受控执行、反馈重规划、可追溯历史、安全证据导航和学习节奏解释；任务页给 DDL 时间议程，资料页给 AI 确认优先队列，课表与考试页提供按周校园日程和考试倒计时，复习计划页给下一复习项与有界近期日程；“查看计划差异”会直达完整调整前后内容，确认前不执行；完整管理与证据保留在详细视图 |
 | 适用范围 | 本地开发、评审演示和功能验收，不直接用于公网生产 |
@@ -27,6 +27,7 @@ _M8 智能体能力增强开发版 · 文档状态：维护中 · 最后核对�
 | --- | --- |
 | [项目目标计划与实现思路](docs/product/项目目标计划与实现思路.md) | 需求基线、产品范围、技术方案和验收标准 |
 | [比赛要求对照与产品开发方向](docs/product/比赛要求对照与提交状态.md) | 命题要求、智能体定位、当前能力缺口和 M8 开发路线 |
+| [同类产品研究与功能拓展](docs/product/同类产品研究与功能拓展.md) | 同类产品结构调研、比赛要求对照和演示模式/专注计时拓展记录 |
 | [架构与技术路线](docs/product/架构与技术路线.md) | 系统分层、业务流程、可靠性边界和部署路径 |
 | [正式测试用例](docs/quality/正式测试用例.md) | 当前回归基线；正式案例整理在 M9 处理 |
 | [合规与隐私说明](docs/quality/合规与隐私说明.md) | 数据处理范围、外部 Provider 和演示清理要求 |

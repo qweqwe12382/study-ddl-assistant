@@ -28,6 +28,10 @@
           <el-icon><List /></el-icon>
           <span class="nav-label">截止任务</span>
         </el-menu-item>
+        <el-menu-item index="/focus">
+          <el-icon><Timer /></el-icon>
+          <span class="nav-label">专注计时</span>
+        </el-menu-item>
         <el-menu-item index="/schedule">
           <el-icon><Clock /></el-icon>
           <span class="nav-label">课表与考试</span>
@@ -144,7 +148,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowDown, Calendar, Clock, Collection, House, List, Refresh, Setting } from '@element-plus/icons-vue'
+import { ArrowDown, Calendar, Clock, Collection, House, List, Refresh, Setting, Timer } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { healthApi } from '../api'

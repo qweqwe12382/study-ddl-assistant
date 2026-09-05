@@ -28,6 +28,7 @@ const router = createRouter({
     { path: '/app', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: '学习总览' } },
     { path: '/materials', name: 'materials', component: () => import('../views/MaterialsView.vue'), meta: { title: '资料库' } },
     { path: '/tasks', name: 'tasks', component: () => import('../views/TasksView.vue'), meta: { title: '截止任务' } },
+    { path: '/focus', name: 'focus', component: () => import('../views/FocusView.vue'), meta: { title: '专注计时' } },
     { path: '/schedule', name: 'schedule', component: () => import('../views/AcademicCalendarView.vue'), meta: { title: '课表与考试' } },
     { path: '/study-plans', name: 'study-plans', component: () => import('../views/StudyPlansView.vue'), meta: { title: '复习计划' } },
     { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue'), meta: { title: '设置' } },

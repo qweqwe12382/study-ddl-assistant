@@ -43,6 +43,19 @@ const checks = [
     budget: 5 * 1024,
   },
   {
+    key: 'focusJs',
+    label: 'Focus JS',
+    pattern: /^FocusView(?:-[^/]+)?\.js$/,
+    // The focus timer stays a small, self-contained lazy route.
+    budget: 10 * 1024,
+  },
+  {
+    key: 'focusCss',
+    label: 'Focus CSS',
+    pattern: /^FocusView(?:-[^/]+)?\.css$/,
+    budget: 4 * 1024,
+  },
+  {
     key: 'materialsJs',
     label: 'Materials JS',
     pattern: /^MaterialsView(?:-[^/]+)?\.js$/,

@@ -6,6 +6,7 @@
         <p>把课程截止日期变成可执行的清单；完成后补充反馈，安排会逐步贴合实际用时。</p>
       </div>
       <div class="page-actions task-page-actions">
+        <router-link class="task-focus-entry" to="/focus">专注计时</router-link>
         <el-button class="task-create-action" type="primary" @click="openCreate">新增任务</el-button>
         <div v-if="isDetailedView" class="task-export-actions" role="group" aria-label="导出任务清单">
           <el-button @click="downloadFile(exportsApi.tasksCsvUrl())">导出 CSV</el-button>
@@ -1138,6 +1139,25 @@ onMounted(() => {
 
 .task-create-action {
   min-width: 112px;
+}
+
+.task-focus-entry {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 15px;
+  border: 1px solid #cbd4e0;
+  border-radius: var(--el-border-radius-base);
+  background: var(--tasks-paper);
+  color: var(--tasks-ink);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.task-focus-entry:hover {
+  color: var(--tasks-indigo);
+  border-color: rgba(89, 100, 237, .55);
 }
 
 .task-agenda-section {

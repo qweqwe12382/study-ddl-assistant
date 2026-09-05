@@ -1,4 +1,4 @@
-"""Email registration and browser-session endpoints."""
+"""Email registration, browser-session and demo-mode endpoints."""
 
 from __future__ import annotations
 
@@ -25,6 +25,27 @@ from app.services.auth import (
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+DEMO_ACCOUNT_EMAIL = "demo@study.local"
+DEMO_ACCOUNT_PASSWORD = "XuebanDemo2026"
+
+
+def _allow_local_demo() -> bool:
+    return settings.app_env.lower() in {"development", "test"}
+
+
+def _seed_demo_workspace(workspace_key: str) -> None:
+    """Fill one workspace with deterministic demo records; safe to repeat."""
+
+    from app.database import _workspace_session_factory
+    from app.services.demo_data import ensure_demo_data
+
+    workspace_db = _workspace_session_factory(workspace_key)()
+    try:
+        ensure_demo_data(workspace_db)
+        workspace_db.commit()
+    finally:
+        workspace_db.close()
 
 
 def _set_auth_cookies(response: Response, session_token: str, csrf_token: str) -> None:
@@ -85,6 +106,49 @@ def login(payload: LoginRequest, response: Response, db: Session = Depends(get_a
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "INVALID_CREDENTIALS", "message": "邮箱或密码不正确"},
         )
+    session_token, csrf_token, _session = create_session(db, user)
+    _set_auth_cookies(response, session_token, csrf_token)
+    return user
+
+
+@router.post("/demo-login", response_model=UserRead)
+def demo_login(response: Response, db: Session = Depends(get_auth_db)) -> User:
+    """Find-or-create the shared demo account, seed its workspace, start a session.
+
+    Satisfies the competition submission requirement that a login-protected
+    work offers a test account or demo mode: judges reach a populated learning
+    workspace in one click without registering. The demo account always uses
+    its own isolated workspace and never administers the instance.
+    """
+
+    if not _allow_local_demo():
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "DEMO_DISABLED", "message": "当前环境不提供演示模式"},
+        )
+
+    user = db.scalar(select(User).where(User.email == DEMO_ACCOUNT_EMAIL))
+    if user is None:
+        user = User(
+            id=secrets.token_hex(16),
+            email=DEMO_ACCOUNT_EMAIL,
+            display_name="演示同学",
+            password_hash=hash_password(DEMO_ACCOUNT_PASSWORD),
+            workspace_key=secrets.token_hex(16),
+            is_admin=False,
+        )
+        db.add(user)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            user = db.scalar(select(User).where(User.email == DEMO_ACCOUNT_EMAIL))
+            if user is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"code": "DEMO_ACCOUNT_FAILED", "message": "演示账号创建失败，请稍后重试"},
+                ) from None
+    _seed_demo_workspace(user.workspace_key)
     session_token, csrf_token, _session = create_session(db, user)
     _set_auth_cookies(response, session_token, csrf_token)
     return user

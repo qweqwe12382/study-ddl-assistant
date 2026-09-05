@@ -98,11 +98,19 @@
 
           <p v-if="isRegister" class="password-tip">密码仅用于登录，系统不会保存明文密码。请勿与教务系统使用相同密码。</p>
 
-          <button class="submit-button" type="submit" :disabled="submitting">
+          <button class="submit-button" type="submit" :disabled="submitting || demoLoading">
             <span v-if="submitting" class="submit-spinner" aria-hidden="true"></span>
             {{ submitting ? (isRegister ? '正在建立学习空间' : '正在登录') : (isRegister ? '注册并开始使用' : '登录并继续学习') }}
           </button>
         </form>
+
+        <div class="demo-entry">
+          <button class="demo-button" type="button" :disabled="submitting || demoLoading" @click="startDemo">
+            <span v-if="demoLoading" class="submit-spinner" aria-hidden="true"></span>
+            {{ demoLoading ? '正在准备演示空间' : '一键体验演示模式' }}
+          </button>
+          <small>无需注册，进入带示例数据的学习空间；演示账号与真实账号相互隔离，仅本地开发环境提供。</small>
+        </div>
 
         <p class="auth-switch">
           {{ isRegister ? '已经有账号？' : '还没有账号？' }}
@@ -118,13 +126,14 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { login, register } from '../auth/session'
+import { demoLogin, login, register } from '../auth/session'
 
 const props = defineProps({ mode: { type: String, required: true } })
 const router = useRouter()
 const route = useRoute()
 const isRegister = computed(() => props.mode === 'register')
 const submitting = ref(false)
+const demoLoading = ref(false)
 const errorMessage = ref('')
 const showPassword = ref(false)
 const form = reactive({ display_name: '', email: '', password: '', confirmPassword: '' })
@@ -133,6 +142,19 @@ function safeRedirect() {
   const value = typeof route.query.redirect === 'string' ? route.query.redirect : ''
   if (!value.startsWith('/') || value.startsWith('//') || ['/login', '/register'].includes(value.split('?')[0])) return '/app'
   return value
+}
+
+async function startDemo() {
+  errorMessage.value = ''
+  demoLoading.value = true
+  try {
+    await demoLogin()
+    await router.replace('/app')
+  } catch (error) {
+    errorMessage.value = error?.message || '演示模式暂不可用，请稍后重试或直接注册'
+  } finally {
+    demoLoading.value = false
+  }
 }
 
 async function submitForm() {
@@ -214,6 +236,11 @@ form { display: grid; gap: 17px; }
 .submit-spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.45); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
 .auth-switch { margin: 25px 0 0; color: #6f7a90; font-size: 12px; text-align: center; }
 .auth-switch a { margin-left: 5px; color: var(--auth-blue); font-weight: 800; }
+.demo-entry { display: grid; justify-items: center; gap: 9px; margin-top: 23px; padding-top: 21px; border-top: 1px dashed #ccd4e4; }
+.demo-button { min-height: 46px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; width: 100%; padding: 0 18px; color: var(--auth-ink); border: 1px solid #b9c3d9; border-radius: 11px; background: #fff; font-size: 13px; font-weight: 750; cursor: pointer; transition: border-color .18s ease, color .18s ease, translate .18s ease; }
+.demo-button:hover:not(:disabled) { color: var(--auth-blue); border-color: var(--auth-blue); translate: 0 -1px; }
+.demo-button:disabled { opacity: .62; cursor: default; }
+.demo-entry small { max-width: 360px; color: #8590a6; font-size: 11px; line-height: 1.6; text-align: center; }
 .auth-boundary { margin: 28px 0 0; padding-top: 20px; color: #8992a4; border-top: 1px solid #dfe4ed; font-size: 10px; line-height: 1.65; text-align: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) { .auth-page { grid-template-columns: 1fr; } .auth-story, .auth-brand { display: none; } .auth-panel { min-height: 100svh; padding: 45px 20px; } .mobile-auth-brand { display: inline-flex; align-items: center; gap: 10px; margin-bottom: 58px; color: var(--auth-ink); } .mobile-auth-brand .auth-brand-mark { width: 36px; height: 36px; } }
