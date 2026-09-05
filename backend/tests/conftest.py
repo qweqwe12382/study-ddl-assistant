@@ -8,6 +8,10 @@ from types import SimpleNamespace
 # without requiring callers to set PYTHONPATH first.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# The documented --basetemp .pytest-tmp/<name> runs fail on fresh clones when
+# the parent directory is missing: pytest recreates the leaf without parents.
+(Path(__file__).resolve().parents[2] / ".pytest-tmp").mkdir(exist_ok=True)
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
