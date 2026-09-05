@@ -19,6 +19,7 @@ class DashboardRead(BaseModel):
     due_soon_count: int = Field(ge=0)
     overdue_count: int = Field(ge=0)
     completed_task_count: int = Field(ge=0)
+    study_streak_days: int = Field(default=0, ge=0)
     materials_count: int = Field(ge=0)
     courses_count: int = Field(ge=0)
     upcoming_tasks: list[DashboardTaskRead] = Field(default_factory=list)

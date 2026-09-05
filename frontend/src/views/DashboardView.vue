@@ -5,6 +5,10 @@
         <h1>今天先做最重要的一步</h1>
         <p>学伴管家把待确认事项、今日任务和风险集中在一张行动单里。</p>
       </div>
+      <div v-if="dashboard.study_streak_days >= 1" class="streak-chip" role="status" aria-label="连续学习天数">
+        <span class="streak-flame" aria-hidden="true">🔥</span>
+        <span>连续学习 <strong>{{ dashboard.study_streak_days }}</strong> 天</span>
+      </div>
     </div>
 
     <div id="dashboard-first-learning-loop-priority" class="first-learning-loop-slot"></div>
@@ -1119,6 +1123,7 @@ const dashboard = ref({
   due_soon_count: null,
   overdue_count: null,
   completed_task_count: null,
+  study_streak_days: 0,
   materials_count: null,
   courses_count: null,
   next_action: '',
@@ -1585,6 +1590,7 @@ function emptyDashboard() {
     due_soon_count: null,
     overdue_count: null,
     completed_task_count: null,
+    study_streak_days: 0,
     materials_count: null,
     courses_count: null,
     next_action: '',
@@ -1606,6 +1612,9 @@ function normalizeDashboard(response) {
     if (value === null) return null
     counts[key] = value
   }
+  // Streak is an optional newer field: an absent value reads as no streak
+  // instead of rejecting the whole dashboard.
+  counts.study_streak_days = nonNegativeInteger(response.study_streak_days) ?? 0
   if (!Array.isArray(response.upcoming_tasks) || !Array.isArray(response.overdue_tasks) || !Array.isArray(response.recent_materials)) return null
   return { ...response, ...counts }
 }
@@ -3976,6 +3985,9 @@ onMounted(async () => {
 
 <style scoped>
 .dashboard-action { margin: 0 0 22px; }
+.streak-chip { display: inline-flex; align-items: center; gap: 7px; flex: 0 0 auto; padding: 9px 14px; color: #8a5a1f; background: #fff6e2; border: 1px solid #f1dfba; border-radius: 99px; font-size: 12.5px; font-weight: 650; }
+.streak-chip strong { color: #b05e12; font-size: 14px; }
+.streak-flame { font-size: 14px; }
 .concise-flow-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, .75fr); gap: 16px; min-width: 0; margin: 0 0 18px; }
 .agent-center-card { margin-bottom: 22px; border: 0 !important; border-radius: 16px !important; box-shadow: 0 8px 28px rgba(35, 45, 75, .05) !important; }
 .agent-center-card :deep(.el-card__body) { padding: 22px; }

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -18,6 +18,8 @@ class StudyPreferenceUpdate(BaseModel):
     buffer_ratio: float | None = Field(default=None, ge=0, le=0.5)
     preferred_time_slots: list[TimeSlot] | None = None
     course_weights: dict[str, float] | None = None
+    # The only clearable preference: a student removes the date between semesters.
+    semester_start_date: date | None = None
 
     @field_validator(
         "weekly_available_minutes",
@@ -66,5 +68,6 @@ class StudyPreferenceRead(BaseModel):
     buffer_ratio: float
     preferred_time_slots: list[TimeSlot]
     course_weights: dict[str, float]
+    semester_start_date: date | None = None
     created_at: datetime
     updated_at: datetime

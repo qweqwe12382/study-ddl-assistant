@@ -69,6 +69,12 @@ def _workspace_session_factory(workspace_key: str) -> sessionmaker:
         from app import models  # noqa: F401
 
         Base.metadata.create_all(bind=workspace_engine)
+        # create_all cannot add columns to an existing workspace database, so
+        # later model extensions must replay the lightweight migrations here
+        # just like init_db does for the shared database.
+        with workspace_engine.begin() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            _apply_study_preference_migrations(connection)
         cached = sessionmaker(
             bind=workspace_engine, autoflush=False, autocommit=False, expire_on_commit=False
         )
@@ -341,6 +347,7 @@ def _apply_study_preference_migrations(connection) -> None:
         "buffer_ratio": "FLOAT NOT NULL DEFAULT 0.15",
         "preferred_time_slots": "JSON NOT NULL DEFAULT '[\"evening\"]'",
         "course_weights": "JSON NOT NULL DEFAULT '{}'",
+        "semester_start_date": "DATE",
     }
     columns = {column["name"] for column in inspector.get_columns("study_preferences")}
     for name, definition in additions.items():

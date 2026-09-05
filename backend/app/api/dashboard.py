@@ -11,8 +11,9 @@ from app.models.task import Task
 from app.schemas.dashboard import DashboardMaterialRead, DashboardRead, DashboardTaskRead
 from app.schemas.material import MaterialSearchRead
 from app.schemas.task import TaskRead
+from app.services.study_streak import compute_study_streak
 from app.services.task_service import sync_overdue_tasks
-from app.time import as_utc, utc_now
+from app.time import as_local, as_utc, utc_now
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -68,11 +69,17 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
         next_action = "先上传一份课程资料，建立你的学习资料库。"
     else:
         next_action = "当前没有临近 DDL，可以继续整理资料或创建复习任务。"
+    completed_days = {
+        as_local(task.completed_at).date()
+        for task in tasks
+        if task.status == "completed" and task.completed_at is not None
+    }
     return DashboardRead(
         active_task_count=len(active),
         due_soon_count=len(upcoming),
         overdue_count=len(overdue),
         completed_task_count=len(tasks) - len(active),
+        study_streak_days=compute_study_streak(completed_days, as_local(now).date()),
         materials_count=db.scalar(select(func.count(Material.id))) or 0,
         courses_count=db.scalar(select(func.count(Course.id))) or 0,
         upcoming_tasks=[_task_payload(task) for task in upcoming[:5]],

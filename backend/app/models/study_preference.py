@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, Integer
+from sqlalchemy import JSON, Date, DateTime, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
@@ -23,6 +23,9 @@ class StudyPreference(Base):
     buffer_ratio: Mapped[float] = mapped_column(Float, nullable=False, default=0.15)
     preferred_time_slots: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=lambda: ["evening"])
     course_weights: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # First Monday of week 1 for the current semester; drives "current week"
+    # suggestions on the schedule page. Optional because not every student sets it.
+    semester_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False

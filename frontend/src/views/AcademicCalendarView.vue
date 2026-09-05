@@ -46,6 +46,23 @@
         </div>
       </section>
 
+      <div class="semester-week-bar" role="status">
+        <template v-if="semesterCurrentWeek">
+          <span>按开学日推算，今天是 <strong>第 {{ semesterCurrentWeek }} 周</strong>。</span>
+          <button v-if="selectedWeek !== semesterCurrentWeek" type="button" @click="jumpToCurrentWeek">跳到本周</button>
+        </template>
+        <label v-else class="semester-start-setter">
+          <span>设置学期开学日（周一），自动定位本周：</span>
+          <input
+            v-model="semesterStartDraft"
+            type="date"
+            aria-label="学期开学日（周一）"
+            :disabled="semesterStartSaving"
+            @change="saveSemesterStart"
+          >
+        </label>
+      </div>
+
       <section class="schedule-ledger" aria-labelledby="schedule-title">
         <header class="ledger-header">
           <div>
@@ -309,9 +326,10 @@ import {
   ElSelect,
 } from 'element-plus'
 
-import { academicCalendarApi, coursesApi } from '../api'
+import { academicCalendarApi, coursesApi, studyPreferencesApi } from '../api'
 import { editBaseline, editRequestConfig } from '../utils/editPrecondition'
 import { formatDateTime } from '../utils/format'
+import { computeCurrentWeek } from '../utils/semesterWeek'
 
 const AcademicIntegrationDialog = defineAsyncComponent(() => import('../components/AcademicIntegrationDialog.vue'))
 
@@ -345,6 +363,11 @@ const integrationDialogVisible = ref(false)
 const editingClass = ref(null)
 const editingExam = ref(null)
 let loadRequestId = 0
+
+const semesterStartDate = ref('')
+const semesterStartDraft = ref('')
+const semesterStartSaving = ref(false)
+const semesterCurrentWeek = computed(() => computeCurrentWeek(semesterStartDate.value))
 
 const classForm = reactive(emptyClassForm())
 const examForm = reactive(emptyExamForm())
@@ -671,7 +694,40 @@ watch(selectedWeek, (value) => {
   loadPage()
 })
 watch(includePastExams, loadPage)
-onMounted(loadPage)
+
+async function loadSemesterStart() {
+  try {
+    const preference = await studyPreferencesApi.get()
+    semesterStartDate.value = preference?.semester_start_date || ''
+  } catch {
+    // 读取失败不影响周次手动选择，只是暂时不显示自动定位提示。
+  }
+}
+
+async function saveSemesterStart() {
+  const value = semesterStartDraft.value
+  if (!value || semesterStartSaving.value) return
+  semesterStartSaving.value = true
+  try {
+    await studyPreferencesApi.update({ semester_start_date: value })
+    semesterStartDate.value = value
+    const week = computeCurrentWeek(value)
+    if (week && week !== selectedWeek.value) selectedWeek.value = week
+  } catch (requestError) {
+    error.value = requestError?.message || '开学日保存失败，请稍后重试'
+  } finally {
+    semesterStartSaving.value = false
+  }
+}
+
+function jumpToCurrentWeek() {
+  if (semesterCurrentWeek.value) selectedWeek.value = semesterCurrentWeek.value
+}
+
+onMounted(() => {
+  loadPage()
+  loadSemesterStart()
+})
 </script>
 
 <style scoped>
@@ -680,6 +736,12 @@ onMounted(loadPage)
 .calendar-intro h1 { font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0; }
 .calendar-kicker, .section-eyebrow { color: #5a6882; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
 .course-gate, .calendar-error { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding: 18px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 6px; }
+.semester-week-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -6px 0 16px; padding: 10px 14px; background: #f6f8ff; border: 1px solid #dbe2f7; border-radius: 6px; color: #4c5a76; font-size: 12.5px; }
+.semester-week-bar strong { color: var(--calendar-blue); }
+.semester-week-bar button { min-height: 36px; padding: 0 12px; color: var(--calendar-blue); background: #fff; border: 1px solid #b9c6ee; border-radius: 4px; font-weight: 700; cursor: pointer; }
+.semester-week-bar button:hover { border-color: var(--calendar-blue); }
+.semester-start-setter { display: inline-flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.semester-start-setter input { min-height: 36px; padding: 0 9px; border: 1px solid #b9c6ee; border-radius: 4px; background: #fff; color: var(--ledger-ink); font-size: 12.5px; }
 .course-gate-mark { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; color: #fff; background: var(--calendar-blue); border-radius: 4px; font-weight: 800; }
 .course-gate > div:nth-child(2) { min-width: 0; flex: 1; }
 .course-gate strong { font-size: 15px; }
