@@ -2,98 +2,73 @@
   <a class="skip-link" href="#main-content" @click="focusMain">跳到主要内容</a>
   <div class="sr-only" aria-live="polite" aria-atomic="true">{{ viewModeAnnouncement }}</div>
   <el-container class="app-shell">
-    <el-aside width="240px" class="app-sidebar">
-      <div class="brand">
+    <el-aside width="208px" class="app-sidebar">
+      <router-link to="/app" class="brand" aria-label="学伴管家，返回学习总览">
+        <span class="brand-mark" aria-hidden="true"><el-icon><Reading /></el-icon></span>
         <div>
-          <div class="brand-kicker">STUDY SPACE / 学习空间</div>
           <div class="brand-title">学伴管家</div>
-          <div class="brand-subtitle">课程资料与学习任务助手</div>
+          <div class="brand-subtitle">把学习安排好</div>
         </div>
-      </div>
+      </router-link>
 
-      <div class="ledger-spine" aria-label="学习安排工作闭环">
-        <span>资料</span><i aria-hidden="true"></i><span>确认</span><i aria-hidden="true"></i><span>行动</span>
-      </div>
-
-      <el-menu :default-active="$route.path" router class="app-menu">
-        <el-menu-item index="/app">
-          <el-icon><House /></el-icon>
-          <span class="nav-label">学习总览</span>
-        </el-menu-item>
-        <el-menu-item index="/materials">
-          <el-icon><Collection /></el-icon>
-          <span class="nav-label">资料库</span>
-        </el-menu-item>
-        <el-menu-item index="/tasks">
-          <el-icon><List /></el-icon>
-          <span class="nav-label">截止任务</span>
-        </el-menu-item>
-        <el-menu-item index="/focus">
-          <el-icon><Timer /></el-icon>
-          <span class="nav-label">专注计时</span>
-        </el-menu-item>
-        <el-menu-item index="/schedule">
-          <el-icon><Clock /></el-icon>
-          <span class="nav-label">课表与考试</span>
-        </el-menu-item>
-        <el-menu-item index="/study-plans">
-          <el-icon><Calendar /></el-icon>
-          <span class="nav-label">复习计划</span>
-        </el-menu-item>
-        <el-menu-item index="/settings">
-          <el-icon><Setting /></el-icon>
-          <span class="nav-label">设置</span>
-        </el-menu-item>
-      </el-menu>
+      <nav class="app-menu" aria-label="学习功能导航">
+        <section v-for="group in navigationGroups" :key="group.label" class="nav-group" :aria-label="group.label">
+          <h2 class="nav-group-label">{{ group.label }}</h2>
+          <router-link v-for="item in group.items" :key="item.path" :to="item.path" class="desktop-nav-link" :title="item.description">
+            <el-icon aria-hidden="true"><component :is="item.icon" /></el-icon>
+            <span class="nav-label">{{ item.label }}</span>
+          </router-link>
+        </section>
+      </nav>
 
       <div class="sidebar-footer">
-        <span class="sidebar-footer-label">使用边界</span>
-        <span>资料确认后才会创建正式任务；复习计划仍由用户生成。</span>
+        <span class="sidebar-footer-label">学习安排，由你决定</span>
       </div>
     </el-aside>
 
     <el-container>
-      <el-header class="app-header">
-        <div class="header-context">
-          <div class="header-kicker">学习空间 / {{ routeContext }}</div>
-          <div class="header-title">{{ $route.meta.title || '学习总览' }}</div>
+      <el-header class="app-header" :class="{ 'has-view-modes': hasViewModes }">
+        <div class="header-identity">
+          <div class="desktop-context"><span>学习空间</span><span aria-hidden="true">/</span><strong>{{ currentPageLabel }}</strong></div>
+          <span class="mobile-brand" aria-label="学伴管家">
+            <span class="mobile-brand-mark" aria-hidden="true"><el-icon><Reading /></el-icon></span>
+            <span>学伴管家</span>
+          </span>
         </div>
-        <div class="mobile-brand" aria-label="学伴管家">
-          <span class="mobile-brand-kicker">学</span>
-          <span>学伴管家</span>
-        </div>
-        <div class="header-actions">
-          <div class="view-mode-switch" role="group" aria-label="页面内容视图">
+          <div v-if="hasViewModes" class="view-mode-switch" role="group" aria-label="页面内容视图">
             <button
               type="button"
               :class="{ 'is-active': isConciseView }"
               :aria-pressed="isConciseView"
+              title="突出当前任务，详细选项按需展开"
               @click="setViewMode('concise')"
             >
-              专注视图
+              简洁视图
             </button>
             <button
               type="button"
               :class="{ 'is-active': isDetailedView }"
               :aria-pressed="isDetailedView"
+              title="显示完整筛选、统计与学习记录"
               @click="setViewMode('detailed')"
             >
               完整视图
             </button>
           </div>
-          <el-tag :type="connectionType" effect="plain" aria-live="polite">{{ connectionLabel }}</el-tag>
-          <el-button
-            link
-            class="connection-retry"
-            :loading="connectionState === 'checking'"
+          <span v-else class="header-page-name">{{ currentPageLabel }}</span>
+          <button
+            type="button"
+            class="connection-status"
+            :class="`is-${connectionState}`"
             :disabled="connectionState === 'checking'"
-            aria-label="重新检查服务连接"
+            :aria-label="`${connectionLabel}，重新检查服务连接`"
+            :title="`${connectionLabel}，点击重新检查`"
             @click="checkConnection"
           >
-            <el-icon><Refresh /></el-icon>
-            重试
-          </el-button>
-          <el-dropdown trigger="click" @command="handleAccountCommand">
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span aria-live="polite" aria-atomic="true">{{ connectionState === 'offline' ? '未连接 · 重试' : connectionState === 'online' ? '已连接' : '连接中' }}</span>
+          </button>
+          <el-dropdown class="account-dropdown" trigger="click" @command="handleAccountCommand">
             <button class="account-button" type="button" aria-label="打开账号菜单">
               <span class="account-avatar" aria-hidden="true">{{ userInitial }}</span>
               <span class="account-copy">
@@ -104,12 +79,11 @@
             </button>
             <template #dropdown>
               <el-dropdown-menu>
-            <el-dropdown-item command="settings">账号设置</el-dropdown-item>
+                <el-dropdown-item command="settings">账号设置</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-        </div>
       </el-header>
 
       <el-main id="main-content" class="app-main" tabindex="-1">
@@ -119,36 +93,59 @@
   </el-container>
 
   <nav ref="mobileNav" class="mobile-nav" aria-label="移动端主导航">
-    <router-link to="/app">
-      <el-icon aria-hidden="true"><House /></el-icon>
-      <span>总览</span>
+    <router-link v-for="item in mobileNavigation" :key="item.path" :to="item.path">
+      <el-icon aria-hidden="true"><component :is="item.icon" /></el-icon>
+      <span>{{ item.shortLabel }}</span>
     </router-link>
-    <router-link to="/materials">
-      <el-icon aria-hidden="true"><Collection /></el-icon>
-      <span>资料</span>
-    </router-link>
-    <router-link to="/tasks">
-      <el-icon aria-hidden="true"><List /></el-icon>
-      <span>任务</span>
-    </router-link>
-    <router-link to="/schedule">
-      <el-icon aria-hidden="true"><Clock /></el-icon>
-      <span>日程</span>
-    </router-link>
-    <router-link to="/study-plans">
-      <el-icon aria-hidden="true"><Calendar /></el-icon>
-      <span>计划</span>
-    </router-link>
-    <router-link to="/settings">
-      <el-icon aria-hidden="true"><Setting /></el-icon>
-      <span>设置</span>
-    </router-link>
+    <button
+      ref="mobileMenuTrigger"
+      type="button"
+      aria-haspopup="dialog"
+      :aria-expanded="mobileMenuOpen"
+      :class="{ 'is-active': isAdditionalPage || mobileMenuOpen }"
+      @click="mobileMenuOpen = true"
+    >
+      <el-icon aria-hidden="true"><Grid /></el-icon>
+      <span>全部功能</span>
+    </button>
   </nav>
+
+  <el-dialog
+    v-model="mobileMenuOpen"
+    title="全部功能"
+    class="all-features-dialog"
+    width="560px"
+    append-to-body
+    :close-on-click-modal="true"
+    :close-on-press-escape="true"
+    @closed="restoreMobileMenuFocus"
+  >
+    <nav class="all-features-nav" aria-label="全部学习功能">
+      <section v-for="group in navigationGroups" :key="group.label" :aria-label="group.label">
+        <h2 class="nav-group-label">{{ group.label }}</h2>
+        <div class="all-features-group">
+          <router-link
+            v-for="item in group.items"
+            :key="item.path"
+            :to="item.path"
+            @click="closeMobileMenu(item.path)"
+          >
+            <el-icon aria-hidden="true"><component :is="item.icon" /></el-icon>
+            <span><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
+          </router-link>
+        </div>
+      </section>
+    </nav>
+    <template #footer>
+      <el-button @click="mobileMenuOpen = false">关闭</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowDown, Calendar, Clock, Collection, House, List, Refresh, Setting, Timer } from '@element-plus/icons-vue'
+import { ElDialog } from 'element-plus'
+import { Aim, ArrowDown, Calendar, Clock, Collection, Grid, House, List, Reading, Setting, Timer } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { healthApi } from '../api'
@@ -158,19 +155,37 @@ import { useViewMode } from '../composables/useViewMode'
 const route = useRoute()
 const router = useRouter()
 const mobileNav = ref(null)
+const mobileMenuTrigger = ref(null)
+const mobileMenuOpen = ref(false)
+const menuNavigationPending = ref(false)
+const navigationGroups = [
+  {
+    label: '日常学习',
+    items: [
+      { path: '/app', label: '学习总览', shortLabel: '总览', icon: House, description: '看看今天要做什么' },
+      { path: '/tasks', label: '截止任务', shortLabel: '任务', icon: List, description: '安排作业与截止时间' },
+      { path: '/focus', label: '专注计时', shortLabel: '专注', icon: Timer, description: '留出一段专心的时间' },
+      { path: '/schedule', label: '课表与考试', shortLabel: '日程', icon: Clock, description: '查看课程与考试安排' },
+    ],
+  },
+  {
+    label: '学习管理',
+    items: [
+      { path: '/materials', label: '资料库', icon: Collection, description: '整理资料与课程通知' },
+      { path: '/study-plans', label: '复习计划', icon: Calendar, description: '把复习分配到每一天' },
+      { path: '/deadline-radar', label: 'DDL 应变台', icon: Aim, description: '截止有变，重新安排' },
+      { path: '/settings', label: '设置', icon: Setting, description: '管理账号与学习偏好' },
+    ],
+  },
+]
+const mobileNavigation = navigationGroups[0].items
+const isAdditionalPage = computed(() => !mobileNavigation.some((item) => item.path === route.path))
+const hasViewModes = computed(() => ['/app', '/materials', '/tasks', '/study-plans', '/settings'].includes(route.path))
+const currentPageLabel = computed(() => navigationGroups.flatMap((group) => group.items).find((item) => item.path === route.path)?.label || '学习空间')
 const { isConciseView, isDetailedView, setViewMode, viewModeAnnouncement } = useViewMode()
 const connectionState = ref('checking')
-const connectionLabel = computed(() => ({ checking: '正在检查连接', online: '服务已连接', offline: '服务未连接' })[connectionState.value])
-const connectionType = computed(() => ({ checking: 'info', online: 'success', offline: 'danger' })[connectionState.value])
+const connectionLabel = computed(() => ({ checking: '检查连接中', online: '服务已连接', offline: '服务未连接' })[connectionState.value])
 const userInitial = computed(() => authSession.user?.display_name?.trim()?.slice(0, 1)?.toUpperCase() || '学')
-const routeContext = computed(() => ({
-  '/app': '今日行动',
-  '/materials': '资料处理',
-  '/tasks': '截止任务',
-  '/schedule': '课表与考试',
-  '/study-plans': '复习计划',
-  '/settings': '学习设置',
-}[route.path] || '今日行动'))
 
 async function checkConnection() {
   connectionState.value = 'checking'
@@ -194,7 +209,21 @@ async function handleAccountCommand(command) {
 }
 
 function focusMain() {
-  document.getElementById('main-content')?.focus()
+  document.getElementById('main-content')?.focus({ preventScroll: true })
+}
+
+function closeMobileMenu(path) {
+  menuNavigationPending.value = path !== route.path
+  mobileMenuOpen.value = false
+}
+
+function restoreMobileMenuFocus() {
+  if (menuNavigationPending.value) {
+    focusMain()
+  } else {
+    mobileMenuTrigger.value?.focus({ preventScroll: true })
+  }
+  menuNavigationPending.value = false
 }
 
 let mobileNavResizeObserver
@@ -206,8 +235,10 @@ function syncMobileNavHeight() {
 }
 
 watch(() => route.path, async () => {
+  const wasMenuOpen = mobileMenuOpen.value
+  mobileMenuOpen.value = false
   await nextTick()
-  window.requestAnimationFrame(focusMain)
+  if (!wasMenuOpen) window.requestAnimationFrame(focusMain)
 })
 
 onMounted(() => {
@@ -230,14 +261,14 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.account-button { min-height: 44px; max-width: 230px; display: inline-flex; align-items: center; gap: 9px; padding: 5px 9px 5px 6px; border: 1px solid var(--ledger-border); border-radius: 13px; background: #fff; color: var(--ledger-ink); cursor: pointer; text-align: left; }
-.account-button:hover { border-color: #b7c5e8; background: #f8faff; }
-.account-button:focus-visible { outline: 3px solid rgba(49, 87, 230, 0.24); outline-offset: 2px; }
-.account-avatar { width: 32px; height: 32px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 10px; background: #3157e6; color: #fff; font-weight: 800; }
+.account-button { min-height: 44px; max-width: 230px; display: inline-flex; align-items: center; gap: 9px; padding: 5px 9px 5px 6px; border: 1px solid var(--ledger-line); border-radius: 10px; background: #fff; color: var(--ledger-ink); cursor: pointer; text-align: left; }
+.account-button:hover { border-color: #b4cfc1; background: var(--ledger-canvas); }
+.account-button:focus-visible { outline: 3px solid rgba(50, 120, 100, .35); outline-offset: 2px; }
+.account-avatar { width: 30px; height: 30px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 50%; background: #e7f0ea; color: var(--ledger-link); font-weight: 700; }
 .account-copy { min-width: 0; display: grid; line-height: 1.15; }
 .account-copy strong, .account-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .account-copy strong { font-size: 13px; }
 .account-copy small { margin-top: 3px; color: var(--ledger-muted); font-size: 11px; }
 @media (max-width: 1180px) { .account-copy { display: none; } .account-button { max-width: none; } }
-@media (max-width: 760px) { .account-button { display: none; } }
+@media (max-width: 900px) { .account-button { padding: 4px; min-width: 44px; justify-content: center; border-color: transparent; } .account-button > .el-icon { display: none; } }
 </style>

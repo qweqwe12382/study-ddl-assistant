@@ -120,7 +120,7 @@ class AppViewModel(private val repository: StudyRepository) : ViewModel() {
     }
 
     fun completeTask(task: TaskItem) {
-        if (_state.value.completingTaskId != null || task.status == "completed") return
+        if (_state.value.completingTaskId != null || task.status == "completed" || task.status == "canceled") return
         viewModelScope.launch {
             _state.update { it.copy(completingTaskId = task.id, error = null) }
             try {

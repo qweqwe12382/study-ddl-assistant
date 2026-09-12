@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.time import as_utc, deadline_to_utc
 
 
-TaskStatus = Literal["not_started", "in_progress", "completed", "overdue"]
+TaskStatus = Literal["not_started", "in_progress", "completed", "overdue", "canceled"]
 
 
 class TaskBase(BaseModel):
@@ -28,7 +28,7 @@ class TaskBase(BaseModel):
 
     @model_validator(mode="after")
     def validate_remaining_minutes(self):
-        if self.remaining_minutes is not None and self.estimated_minutes is None and self.status != "completed":
+        if self.remaining_minutes is not None and self.estimated_minutes is None and self.status not in {"completed", "canceled"}:
             raise ValueError("remaining_minutes requires estimated_minutes")
         if (
             self.estimated_minutes is not None

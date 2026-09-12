@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 
 import {
   FOCUS_PRESET_MINUTES,
+  activeElapsedSeconds,
   formatClock,
   isRecordable,
   mergeActualMinutes,
@@ -11,6 +12,13 @@ import {
 } from '../../src/utils/focusTimer.js'
 
 assert.deepEqual(FOCUS_PRESET_MINUTES, [15, 25, 45])
+
+// A throttled callback still counts all active time; pausing preserves fractions.
+assert.equal(activeElapsedSeconds(0, 1000, 61000, 1500), 60)
+assert.equal(activeElapsedSeconds(30.25, 90000, 100750, 1500), 41)
+assert.equal(activeElapsedSeconds(30.25, 90000, 90000, 1500), 30.25)
+assert.equal(activeElapsedSeconds(800, 1000, 601000, 900), 900)
+assert.equal(activeElapsedSeconds(10, 2000, 1000, 900), 10)
 
 assert.equal(normalizeCustomMinutes('30'), 30)
 assert.equal(normalizeCustomMinutes(50), 50)

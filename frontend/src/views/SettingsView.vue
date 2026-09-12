@@ -3,7 +3,7 @@
     <div class="page-intro">
       <div>
         <h1>设置</h1>
-        <p>在这里管理课程、可用学习时间、站内提醒和外部 AI 的使用边界。</p>
+        <p>管理课程、学习时间、提醒和 AI 使用偏好。</p>
       </div>
       <el-button v-if="isDetailedView && coursesState === 'ready'" type="primary" @click="openCreate">新增课程</el-button>
     </div>
@@ -15,7 +15,7 @@
         <h2 id="account-panel-heading">{{ authSession.user?.display_name }}</h2>
         <span>{{ authSession.user?.email }}{{ authSession.user?.is_admin ? ' · 实例管理员' : '' }}</span>
       </div>
-      <div class="account-panel-boundary">此账号使用独立学习空间；退出后需要重新验证邮箱与密码。</div>
+      <div class="account-panel-boundary">个人学习空间，退出后需重新登录。</div>
       <el-button plain :loading="loggingOut" :disabled="loggingOut" @click="signOut">退出登录</el-button>
     </section>
 
@@ -27,11 +27,8 @@
     <section id="settings-rule-index" class="rule-book-overview" aria-labelledby="settings-rules-heading">
       <div class="rule-book-heading">
         <div>
-          <p class="rule-book-kicker">设置索引 / 快速定位</p>
-          <h2 id="settings-rules-heading">当前设置概览</h2>
-          <p>状态来自已读取的数据；点击一项即可跳到对应设置。</p>
+          <h2 id="settings-rules-heading">快速找到设置</h2>
         </div>
-        <span class="rule-book-mark" aria-hidden="true">RULES</span>
       </div>
       <nav class="rule-index" aria-label="设置规则区块">
         <a
@@ -42,7 +39,7 @@
         >
           <span class="rule-index-label">课程</span>
           <strong>{{ courseRuleState.label }}</strong>
-          <span>{{ courseRuleState.detail }}</span>
+          <span v-if="isDetailedView || coursesState !== 'ready'">{{ courseRuleState.detail }}</span>
         </a>
         <a
           href="#settings-capacity"
@@ -52,7 +49,7 @@
         >
           <span class="rule-index-label">学习容量</span>
           <strong>{{ preferenceRuleState.label }}</strong>
-          <span>{{ preferenceRuleState.detail }}</span>
+          <span v-if="isDetailedView || preferenceState !== 'ready'">{{ preferenceRuleState.detail }}</span>
         </a>
         <a
           href="#settings-reminders"
@@ -62,7 +59,7 @@
         >
           <span class="rule-index-label">站内提醒</span>
           <strong>{{ reminderRuleState.label }}</strong>
-          <span>{{ reminderRuleState.detail }}</span>
+          <span v-if="isDetailedView || reminderPreferenceState !== 'ready'">{{ reminderRuleState.detail }}</span>
         </a>
         <a
           href="#settings-external-ai"
@@ -72,7 +69,7 @@
         >
           <span class="rule-index-label">外部 AI</span>
           <strong>{{ llmRuleState.label }}</strong>
-          <span>{{ llmRuleState.detail }}</span>
+          <span v-if="isDetailedView || llmState !== 'ready'">{{ llmRuleState.detail }}</span>
         </a>
       </nav>
     </section>
@@ -132,7 +129,7 @@
       </el-card>
 
       <el-card v-if="isDetailedView" id="settings-system-notes" class="content-card settings-section" shadow="never" aria-labelledby="settings-system-notes-heading">
-        <div class="card-heading"><h2 id="settings-system-notes-heading">使用说明</h2><el-tag type="success">M8</el-tag></div>
+        <div class="card-heading"><h2 id="settings-system-notes-heading">使用说明</h2></div>
         <div class="settings-note">
            <p><strong>已启用：</strong>课程、资料、截止任务和可编辑复习计划。</p>
            <p><strong>本地测试：</strong>可以使用下方按钮清空全部业务数据，从头开始测试。</p>
@@ -322,10 +319,10 @@
           <el-tag type="warning" size="small" effect="plain">按次授权</el-tag>
           <p>外部 AI 可选使用：只有你在资料处理中明确选择时才会调用；使用外部服务时，资料正文可能发送给该服务。</p>
         </div>
-        <p v-if="isDetailedView" class="settings-help">API Key 只保存在后端本地 <code>.env</code>，页面不会显示完整密钥。</p>
+        <p v-if="isDetailedView && llmState === 'ready'" class="settings-help">API Key 只保存在后端本地 <code>.env</code>，页面不会显示完整密钥。</p>
         <el-alert v-if="llmError" :title="llmError" type="warning" show-icon closable class="mb-18" @close="llmError = ''" />
         <div v-if="isConciseView" class="llm-concise-summary">
-          <p>当前配置状态：{{ llmRuleState.label }}。{{ llmRuleState.detail }}</p>
+          <p>{{ llmRuleState.detail }}</p>
           <div class="llm-concise-actions">
             <el-button v-if="llmState === 'ready'" plain aria-label="在完整视图中配置外部 AI" @click="openDetailedSection('settings-external-ai')">编辑外部 AI</el-button>
           </div>
@@ -542,6 +539,9 @@ const llmRuleState = computed(() => {
   if (llmState.value === 'loading') {
     return { label: '读取中', detail: '正在读取外部 AI 配置；密钥状态尚未确定。', tone: 'loading' }
   }
+  if (llmState.value === 'managed') {
+    return { label: '由管理员管理', detail: '外部 AI 配置由实例管理员维护，无需在这里设置。', tone: 'managed' }
+  }
   if (llmState.value === 'error') {
     return { label: '读取失败', detail: llmError.value || '外部 AI 配置暂时不可用，请稍后重试。', tone: 'error' }
   }
@@ -620,6 +620,10 @@ function safeErrorMessage(value, fallback) {
   return String(raw)
     .replace(/(api[_-]?key|token|secret|authorization)\s*[:=]\s*["']?[^"'，,；;\s]+["']?/gi, '$1 已省略')
     .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '密钥已省略')
+}
+
+function isLlmAdminRestriction(value) {
+  return value?.status === 403 && value?.code === 'ADMIN_REQUIRED'
 }
 
 function finiteNumber(value, fallback) {
@@ -903,6 +907,9 @@ async function loadCourses() {
         llmState.value = 'error'
         llmError.value = applied.error
       }
+    } else if (isLlmAdminRestriction(llmResult.reason)) {
+      llmState.value = 'managed'
+      llmForm.api_key = ''
     } else {
       llmState.value = 'error'
       llmError.value = safeErrorMessage(llmResult.reason, '外部 AI 配置读取失败，请稍后重试。')
@@ -1101,6 +1108,12 @@ async function saveLlmSettings() {
     llmState.value = 'ready'
     ElMessage.success('AI 配置已保存，现在可以在资料处理中选择外部 AI')
   } catch (err) {
+    if (isLlmAdminRestriction(err)) {
+      llmState.value = 'managed'
+      llmForm.api_key = ''
+      llmError.value = ''
+      return
+    }
     const message = safeErrorMessage(err, '外部 AI 配置保存失败，请稍后重试。')
     llmError.value = message
     ElMessage.error(message)
@@ -1215,68 +1228,66 @@ onMounted(loadCourses)
 <style scoped>
 .mb-18 { margin-bottom: 18px; }
 .settings-page { min-width: 0; }
-.account-panel { display: grid; grid-template-columns: auto minmax(180px, .7fr) minmax(260px, 1fr) auto; align-items: center; gap: 16px; margin-bottom: 18px; padding: 16px 18px; border: 1px solid #d8e0ed; border-radius: 10px; background: #fffefb; }
-.account-panel-avatar { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 13px; color: #fff; background: #3157e6; font-weight: 850; }
+.account-panel { display: grid; grid-template-columns: auto minmax(180px, .7fr) minmax(260px, 1fr) auto; align-items: center; gap: 16px; margin-bottom: 18px; padding: 16px 18px; border: 1px solid var(--ledger-line); border-radius: 10px; background: #ffffff; }
+.account-panel-avatar { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 13px; color: #fff; background: var(--ledger-link); font-weight: 850; }
 .account-panel-copy { min-width: 0; }
-.account-panel-copy p { margin: 0 0 3px; color: #7b8599; font-size: 10px; font-weight: 750; letter-spacing: .08em; }
+.account-panel-copy p { margin: 0 0 3px; color: var(--ledger-muted); font-size: 10px; font-weight: 750; letter-spacing: 0; }
 .account-panel-copy h2 { margin: 0; font-size: 15px; }
-.account-panel-copy span { display: block; margin-top: 3px; overflow: hidden; color: #667085; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.account-panel-boundary { color: #667085; font-size: 12px; line-height: 1.6; }
+.account-panel-copy span { display: block; margin-top: 3px; overflow: hidden; color: var(--ledger-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.account-panel-boundary { color: var(--ledger-muted); font-size: 12px; line-height: 1.6; }
 .settings-global-error { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; }
 .settings-global-error .el-alert { min-width: 0; flex: 1 1 auto; margin-bottom: 0; }
 .settings-global-error :deep(.el-alert__title) { overflow-wrap: anywhere; white-space: normal; }
 .settings-retry-button { min-height: 44px; flex: 0 0 auto; }
 .rule-book-overview {
   margin-bottom: 18px;
-  padding: 20px;
-  color: var(--ledger-paper, #fffefb);
-  background: var(--ledger-ink, #1e2a44);
-  border: 1px solid var(--ledger-ink, #1e2a44);
-  border-radius: 6px;
-  box-shadow: 0 5px 16px rgba(30, 42, 68, .12);
+  padding: 16px 0 0;
+  color: var(--ledger-ink);
+  background: transparent;
+  border: 0;
 }
 .rule-book-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .rule-book-heading > div { min-width: 0; }
 .rule-book-kicker {
   margin: 0;
-  color: #aeb9cf;
-  font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif;
+  color: #c5d7ce;
+  font-family: inherit;
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: .11em;
+  letter-spacing: 0;
 }
-.rule-book-heading h2 { margin: 7px 0 0; color: #fffefb; font-family: "Aptos Display", "Microsoft YaHei", sans-serif; font-size: 19px; }
-.rule-book-heading p:not(.rule-book-kicker) { max-width: 62ch; margin: 7px 0 0; color: #c1cadb; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-.rule-book-mark { flex: 0 0 auto; color: #72809b; font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-size: 12px; font-weight: 700; letter-spacing: .14em; }
-.rule-index { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.rule-book-heading h2 { margin: 0; color: var(--ledger-ink); font-family: inherit; font-size: 15px; font-weight: 600; }
+.rule-book-heading p:not(.rule-book-kicker) { max-width: 62ch; margin: 7px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.rule-book-mark { flex: 0 0 auto; color: var(--ledger-muted); font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0; }
+.rule-index { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .rule-index-link {
   display: flex;
   min-width: 0;
-  min-height: 102px;
+  min-height: 72px;
   flex-direction: column;
   gap: 4px;
   padding: 13px 14px;
-  color: #52617a;
-  background: #fffefb;
-  border: 1px solid #d9e0ea;
-  border-left: 3px solid #aeb9cf;
+  color: var(--ledger-muted);
+  background: #ffffff;
+  border: 1px solid var(--ledger-line);
+  border-left: 3px solid #c5d7ce;
   border-radius: 4px;
   transition: border-color .16s ease, background-color .16s ease, transform .16s ease;
 }
-.rule-index-link:hover { background: #f5f7fc; border-color: #b9c3d3; border-left-color: var(--ledger-indigo, #5964ed); transform: translateY(-1px); }
-.rule-index-link:focus-visible { outline: 3px solid rgba(174, 182, 255, .9); outline-offset: 3px; }
-.rule-index-label { color: #667085; font-size: 12px; line-height: 1.45; }
+.rule-index-link:hover { background: #f5f8f7; border-color: #c5d7ce; border-left-color: var(--ledger-indigo, #327864); }
+.rule-index-link:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 75%, transparent); outline-offset: 3px; }
+.rule-index-label { color: var(--ledger-muted); font-size: 12px; line-height: 1.45; }
 .rule-index-link strong { min-width: 0; overflow-wrap: anywhere; color: var(--ledger-ink, #1e2a44); font-size: 14px; line-height: 1.35; white-space: normal; }
-.rule-index-link > span:last-child { min-width: 0; overflow-wrap: anywhere; color: #667085; font-size: 13px; line-height: 1.55; white-space: normal; }
-.rule-index-link--loading { border-left-color: var(--ledger-indigo, #5964ed); }
+.rule-index-link > span:last-child { min-width: 0; overflow-wrap: anywhere; color: var(--ledger-muted); font-size: 13px; line-height: 1.55; white-space: normal; }
+.rule-index-link--loading { border-left-color: var(--ledger-indigo, #327864); }
 .rule-index-link--ready { border-left-color: #357862; }
 .rule-index-link--error { border-left-color: var(--ledger-coral, #c94c4c); }
 .rule-index-link--unavailable { border-left-color: var(--ledger-amber, #c9822e); }
 .settings-section { scroll-margin-block-start: 96px; }
-.settings-section:target { outline: 3px solid rgba(89, 100, 237, .24); outline-offset: 4px; }
-.settings-section:focus-visible { outline: 3px solid rgba(89, 100, 237, .72); outline-offset: 4px; }
+.settings-section:target { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 24%, transparent); outline-offset: 4px; }
+.settings-section:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 72%, transparent); outline-offset: 4px; }
 .settings-inline-alert { margin: 14px 20px 0; }
-.table-card :deep(.el-table__empty-text) { color: #667085; }
+.table-card :deep(.el-table__empty-text) { color: var(--ledger-muted); }
 .settings-page :deep(.course-name-cell .cell) {
   min-width: 0;
   overflow: visible;
@@ -1301,16 +1312,15 @@ onMounted(loadCourses)
   gap: 16px;
   min-width: 0;
   margin-top: 2px;
-  padding: 14px 16px;
-  color: #475467;
-  background: #f8faff;
-  border: 1px solid #e2e8f4;
-  border-radius: 8px;
+  padding: 8px 0 0;
+  color: var(--ledger-ink);
+  background: transparent;
+  border: 0;
 }
 .section-summary p { min-width: 0; margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .section-summary > .el-button { flex: 0 0 auto; }
 .summary-facts { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 8px; min-width: 0; }
-.summary-facts span { padding: 5px 8px; color: #50607a; background: #fffefb; border: 1px solid #e2e8f4; border-radius: 999px; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.summary-facts span { padding: 3px 12px 3px 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .summary-facts strong { color: var(--ledger-ink, #1e2a44); }
 .capacity-concise-summary { flex-wrap: wrap; }
 .capacity-concise-summary p { flex-basis: 100%; }
@@ -1337,27 +1347,27 @@ onMounted(loadCourses)
 .number-with-unit { display: flex; align-items: center; gap: 8px; }
 .number-with-unit .el-input-number { width: 170px; }
 .course-weights-section { margin-top: 4px; padding-top: 18px; border-top: 1px solid #f0f2f6; }
-.course-weights-heading h3 { margin: 0; color: #344054; font-size: 14px; }
-.course-weights-heading p { margin: 5px 0 0; color: #667085; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.course-weights-heading h3 { margin: 0; color: var(--ledger-ink); font-size: 14px; }
+.course-weights-heading p { margin: 5px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .course-weight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
-.course-weight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 10px 12px; background: #fbfcff; border: 1px solid #edf0f8; border-radius: 9px; }
-.course-weight-name { min-width: 0; color: #475467; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: normal; }
+.course-weight-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 10px 12px; background: #f1f7f3; border: 1px solid #c8ddd1; border-radius: 9px; }
+.course-weight-name { min-width: 0; color: var(--ledger-ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: normal; }
 .course-weight-row .number-with-unit { flex-shrink: 0; }
 .course-weight-row .number-with-unit .el-input-number { width: 120px; }
-.course-weight-empty { margin-top: 14px; padding: 14px 4px 2px; color: #667085; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.course-weight-empty { margin-top: 14px; padding: 14px 4px 2px; color: var(--ledger-muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .preference-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 2px; }
 .reminder-preference-card { grid-column: 1 / -1; }
 .reminder-preference-intro { margin: 6px 0 0; }
 .reminder-preference-form { padding-top: 0; }
 .reminder-preference-form .el-form-item { margin-bottom: 18px; }
 .reminder-preference-form .el-checkbox-group { display: flex; flex-wrap: wrap; gap: 8px 18px; }
-.form-help { margin: 6px 0 0; color: #667085; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+.form-help { margin: 6px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .reminder-safety-note { display: flex; align-items: flex-start; gap: 9px; min-width: 0; margin-top: 2px; padding: 11px 12px; color: #7a5d2e; background: #fffaf0; border: 1px solid #f5ead1; border-radius: 9px; font-size: 13px; line-height: 1.65; }
 .reminder-safety-note > span { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
 .reminder-preference-actions { margin-top: 16px; }
-.preference-unavailable { padding: 14px 4px 2px; color: #667085; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.preference-unavailable { padding: 14px 4px 2px; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .llm-card { grid-column: 1 / -1; }
-.settings-help { margin: 0 0 18px; color: #667085; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.settings-help { margin: 0 0 18px; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .external-ai-safety-note {
   display: flex;
   align-items: flex-start;
@@ -1378,15 +1388,15 @@ onMounted(loadCourses)
   gap: 16px;
   margin-top: 2px;
   padding: 14px 16px;
-  color: #475467;
-  background: #f7f8ff;
-  border: 1px solid #e2e5fa;
+  color: var(--ledger-ink);
+  background: #f1f7f3;
+  border: 1px solid #c8ddd1;
   border-radius: 8px;
 }
 .llm-concise-summary p { min-width: 0; margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .llm-concise-actions { flex: 0 0 auto; }
 .llm-concise-actions .el-button { min-height: 44px; }
-.unit-label { margin-left: 8px; color: #667085; font-size: 13px; }
+.unit-label { margin-left: 8px; color: var(--ledger-muted); font-size: 13px; }
 .llm-actions { display: flex; justify-content: flex-end; margin-top: 2px; }
 :global(html) { scroll-padding-top: 96px; }
 @media (prefers-reduced-motion: reduce) {

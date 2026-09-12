@@ -7,6 +7,12 @@ from app.time import utc_now
 
 def _course_and_plan(client):
     course = client.post("/api/courses", json={"name": "M8.4 课程"}).json()
+    for index in range(4):
+        material = client.post(
+            "/api/materials",
+            json={"course_id": course["id"], "original_filename": f"M8.4 基础资料-{index + 1}.md"},
+        )
+        assert material.status_code == 201
     plan = client.post("/api/study-plans/generate", json={
         "course_id": course["id"], "exam_date": (date.today() + timedelta(days=5)).isoformat(), "daily_minutes": 60,
     }).json()
@@ -122,6 +128,35 @@ def test_m84_plan_delta_revalidates_snapshot_and_preserves_manual_or_completed_i
     assert saved["items"][-1]["title"] == "人工修改后的安排"
 
 
+def test_m84_plan_delta_preserves_generation_time_unscheduled_snapshot(client):
+    course = client.post("/api/courses", json={"name": "未排快照课程"}).json()
+    for index in range(4):
+        assert client.post(
+            "/api/materials",
+            json={"course_id": course["id"], "original_filename": f"快照资料-{index + 1}.md"},
+        ).status_code == 201
+    plan = client.post(
+        "/api/study-plans/generate",
+        json={"course_id": course["id"], "exam_date": date.today().isoformat(), "daily_minutes": 180},
+    ).json()
+    original_unscheduled = plan["unscheduled_items"]
+    assert len(original_unscheduled) == 1
+
+    task = _task(client, course["id"], "生成后新增任务", 20)
+    candidate = next(
+        item for item in client.get("/api/agent/plan-deltas").json()
+        if item["current_payload"]["task_id"] == task["id"] and item["source_id"] == plan["id"]
+    )
+    accepted = client.post(
+        f"/api/agent/plan-deltas/{candidate['id']}/accept",
+        json={"idempotency_key": "preserve-unscheduled-snapshot"},
+    )
+
+    assert accepted.status_code == 200
+    updated = client.get(f"/api/study-plans/{plan['id']}").json()
+    assert updated["unscheduled_items"] == original_unscheduled
+
+
 def test_m84_all_task_change_triggers_leave_auditable_event_evidence(client):
     course, _plan = _course_and_plan(client)
     created = _task(client, course["id"], "待完成", 50)
@@ -174,6 +209,7 @@ def test_m84_concurrent_delta_accept_commits_one_receipt(tmp_path):
     from app.models.agent import ActionReceipt, AgentSuggestion
     from app.models.course import Course
     from app.models.study_plan import StudyPlan
+    from app.models.material import Material
     from app.models.task import Task
     from app.schemas.agent import AgentPlanDeltaAccept
     from app.services.agent_feedback import create_plan_delta_candidates
@@ -186,9 +222,12 @@ def test_m84_concurrent_delta_accept_commits_one_receipt(tmp_path):
             course = Course(name="并发课程")
             db.add(course)
             db.flush()
+            material = Material(course_id=course.id, original_filename="并发基础资料.md")
+            db.add(material)
+            db.flush()
             items, warnings = generate_review_items(
                 start_date=date.today(), exam_date=date.today() + timedelta(days=3), daily_minutes=60,
-                materials=[], tasks=[],
+                materials=[material], tasks=[],
             )
             plan = StudyPlan(course_id=course.id, title="并发计划", exam_date=date.today() + timedelta(days=3),
                              daily_minutes=60, plan_content=encode_plan_content(items, warnings), status="active")
@@ -230,6 +269,7 @@ def test_m84_delta_database_failure_rolls_back_plan_and_receipt(tmp_path, monkey
     from app.models.agent import ActionReceipt
     from app.models.course import Course
     from app.models.study_plan import StudyPlan
+    from app.models.material import Material
     from app.models.task import Task
     from app.schemas.agent import AgentPlanDeltaAccept
     from app.services.agent_feedback import create_plan_delta_candidates
@@ -241,8 +281,10 @@ def test_m84_delta_database_failure_rolls_back_plan_and_receipt(tmp_path, monkey
         with Session(engine) as db:
             course = Course(name="回滚课程")
             db.add(course); db.flush()
+            material = Material(course_id=course.id, original_filename="回滚基础资料.md")
+            db.add(material); db.flush()
             items, warnings = generate_review_items(start_date=date.today(), exam_date=date.today() + timedelta(days=2),
-                                                     daily_minutes=60, materials=[], tasks=[])
+                                                     daily_minutes=60, materials=[material], tasks=[])
             plan = StudyPlan(course_id=course.id, title="回滚计划", exam_date=date.today() + timedelta(days=2),
                              daily_minutes=60, plan_content=encode_plan_content(items, warnings), status="active")
             task = Task(course_id=course.id, name="回滚任务", estimated_minutes=30, remaining_minutes=30)

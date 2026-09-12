@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from pathlib import Path
 from threading import Lock
 
 from fastapi import Depends
 from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.config import PROJECT_ROOT, database_path, ensure_runtime_directories, settings
+from app.config import database_path, ensure_runtime_directories, settings
 from app.services.source_identity import add_plan_item_navigation_keys, new_navigation_key
 
 
@@ -36,7 +37,7 @@ if settings.database_url.startswith("sqlite"):
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
-_workspace_session_factories: dict[str, sessionmaker] = {}
+_workspace_session_factories: dict[tuple[Path, str], sessionmaker] = {}
 _workspace_lock = Lock()
 
 
@@ -45,19 +46,25 @@ def _workspace_session_factory(workspace_key: str) -> sessionmaker:
 
     if workspace_key == "legacy":
         return SessionLocal
-    if len(workspace_key) != 32 or any(char not in "0123456789abcdef" for char in workspace_key):
+    if not isinstance(workspace_key, str) or len(workspace_key) != 32 or any(
+        char not in "0123456789abcdef" for char in workspace_key
+    ):
         raise RuntimeError("Invalid workspace identity")
-    cached = _workspace_session_factories.get(workspace_key)
+    workspace_dir = settings.user_database_dir.expanduser().resolve()
+    cache_key = (workspace_dir, workspace_key)
+    cached = _workspace_session_factories.get(cache_key)
     if cached is not None:
         return cached
     with _workspace_lock:
-        cached = _workspace_session_factories.get(workspace_key)
+        cached = _workspace_session_factories.get(cache_key)
         if cached is not None:
             return cached
-        workspace_dir = PROJECT_ROOT / "data" / "users"
         workspace_dir.mkdir(parents=True, exist_ok=True)
+        workspace_path = (workspace_dir / f"{workspace_key}.db").resolve()
+        if workspace_path.parent != workspace_dir:
+            raise RuntimeError("Invalid workspace identity")
         workspace_engine = create_engine(
-            f"sqlite:///{(workspace_dir / f'{workspace_key}.db').as_posix()}",
+            f"sqlite:///{workspace_path.as_posix()}",
             connect_args={"check_same_thread": False},
             pool_pre_ping=True,
         )
@@ -78,7 +85,7 @@ def _workspace_session_factory(workspace_key: str) -> sessionmaker:
         cached = sessionmaker(
             bind=workspace_engine, autoflush=False, autocommit=False, expire_on_commit=False
         )
-        _workspace_session_factories[workspace_key] = cached
+        _workspace_session_factories[cache_key] = cached
         return cached
 
 

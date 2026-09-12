@@ -43,6 +43,19 @@ const checks = [
     budget: 5 * 1024,
   },
   {
+    key: 'taskAgendaJs',
+    label: 'Task Agenda JS',
+    pattern: /^TaskAgenda(?:-[^/]+)?\.js$/,
+    // The concise timeline is lazy and stays small enough to load on demand.
+    budget: 6 * 1024,
+  },
+  {
+    key: 'taskAgendaCss',
+    label: 'Task Agenda CSS',
+    pattern: /^TaskAgenda(?:-[^/]+)?\.css$/,
+    budget: 2.75 * 1024,
+  },
+  {
     key: 'quickAddJs',
     label: 'Quick Add JS',
     pattern: /^QuickTaskAdd(?:-[^/]+)?\.js$/,
@@ -66,6 +79,19 @@ const checks = [
     key: 'focusCss',
     label: 'Focus CSS',
     pattern: /^FocusView(?:-[^/]+)?\.css$/,
+    budget: 4 * 1024,
+  },
+  {
+    key: 'deadlineRadarJs',
+    label: 'Deadline Radar JS',
+    pattern: /^DeadlineRadarView(?:-[^/]+)?\.js$/,
+    // The flagship notice-change preview stays isolated to its own lazy route.
+    budget: 8 * 1024,
+  },
+  {
+    key: 'deadlineRadarCss',
+    label: 'Deadline Radar CSS',
+    pattern: /^DeadlineRadarView(?:-[^/]+)?\.css$/,
     budget: 4 * 1024,
   },
   {
@@ -93,6 +119,18 @@ const checks = [
     label: 'StudyPlans CSS',
     pattern: /^StudyPlansView(?:-[^/]+)?\.css$/,
     budget: 6 * 1024,
+  },
+  {
+    key: 'studyWeekBoardJs',
+    label: 'Study Week Board JS',
+    pattern: /^StudyWeekBoard(?:-[^/]+)?\.js$/,
+    budget: 4 * 1024,
+  },
+  {
+    key: 'studyWeekBoardCss',
+    label: 'Study Week Board CSS',
+    pattern: /^StudyWeekBoard(?:-[^/]+)?\.css$/,
+    budget: 2.25 * 1024,
   },
   {
     key: 'academicCalendarJs',

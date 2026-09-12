@@ -1,0 +1,166 @@
+{
+  "provenance": {
+    "kind": "supervision_holdout_synthetic_course_notices",
+    "authoring_rule": "Independently authored on 2026-09-10 after reading only the evaluator contract. This corpus must not be edited after its first evaluation or used to tune the extractor while represented as unseen.",
+    "limitation": "Synthetic Chinese course notices only. It is not a random sample, real-student accuracy measurement, OCR benchmark, or usability study."
+  },
+  "cases": [
+    {
+      "id": "holdout-01-transfer-delegation",
+      "category": "transfer_or_delegation",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "《数据结构》课堂展示报名原由课代表统一收集。现转交各小组自行在教学平台上传报名表，截止本周五17:00。",
+      "expected_tasks": [
+        {"name": "上传课堂展示报名表", "due_at": "2026-09-11T09:00:00+00:00"}
+      ],
+      "annotation_note": "“转交”改变提交责任，仍有明确要求和明确截止时间。"
+    },
+    {
+      "id": "holdout-02-correction-date",
+      "category": "correction",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "更正：上一条《大学物理》作业通知中的“周三”是笔误。习题4-6请于9月15日（周二）22:00前提交。",
+      "expected_tasks": [
+        {"name": "提交习题4-6", "due_at": "2026-09-15T14:00:00+00:00"}
+      ],
+      "annotation_note": "仅以更正后的明确日期为截止依据。"
+    },
+    {
+      "id": "holdout-03-cancelled-workshop",
+      "category": "cancellation",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "原定于9月12日上午的Python答疑因教室维修取消，本周不补办，请勿前往。",
+      "expected_tasks": [],
+      "annotation_note": "取消事项和“请勿前往”均不应形成待办。"
+    },
+    {
+      "id": "holdout-04-two-tasks-two-deadlines",
+      "category": "multi_task",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "软件工程：\n1. 9月16日18:00前在雨课堂提交需求访谈纪要；\n2. 9月18日中午前完成互评表。",
+      "expected_tasks": [
+        {"name": "提交需求访谈纪要", "due_at": "2026-09-16T10:00:00+00:00"},
+        {"name": "完成互评表", "due_at": null}
+      ],
+      "annotation_note": "第二项只写“中午前”，没有可安全标注的精确时刻，保留空时间。"
+    },
+    {
+      "id": "holdout-05-cross-line-task",
+      "category": "cross_line",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "数字媒体技术\n请将分镜脚本\n和素材来源说明合并为一个PDF，\n9月20日前上传至课程群文件。",
+      "expected_tasks": [
+        {"name": "上传分镜脚本和素材来源说明PDF", "due_at": null}
+      ],
+      "annotation_note": "跨行任务有日期但没有精确时间；不猜测当天结束时刻。"
+    },
+    {
+      "id": "holdout-06-information-only-room-change",
+      "category": "no_task_announcement",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "《线性代数》9月11日第3节课改在B204上课，教材和授课内容不变。",
+      "expected_tasks": [],
+      "annotation_note": "教室变更是信息公告，没有要求学生完成的事项。"
+    },
+    {
+      "id": "holdout-07-relative-tomorrow",
+      "category": "relative_date",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "请在明天16:30前填写《职业发展》问卷，未提交者也可课后补填。",
+      "expected_tasks": [
+        {"name": "填写职业发展问卷", "due_at": "2026-09-11T08:30:00+00:00"}
+      ],
+      "annotation_note": "“明天”相对通知参考时间为2026-09-11。"
+    },
+    {
+      "id": "holdout-08-relative-next-week",
+      "category": "relative_date",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "下周一上课前把离散数学练习册第2章带来；没有线上提交安排。",
+      "expected_tasks": [
+        {"name": "携带离散数学练习册第2章", "due_at": null}
+      ],
+      "annotation_note": "“下周一上课前”缺少课程开始时刻，保留空时间。"
+    },
+    {
+      "id": "holdout-09-cross-month-extension",
+      "category": "cross_month",
+      "source_time": "2026-09-29T01:00:00+00:00",
+      "text": "数据库课程设计答辩材料延期：请在10月3日23:59前重新上传最终版PPT。",
+      "expected_tasks": [
+        {"name": "上传最终版PPT", "due_at": "2026-10-03T15:59:00+00:00"}
+      ],
+      "annotation_note": "跨月日期有明确年月日和时刻。"
+    },
+    {
+      "id": "holdout-10-cross-month-relative",
+      "category": "cross_month_relative",
+      "source_time": "2026-09-29T01:00:00+00:00",
+      "text": "国庆后第一节《概率论》课前，请提交读书报告提纲；课程安排为10月9日恢复。",
+      "expected_tasks": [
+        {"name": "提交读书报告提纲", "due_at": null}
+      ],
+      "annotation_note": "给出了复课日但未明确“课前”的精确时刻，保留空时间。"
+    },
+    {
+      "id": "holdout-11-missing-date",
+      "category": "missing_date",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "机器学习小组还未登记的同学，请尽快在共享表补全联系方式，具体截止日期另行通知。",
+      "expected_tasks": [
+        {"name": "补全联系方式", "due_at": null}
+      ],
+      "annotation_note": "有明确动作，但通知明说截止日期另行通知，不能填充日期。"
+    },
+    {
+      "id": "holdout-12-missing-time",
+      "category": "missing_time",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "《学术写作》摘要修改稿请于9月22日提交到教学系统，格式模板见附件。",
+      "expected_tasks": [
+        {"name": "提交摘要修改稿", "due_at": null}
+      ],
+      "annotation_note": "日期明确但没有时刻；不将系统默认截止时间写入标注。"
+    },
+    {
+      "id": "holdout-13-two-actions-one-date",
+      "category": "multi_task_shared_deadline",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "人工智能导论小组：9月19日20:00前先确认选题，再把组员分工填入在线文档。两件事都需完成。",
+      "expected_tasks": [
+        {"name": "确认选题", "due_at": "2026-09-19T12:00:00+00:00"},
+        {"name": "填写组员分工", "due_at": "2026-09-19T12:00:00+00:00"}
+      ],
+      "annotation_note": "一条通知中的两个独立动作共享同一明确截止时间。"
+    },
+    {
+      "id": "holdout-14-cancel-then-replacement",
+      "category": "cancellation_and_replacement",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "原定9月13日举行的化学实验安全测验取消。请改为在9月14日19:00前观看安全视频并完成视频后的三道题。",
+      "expected_tasks": [
+        {"name": "观看安全视频", "due_at": "2026-09-14T11:00:00+00:00"},
+        {"name": "完成视频后的三道题", "due_at": "2026-09-14T11:00:00+00:00"}
+      ],
+      "annotation_note": "被取消的是线下测验；替代要求中的两个动作有效且共享新截止时间。"
+    },
+    {
+      "id": "holdout-15-no-task-grade-release",
+      "category": "no_task_announcement",
+      "source_time": "2026-09-10T01:00:00+00:00",
+      "text": "英语听说第一单元成绩已经发布，分数仅供查看；如有疑问请在课堂上咨询。",
+      "expected_tasks": [],
+      "annotation_note": "成绩发布和开放式咨询提示不构成待办。"
+    },
+    {
+      "id": "holdout-16-correction-cancelled-old-deadline",
+      "category": "correction_with_old_deadline_cancelled",
+      "source_time": "2026-10-30T01:00:00+00:00",
+      "text": "更正《操作系统》实验二：此前“10月31日24:00前提交”的说法作废，请于11月2日09:30前提交实验报告。",
+      "expected_tasks": [
+        {"name": "提交实验报告", "due_at": "2026-11-02T01:30:00+00:00"}
+      ],
+      "annotation_note": "旧截止表述已作废，只应采用11月2日09:30的新时间；跨月。"
+    }
+  ]
+}

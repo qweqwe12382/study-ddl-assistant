@@ -28,6 +28,7 @@ class Settings:
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
     auth_database_url: str = os.getenv("AUTH_DATABASE_URL", "sqlite:///./data/auth.db")
+    user_database_dir: Path = _resolve_path(os.getenv("USER_DATABASE_DIR", "data/users"))
     auth_session_days: int = int(os.getenv("AUTH_SESSION_DAYS", "30"))
     auth_cookie_secure: bool = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
     upload_dir: Path = _resolve_path(os.getenv("UPLOAD_DIR", "data/uploads"))
@@ -97,6 +98,7 @@ def ensure_runtime_directories() -> None:
     """Create directories needed by the local SQLite/upload runtime."""
 
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    settings.user_database_dir.mkdir(parents=True, exist_ok=True)
     (PROJECT_ROOT / "data" / "demo").mkdir(parents=True, exist_ok=True)
 
 

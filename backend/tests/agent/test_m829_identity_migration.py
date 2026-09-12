@@ -66,6 +66,11 @@ def test_m829_migration_preserves_history_and_is_idempotent():
 
 def test_m829_plan_item_key_is_server_owned_and_not_reused(client):
     course = client.post("/api/courses", json={"name": "计划身份课程"}).json()
+    material = client.post(
+        "/api/materials",
+        json={"course_id": course["id"], "original_filename": "计划身份基础资料.md"},
+    )
+    assert material.status_code == 201
     response = client.post("/api/study-plans/generate", json={
         "course_id": course["id"], "exam_date": (date.today() + timedelta(days=2)).isoformat(), "daily_minutes": 60,
     })

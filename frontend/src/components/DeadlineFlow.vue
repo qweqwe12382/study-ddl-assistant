@@ -2,11 +2,10 @@
   <section class="deadline-flow" aria-labelledby="deadline-flow-title">
     <header class="deadline-flow__heading">
       <div>
-        <p class="deadline-flow__kicker">DEADLINE FLOW / NEXT 7 DAYS</p>
-        <h2 id="deadline-flow-title">未来 7 天的截止任务</h2>
-        <p class="deadline-flow__lede">按截止时间排序；可以查看任务，并检查关联资料是否可用。</p>
+        <h2 id="deadline-flow-title">近期截止</h2>
+        <p class="deadline-flow__lede">未来 7 天，按截止时间排序。</p>
       </div>
-      <span v-if="viewState === 'ready'" class="deadline-flow__count">当前任务 · {{ visibleTasks.length }} 项</span>
+      <router-link class="deadline-flow__all" to="/tasks">全部任务</router-link>
     </header>
 
     <div
@@ -22,13 +21,6 @@
     </div>
 
     <template v-else-if="visibleTasks.length">
-      <ol class="deadline-flow__ruler" aria-label="从现在到未来七天的截止时间范围">
-        <li class="deadline-flow__ruler-marker"><span>现在</span></li>
-        <li class="deadline-flow__ruler-marker"><span>24 小时</span></li>
-        <li class="deadline-flow__ruler-marker"><span>3 天</span></li>
-        <li class="deadline-flow__ruler-marker"><span>7 天</span></li>
-      </ol>
-
       <div class="deadline-flow__bands" aria-label="按截止时间分组的任务">
         <section
           v-for="band in activeBands"
@@ -39,51 +31,43 @@
         >
           <div class="deadline-flow__band-heading">
             <h3 :id="`deadline-flow-band-${band.id}`">{{ band.label }}</h3>
-            <p>{{ band.range }}</p>
+            <p>{{ band.tasks.length }} 项</p>
           </div>
 
           <ul class="deadline-flow__task-list">
             <li v-for="task in band.tasks" :key="task.key">
               <article class="deadline-flow__task" :aria-label="taskAriaLabel(task)">
-                <span class="deadline-flow__course">课程：{{ task.courseName }}</span>
-                <strong class="deadline-flow__task-name">{{ task.name }}</strong>
-                <span class="deadline-flow__timing">
+                <div class="deadline-flow__task-heading">
+                  <button type="button" class="deadline-flow__task-name" :aria-label="`查看任务：${task.name}`" @click="emit('open-task', task.source)">{{ task.name }}</button>
+                  <span class="deadline-flow__remaining">{{ task.remainingLabel }}</span>
+                </div>
+                <div class="deadline-flow__timing">
+                  <span class="deadline-flow__course">{{ task.courseName }}</span>
                   <time :datetime="task.dueIso">{{ task.dueLabel }}</time>
-                  <span>{{ task.remainingLabel }}</span>
-                </span>
-                <span v-if="task.workloadLabel || task.priorityLabel || task.statusLabel" class="deadline-flow__meta">
-                  <span v-if="task.workloadLabel" class="deadline-flow__metric deadline-flow__metric--workload">{{ task.workloadLabel }}</span>
-                  <span v-if="task.priorityLabel" class="deadline-flow__metric">{{ task.priorityLabel }}</span>
-                  <span v-if="task.statusLabel" class="deadline-flow__metric">状态：{{ task.statusLabel }}</span>
-                </span>
-                <div class="deadline-flow__source" :class="`deadline-flow__source--${task.sourceContext.state}`">
+                </div>
+                <details class="deadline-flow__source" :class="`deadline-flow__source--${task.sourceContext.state}`">
+                  <summary>任务详情与资料<span class="deadline-flow__source-state">{{ task.sourceContext.title }}</span></summary>
                   <div>
-                    <span class="deadline-flow__source-title">{{ task.sourceContext.title }}</span>
+                    <span v-if="task.workloadLabel || task.priorityLabel || task.statusLabel" class="deadline-flow__meta">
+                      <span v-if="task.workloadLabel" class="deadline-flow__metric deadline-flow__metric--workload">{{ task.workloadLabel }}</span>
+                      <span v-if="task.priorityLabel" class="deadline-flow__metric">{{ task.priorityLabel }}</span>
+                      <span v-if="task.statusLabel" class="deadline-flow__metric">状态：{{ task.statusLabel }}</span>
+                    </span>
                     <strong v-if="task.sourceContext.label">{{ task.sourceContext.label }}</strong>
                     <p>{{ task.sourceContext.detail }}</p>
+                    <button
+                      v-if="task.sourceContext.state === 'available'"
+                      type="button"
+                      class="deadline-flow__action"
+                      :disabled="materialBusy(task)"
+                      :aria-busy="materialBusy(task)"
+                      :aria-label="`${materialBusy(task) ? '正在打开资料' : '打开资料'}：${task.sourceContext.label}`"
+                      @click="emit('open-material', task.source)"
+                    >
+                      {{ materialBusy(task) ? '正在打开…' : '打开资料' }}
+                    </button>
                   </div>
-                </div>
-                <div class="deadline-flow__actions" role="group" :aria-label="`任务操作：${task.name}`">
-                  <button
-                    type="button"
-                    class="deadline-flow__action deadline-flow__action--primary"
-                    :aria-label="`查看任务：${task.name}`"
-                    @click="emit('open-task', task.source)"
-                  >
-                    查看任务
-                  </button>
-                  <button
-                    v-if="task.sourceContext.state === 'available'"
-                    type="button"
-                    class="deadline-flow__action"
-                    :disabled="materialBusy(task)"
-                    :aria-busy="materialBusy(task)"
-                    :aria-label="`${materialBusy(task) ? '正在打开资料' : '打开资料'}：${task.sourceContext.label}`"
-                    @click="emit('open-material', task.source)"
-                  >
-                    {{ materialBusy(task) ? '正在打开…' : '打开资料' }}
-                  </button>
-                </div>
+                </details>
               </article>
             </li>
           </ul>
@@ -92,7 +76,7 @@
     </template>
 
     <div v-else class="deadline-flow__state deadline-flow__state--empty" role="status" aria-live="polite">
-      <strong>未来 7 天没有待处理的截止任务。</strong>
+      <strong>未来 7 天暂时没有要交的任务</strong>
       <p>{{ emptyStateDetail }}</p>
     </div>
   </section>
@@ -172,7 +156,7 @@ const stateDetail = computed(() => ({
 
 const emptyStateDetail = computed(() => {
   if (!props.tasks.length) return '当前没有未来 7 天内到期的任务。'
-  return '未设置、已过期、截止时间无效或超过 7 天的任务不会出现在这里。'
+  return '未设置、已取消、已过期、截止时间无效或超过 7 天的任务不会出现在这里。'
 })
 
 function normalizeTask(source, sourceIndex, nowTime) {
@@ -180,7 +164,7 @@ function normalizeTask(source, sourceIndex, nowTime) {
 
   const name = cleanText(source.name)
   const dueAt = parseDate(source.due_at)
-  if (!name || !dueAt || source.status === 'completed') return null
+  if (!name || !dueAt || ['completed', 'canceled'].includes(source.status)) return null
 
   const dueTime = dueAt.getTime()
   const distance = dueTime - nowTime
@@ -189,7 +173,7 @@ function normalizeTask(source, sourceIndex, nowTime) {
   const remainingMinutes = validMinutes(source.remaining_minutes)
   const estimatedMinutes = validMinutes(source.estimated_minutes)
   const priority = validPriority(source.priority)
-  const courseName = cleanText(source.course_name) || '课程待补充'
+  const courseName = cleanText(source.course_name) || '未归类课程'
   const sourceContext = dashboardMaterialSourceContext(source)
 
   return {
@@ -305,6 +289,7 @@ function formatStatus(value) {
     not_started: '未开始',
     in_progress: '进行中',
     completed: '已完成',
+    canceled: '已取消',
     overdue: '已逾期',
   }[status] || null
 }
@@ -325,69 +310,46 @@ function taskAriaLabel(task) {
 </script>
 
 <style scoped>
-.deadline-flow { min-width: 0; padding: 20px; color: var(--ledger-ink); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 8px; box-shadow: var(--ledger-shadow); }
+.deadline-flow { min-width: 0; padding: 24px 26px; color: var(--ledger-ink); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: var(--ledger-radius); }
 .deadline-flow__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; min-width: 0; }
 .deadline-flow__heading > div { min-width: 0; }
-.deadline-flow__kicker { margin: 0; color: var(--ledger-indigo); font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 750; letter-spacing: .12em; line-height: 1.45; }
-.deadline-flow__heading h2 { margin: 6px 0 0; color: var(--ledger-ink); font-size: 19px; line-height: 1.35; }
+.deadline-flow__heading h2 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.5; }
 .deadline-flow__lede { margin: 6px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
-.deadline-flow__count { flex: 0 0 auto; min-height: 28px; padding: 5px 8px; color: #43516b; background: var(--ledger-canvas); border: 1px solid var(--ledger-line); border-radius: 999px; font-size: 12px; font-weight: 650; line-height: 1.4; text-align: center; }
-.deadline-flow__state { display: grid; gap: 7px; margin-top: 18px; padding: 16px; background: var(--ledger-canvas); border: 1px solid var(--ledger-line); border-radius: 6px; }
-.deadline-flow__state strong { color: var(--ledger-ink); font-size: 14px; line-height: 1.5; }
-.deadline-flow__state p { margin: 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
-.deadline-flow__state--error { border-left: 3px solid var(--ledger-coral); }
-.deadline-flow__state--invalid { border-left: 3px solid var(--ledger-amber); }
-.deadline-flow__state--empty { border-left: 3px solid var(--ledger-indigo); }
-.deadline-flow__ruler { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); min-width: 0; margin: 20px 0 12px; padding: 0; border-top: 1px solid var(--ledger-line); list-style: none; }
-.deadline-flow__ruler-marker { position: relative; min-width: 0; padding-top: 10px; color: var(--ledger-muted); font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .02em; line-height: 1.35; overflow-wrap: anywhere; }
-.deadline-flow__ruler-marker::before { content: ''; position: absolute; top: -4px; left: 0; width: 7px; height: 7px; background: var(--ledger-paper); border: 2px solid var(--ledger-indigo); border-radius: 50%; }
-.deadline-flow__ruler-marker:last-child { text-align: right; }
-.deadline-flow__ruler-marker:last-child::before { right: 0; left: auto; }
-.deadline-flow__bands { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; min-width: 0; }
-.deadline-flow__band { min-width: 0; padding: 12px; background: var(--ledger-canvas); border: 1px solid var(--ledger-line); border-left: 3px solid var(--ledger-indigo); border-radius: 6px; }
-.deadline-flow__band--within-day { border-left-color: var(--ledger-coral); }
-.deadline-flow__band--within-three-days { border-left-color: var(--ledger-amber); }
-.deadline-flow__band-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
-.deadline-flow__band-heading h3 { min-width: 0; margin: 0; color: var(--ledger-ink); font-size: 14px; line-height: 1.45; overflow-wrap: anywhere; }
-.deadline-flow__band-heading p { flex: 0 1 auto; margin: 0; color: var(--ledger-muted); font-size: 11px; line-height: 1.45; text-align: right; overflow-wrap: anywhere; }
-.deadline-flow__task-list { display: grid; gap: 8px; min-width: 0; margin: 11px 0 0; padding: 0; list-style: none; }
+.deadline-flow__all { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: 44px; color: var(--ledger-link); font-size: 13px; }
+.deadline-flow__all:hover { text-decoration: underline; text-underline-offset: 4px; }
+.deadline-flow__state { display: grid; gap: 7px; margin-top: 22px; padding: 10px 0; }
+.deadline-flow__state strong { font-size: 14px; font-weight: 500; line-height: 1.6; }
+.deadline-flow__state p { margin: 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.deadline-flow__state--error, .deadline-flow__state--invalid { padding-left: 12px; border-left: 2px solid var(--ledger-coral); }
+.deadline-flow__state--invalid { border-left-color: var(--ledger-amber); }
+.deadline-flow__bands { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; min-width: 0; margin-top: 22px; }
+.deadline-flow__band { min-width: 0; }
+.deadline-flow__band-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; padding-bottom: 9px; border-bottom: 1px solid var(--ledger-line); }
+.deadline-flow__band-heading h3 { min-width: 0; margin: 0; color: var(--ledger-muted); font-size: 12px; font-weight: 500; line-height: 1.5; }
+.deadline-flow__band--within-day .deadline-flow__band-heading h3 { color: #a24a42; }
+.deadline-flow__band--within-three-days .deadline-flow__band-heading h3 { color: #805d22; }
+.deadline-flow__band-heading p { margin: 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.5; }
+.deadline-flow__task-list { display: grid; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .deadline-flow__task-list li { min-width: 0; }
-.deadline-flow__task { display: grid; gap: 7px; min-width: 0; padding: 12px; color: var(--ledger-ink); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 5px; }
-.deadline-flow__course { color: #59667d; font-size: 12px; font-weight: 650; line-height: 1.45; overflow-wrap: anywhere; }
-.deadline-flow__task-name { color: var(--ledger-ink); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
-.deadline-flow__timing { display: grid; gap: 2px; color: #43516b; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.deadline-flow__timing > span { color: var(--ledger-muted); font-weight: 650; }
-.deadline-flow__meta { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; margin-top: 2px; }
-.deadline-flow__metric { min-width: 0; padding: 3px 6px; color: #536177; background: var(--ledger-canvas); border: 1px solid var(--ledger-line); border-radius: 3px; font-size: 11px; font-weight: 650; line-height: 1.45; overflow-wrap: anywhere; }
-.deadline-flow__metric--workload { color: #43516b; }
-.deadline-flow__source { min-width: 0; padding: 8px 10px; background: var(--ledger-canvas); border-left: 3px solid var(--ledger-indigo); }
-.deadline-flow__source--deleted { border-left-color: var(--ledger-amber); }
-.deadline-flow__source--missing, .deadline-flow__source--contradictory { border-left-color: var(--ledger-line); }
-.deadline-flow__source > div { display: grid; gap: 2px; min-width: 0; }
-.deadline-flow__source-title { color: #59667d; font-size: 11px; font-weight: 700; line-height: 1.45; }
-.deadline-flow__source strong { color: #43516b; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
-.deadline-flow__source p { margin: 0; color: var(--ledger-muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
-.deadline-flow__actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.deadline-flow__action { min-height: 44px; padding: 0 12px; color: #43516b; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 4px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; touch-action: manipulation; }
-.deadline-flow__action--primary { color: var(--ledger-paper); background: var(--ledger-indigo); border-color: var(--ledger-indigo); }
-.deadline-flow__action:hover:not(:disabled) { color: var(--ledger-indigo); border-color: var(--ledger-indigo); }
-.deadline-flow__action--primary:hover:not(:disabled) { color: var(--ledger-paper); background: #4853cf; border-color: #4853cf; }
-.deadline-flow__action:focus-visible { outline: 3px solid rgba(89, 100, 237, .42); outline-offset: 3px; }
-.deadline-flow__action:disabled { color: var(--ledger-muted); background: #eef1f5; border-color: #dfe4eb; cursor: wait; }
-
-@media (max-width: 560px) {
-  .deadline-flow { padding: 16px; }
-  .deadline-flow__heading { align-items: stretch; flex-direction: column; gap: 10px; }
-  .deadline-flow__count { align-self: flex-start; }
-  .deadline-flow__ruler-marker { font-size: 10px; }
-  .deadline-flow__bands { grid-template-columns: minmax(0, 1fr); }
-  .deadline-flow__band-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
-  .deadline-flow__band-heading p { text-align: left; }
-  .deadline-flow__actions { display: grid; grid-template-columns: minmax(0, 1fr); }
-  .deadline-flow__action { width: 100%; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .deadline-flow *, .deadline-flow *::before, .deadline-flow *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
-}
+.deadline-flow__task-list li + li { border-top: 1px solid var(--ledger-line); }
+.deadline-flow__task { min-width: 0; padding: 14px 0 2px; }
+.deadline-flow__task-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
+.deadline-flow__task-name { min-width: 0; margin: -8px 0; padding: 8px 0; color: var(--ledger-ink); background: transparent; border: 0; font: inherit; font-size: 15px; font-weight: 600; line-height: 1.7; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.deadline-flow__task-name:hover { color: var(--ledger-link); text-decoration: underline; text-underline-offset: 4px; }
+.deadline-flow__remaining { flex: 0 0 auto; color: var(--ledger-muted); font-size: 12px; line-height: 1.7; }
+.deadline-flow__band--within-day .deadline-flow__remaining { color: #a24a42; }
+.deadline-flow__timing { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; color: var(--ledger-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.deadline-flow__source { min-width: 0; margin-top: 3px; }
+.deadline-flow__source summary { min-height: 44px; padding: 12px 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.7; cursor: pointer; overflow-wrap: anywhere; }
+.deadline-flow__source-state { margin-left: 12px; }
+.deadline-flow__source--deleted .deadline-flow__source-state, .deadline-flow__source--identity_missing .deadline-flow__source-state, .deadline-flow__source--contradictory .deadline-flow__source-state { color: #805d22; }
+.deadline-flow__source > div { display: grid; gap: 9px; min-width: 0; margin-bottom: 14px; padding: 14px; background: var(--ledger-canvas); border-radius: 6px; }
+.deadline-flow__source strong { font-size: 13px; font-weight: 500; line-height: 1.6; overflow-wrap: anywhere; }
+.deadline-flow__source p { margin: 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.deadline-flow__meta { display: flex; flex-wrap: wrap; gap: 5px 12px; min-width: 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.deadline-flow__action { justify-self: start; min-height: 44px; padding: 8px 12px; color: var(--ledger-link); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; }
+.deadline-flow__action:hover:not(:disabled) { border-color: var(--ledger-indigo); }
+.deadline-flow__action:disabled { color: var(--ledger-muted); background: #eef1ef; border-color: #dfe5e0; cursor: wait; }
+.deadline-flow__action:focus-visible, .deadline-flow__all:focus-visible, .deadline-flow__task-name:focus-visible, .deadline-flow__source summary:focus-visible { outline: 3px solid rgba(50, 120, 100, .35); outline-offset: 3px; }
+@media (max-width: 560px) { .deadline-flow { padding: 18px; } .deadline-flow__task-heading { align-items: flex-start; flex-direction: column; gap: 4px; } .deadline-flow__source-state { margin-left: 8px; } .deadline-flow__action { width: 100%; } }
 </style>

@@ -45,11 +45,12 @@ export const materialsApi = {
   },
   uploadPolicy: () => http.get('/materials/upload-policy'),
   create: (payload) => http.post('/materials', payload),
-  upload: (files, courseId = null, materialType = null) => {
+  upload: (files, courseId = null, materialType = null, sourceTime = null) => {
     const formData = new window.FormData()
     files.forEach((file) => formData.append('files', file))
     if (courseId) formData.append('course_id', courseId)
     if (materialType) formData.append('material_type', materialType)
+    if (sourceTime) formData.append('source_time', sourceTime)
     return http.post('/materials/upload', formData)
   },
   retry: (id, config) => http.post(`/materials/${id}/retry`, undefined, config),
@@ -68,6 +69,11 @@ export const tasksApi = {
   update: (id, payload, config) => http.patch(`/tasks/${id}`, payload, config),
   complete: (id, config) => http.post(`/tasks/${id}/complete`, undefined, config),
   remove: (id, config) => http.delete(`/tasks/${id}`, config),
+}
+
+export const deadlineRadarApi = {
+  preview: (payload) => http.post('/deadline-radar/preview', payload),
+  apply: (payload) => http.post('/deadline-radar/apply', payload),
 }
 
 export const dashboardApi = {

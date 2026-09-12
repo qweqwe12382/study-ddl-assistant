@@ -1,0 +1,520 @@
+{
+  "evaluated_at": "2026-09-10T04:52:56.514430+00:00",
+  "corpus_sha256": "932b56aa3e4092a2b7af53e5b44589175d1d243184b9f97c99b966f836e6b72e",
+  "code_sha256": {
+    "backend/app/services/llm_provider.py": "1d52cfbac03d7f716315ab1d8323764bb821655165b518d7e2838f604962c5aa",
+    "backend/app/services/extraction.py": "4e70a7967773523a94bf62d87cbe95ba6c72bbcc080b87bbcc3674a19f666698",
+    "backend/tests/extraction_benchmark.py": "1fe81f29146e89070848423393b4014b4a8b1e7403c9400c0e4d764f295234cc",
+    "scripts/evaluate_independent_notices.py": "ec0cc69a34aad52625a974758ce21e639479dc72f8f9340416161e1106e4d5f5"
+  },
+  "provenance": {
+    "origin": "独立自拟的合成大学课程通知",
+    "blind_annotation": "编写与标注时未查看抽取实现、旧评测集、旧 fixtures、测试或评测结果",
+    "privacy": "全部内容为虚构示例，不含学生真实数据"
+  },
+  "cases": 16,
+  "limitation": "Independently authored synthetic text only; exact task-name matching is not semantic task detection. Missing/name-mismatched tasks count against date scores. No OCR, real students, external model, or human correction timing measured. Do not tune and then relabel this corpus as unseen.",
+  "totals": {
+    "exact_name_tp": 15,
+    "exact_name_fp": 0,
+    "exact_name_fn": 1,
+    "dated_correct": 12,
+    "dated_total": 13,
+    "null_correct": 3,
+    "null_total": 3
+  },
+  "coverage": {
+    "positive_notices": 13,
+    "positive_notices_without_candidates": 1,
+    "negative_notices": 3,
+    "negative_notices_without_candidates": 3,
+    "expected_tasks": 16,
+    "predicted_candidates": 15
+  },
+  "case_results": [
+    {
+      "id": "notice-20260910-01",
+      "category": "明确年月日",
+      "expected": [
+        {
+          "name": "提交“家乡红色文化调研报告”",
+          "due_local": "2026-09-18T20:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": [
+          {
+            "name": "提交“家乡红色文化调研报告”",
+            "due_local": "2026-09-18T20:00",
+            "source_quote": "《中国近现代史纲要》课程提醒：请各小组提交“家乡红色文化调研报告”，截止时间为2026年9月18日20:00。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "任务名直接取通知中的提交动作和报告原名；年月日与时刻均明确。"
+    },
+    {
+      "id": "notice-20260910-02",
+      "category": "明确年月日",
+      "expected": [
+        {
+          "name": "完成“示波器的使用”补做实验线上预约",
+          "due_local": "2026-09-12T12:30"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "完成“示波器的使用”补做实验线上预约",
+            "due_local": "2026-09-12T12:30",
+            "source_quote": "需要参加“示波器的使用”补做实验的同学，请在2026年9月12日12:30前完成线上预约。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "需完成的是补做实验的线上预约，不把实验本身另拆为任务；截止时刻明确。"
+    },
+    {
+      "id": "notice-20260910-03",
+      "category": "相对日期",
+      "expected": [
+        {
+          "name": "确认论文选题",
+          "due_local": "2026-09-11T17:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "相对日期“明天”以通知时间2026-09-10为基准，得到9月11日；后半句是规则说明，不另标任务。"
+    },
+    {
+      "id": "notice-20260910-04",
+      "category": "相对日期",
+      "expected": [
+        {
+          "name": "向学习委员登记调整机房",
+          "due_local": "2026-09-11T16:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "向学习委员登记调整机房",
+            "due_local": "2026-09-11T16:00",
+            "source_quote": "如需调整机房，请于本周五16:00前向学习委员登记。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "2026-09-10为周四，因此“本周五”标为9月11日；任务仅面向需要调整机房者。"
+    },
+    {
+      "id": "notice-20260910-05",
+      "category": "相对日期",
+      "expected": [
+        {
+          "name": "参加《创新创业基础》项目中期线上答疑",
+          "due_local": "2026-09-16T19:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "参加《创新创业基础》项目中期线上答疑",
+            "due_local": "2026-09-16T19:00",
+            "source_quote": "下周三晚上19:00召开《创新创业基础》项目中期线上答疑，请每组至少安排一名成员参加。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "按周一为一周起点，“下周三”是2026-09-16；参加要求明确，会议链接说明不构成任务。"
+    },
+    {
+      "id": "notice-20260910-06",
+      "category": "同通知多任务",
+      "expected": [
+        {
+          "name": "提交需求规格说明书",
+          "due_local": "2026-09-15T18:00"
+        },
+        {
+          "name": "上传原型演示视频",
+          "due_local": "2026-09-17T21:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": [
+          {
+            "name": "提交需求规格说明书",
+            "due_local": "2026-09-15T18:00",
+            "source_quote": "软件工程课程设计安排：各组须在2026年9月15日18:00前提交需求规格说明书"
+          },
+          {
+            "name": "上传原型演示视频",
+            "due_local": "2026-09-17T21:00",
+            "source_quote": "并在2026年9月17日21:00前上传原型演示视频。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 2,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 2,
+        "dated_total": 2,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "通知明确要求分别提交两项材料，按各自原文动作、名称和截止时间拆成两个任务。"
+    },
+    {
+      "id": "notice-20260910-07",
+      "category": "同通知多任务",
+      "expected": [
+        {
+          "name": "填写健康情况登记表",
+          "due_local": "2026-09-11T12:00"
+        },
+        {
+          "name": "到东门集合",
+          "due_local": "2026-09-12T07:20"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "填写健康情况登记表",
+            "due_local": "2026-09-11T12:00",
+            "source_quote": "请大家明天中午12:00前填写健康情况登记表"
+          },
+          {
+            "name": "到东门集合",
+            "due_local": "2026-09-12T07:20",
+            "source_quote": "9月12日早上7:20前到东门集合。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 2,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 2,
+        "dated_total": 2,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "登记和集合是两个独立行动；“明天”换算为9月11日，未写年份的9月12日按通知所在年份2026年标注。"
+    },
+    {
+      "id": "notice-20260910-08",
+      "category": "同通知多任务",
+      "expected": [
+        {
+          "name": "完成第3章在线测验",
+          "due_local": "2026-09-13T22:00"
+        },
+        {
+          "name": "将课堂案例讨论提纲发给助教",
+          "due_local": "2026-09-14T10:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "完成第3章在线测验",
+            "due_local": "2026-09-13T22:00",
+            "source_quote": "《微观经济学》本周任务如下：9月13日22:00前完成第3章在线测验"
+          },
+          {
+            "name": "将课堂案例讨论提纲发给助教",
+            "due_local": "2026-09-14T10:00",
+            "source_quote": "9月14日10:00前将课堂案例讨论提纲发给助教。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 2,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 2,
+        "dated_total": 2,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "项目符号虽省略年份，但均是通知之后最近的对应日期，按2026年标注；两项均有明确完成动作。"
+    },
+    {
+      "id": "notice-20260910-09",
+      "category": "变更与歧义",
+      "expected": [
+        {
+          "name": "提交《教育心理学》读书札记",
+          "due_local": "2026-09-16T20:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "提交《教育心理学》读书札记",
+            "due_local": "2026-09-16T20:00",
+            "source_quote": "通知更正：《教育心理学》读书札记原定9月14日20:00截止，现延长至2026年9月16日20:00。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "以更正后的9月16日为有效截止时间，旧日期不保留为另一任务；任务名补入课程名以保持指代清楚。"
+    },
+    {
+      "id": "notice-20260910-10",
+      "category": "变更与歧义",
+      "expected": [
+        {
+          "name": "参加毕业论文开题材料说明会",
+          "due_local": "2026-09-15T14:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "参加毕业论文开题材料说明会",
+            "due_local": "2026-09-15T14:00",
+            "source_quote": "因教师临时出差，原定9月11日14:00的毕业论文开题材料说明会改到9月15日14:00，地点仍为文科楼302。请毕业班同学准时参加。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "说明会时间已明确改期，只标新时间；两处日期均未写年份，结合通知时间按2026年理解。"
+    },
+    {
+      "id": "notice-20260910-11",
+      "category": "变更与歧义",
+      "expected": [
+        {
+          "name": "提交《社会调查方法》访谈提纲",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "提交《社会调查方法》访谈提纲",
+            "due_local": null,
+            "source_quote": "原计划本周提交的《社会调查方法》访谈提纲暂缓收取，新的提交时间等老师后续通知。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 1,
+        "null_total": 1
+      },
+      "annotation_note": "提交要求仍存在但截止时间被明确撤回并待后续通知，因此保留任务并将日期标为null；“继续修改”是建议而非带期限的新任务。"
+    },
+    {
+      "id": "notice-20260910-12",
+      "category": "变更与歧义",
+      "expected": [
+        {
+          "name": "完成《概率论》课程小论文",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "完成《概率论》课程小论文",
+            "due_local": null,
+            "source_quote": "《概率论》课程小论文请近期完成，具体提交日期会在下次课上确定。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 1,
+        "null_total": 1
+      },
+      "annotation_note": "“近期”不能唯一换算为时刻，且通知说明具体日期尚未确定，因此截止时间为null。"
+    },
+    {
+      "id": "notice-20260910-13",
+      "category": "变更与歧义",
+      "expected": [
+        {
+          "name": "参加实验室安全培训",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "参加实验室安全培训",
+            "due_local": null,
+            "source_quote": "实验室安全培训安排在下周，具体是周二还是周四要等场地确认。所有首次进入实验室的同学都需要参加。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 1,
+        "null_total": 1
+      },
+      "annotation_note": "参加要求明确，但“下周二或周四”存在两个候选日期且没有具体时刻，不能标为单一due_at。"
+    },
+    {
+      "id": "notice-20260910-14",
+      "category": "无任务通知",
+      "expected": [],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "内容只是确认原课程安排没有变化，“相互转告”作为通知惯用语，不标为可追踪的课程任务。"
+    },
+    {
+      "id": "notice-20260910-15",
+      "category": "无任务通知",
+      "expected": [],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "这是系统维护时间说明，没有要求学生完成行动；日期不应被误标成任务截止时间。"
+    },
+    {
+      "id": "notice-20260910-16",
+      "category": "无任务通知",
+      "expected": [],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "通知只告知材料已上传及查看位置，没有明确布置阅读或提交任务，也没有截止日期。"
+    }
+  ]
+}

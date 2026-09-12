@@ -109,6 +109,14 @@ class ExtractionResult(BaseModel):
     field_evidence: ExtractionFieldEvidenceSet = Field(default_factory=ExtractionFieldEvidenceSet)
 
 
+class ConfirmedExtractionTaskRef(BaseModel):
+    """Identity captured when the student confirms creation, never reconstructed."""
+
+    id: int = Field(gt=0)
+    navigation_key: str = Field(pattern=r"^[0-9a-f]{32}$")
+    name: str = Field(min_length=1, max_length=200)
+
+
 class ExtractionRead(ExtractionResult):
     material_id: int
     material_navigation_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
@@ -118,6 +126,7 @@ class ExtractionRead(ExtractionResult):
     error: str | None = None
     extracted_at: datetime | None = None
     confirmed_task_ids: list[int] = Field(default_factory=list)
+    confirmed_task_refs: list[ConfirmedExtractionTaskRef] = Field(default_factory=list)
 
 
 class ExtractionConfirm(BaseModel):

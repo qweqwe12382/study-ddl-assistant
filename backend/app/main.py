@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm.exc import StaleDataError
 
-from app.api import academic_calendar, agent, auth, courses, dashboard, exports, health, materials, reset, settings as settings_api, study_plans, study_preferences, tasks
+from app.api import academic_calendar, agent, auth, courses, dashboard, deadline_radar, exports, health, materials, reset, settings as settings_api, study_plans, study_preferences, tasks
 from app.auth_database import init_auth_db
 from app.api.errors import http_exception_handler, stale_data_exception_handler, validation_exception_handler
 from app.config import ensure_runtime_directories, settings
@@ -105,6 +105,7 @@ app.include_router(courses.router, dependencies=protected)
 app.include_router(academic_calendar.router, dependencies=protected)
 app.include_router(materials.router, dependencies=protected)
 app.include_router(tasks.router, dependencies=protected)
+app.include_router(deadline_radar.router, dependencies=protected)
 app.include_router(dashboard.router, dependencies=protected)
 app.include_router(study_plans.router, dependencies=protected)
 app.include_router(exports.router, dependencies=protected)

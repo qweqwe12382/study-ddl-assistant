@@ -63,6 +63,7 @@ from app.services.agent_feedback import (
 from app.services.study_plan import (
     decode_plan_agent_metadata,
     decode_plan_content,
+    decode_plan_unscheduled_items,
     encode_plan_content_with_metadata,
     plan_content_fingerprint,
 )
@@ -213,7 +214,7 @@ def _today_actions(
     courses = {course.id: course.name for course in db.scalars(select(Course)).all()}
     starts = {item.source_id: item for item in pending if item.action_type == START_TASK}
     rows: list[tuple[tuple[object, ...], dict[str, object]]] = []
-    for task in db.scalars(select(Task).where(Task.status != "completed")).all():
+    for task in db.scalars(select(Task).where(~Task.status.in_(["completed", "canceled"]))).all():
         due_at = as_utc(task.due_at) if task.due_at is not None else None
         hours = (due_at - now).total_seconds() / 3600 if due_at is not None else None
         if hours is not None and hours < 0:
@@ -693,6 +694,7 @@ def accept_plan_delta(
     check_edit_precondition(db, plan, f'"{plan.navigation_key}:{plan.revision}"')
     check_edit_precondition(db, task, f'"{task.navigation_key}:{task.revision}"')
     items, warnings, material_count, task_count = decode_plan_content(plan.plan_content)
+    unscheduled_items = decode_plan_unscheduled_items(plan.plan_content)
     metadata = decode_plan_agent_metadata(plan.plan_content)
     protected = set(metadata["manual_item_ids"])
     by_id = {item.id: item for item in items}
@@ -700,7 +702,7 @@ def accept_plan_delta(
     # explicit manual item, or baseline-mismatched item may be overwritten.
     for change in changes:
         current = by_id.get(change["item_id"])
-        if (current is None or current.status == "completed" or current.id in protected
+        if (current is None or current.status in {"completed", "canceled"} or current.id in protected
                 or metadata["baseline_items"].get(current.id) != current.model_dump(mode="json")
                 or current.model_dump(mode="json") != change["before"]):
             suggestion.status = "expired"
@@ -718,7 +720,8 @@ def accept_plan_delta(
         "item_ids": [change["item_id"] for change in changes],
     }]
     plan.plan_content = encode_plan_content_with_metadata(
-        list(by_id.values()), warnings, material_count=material_count, task_count=task_count, metadata=metadata
+        list(by_id.values()), warnings, material_count=material_count, task_count=task_count, metadata=metadata,
+        unscheduled_items=unscheduled_items,
     )
     after_payload = {"plan_id": plan.id, "plan_snapshot": plan_content_fingerprint(plan.plan_content),
                      "changes": [{"item_id": change["item_id"], "item": change["after"]} for change in changes]}

@@ -2,9 +2,8 @@
   <div ref="pageRoot" class="study-plans-page" :class="{ 'is-concise-view': isConciseView, 'is-detailed-view': isDetailedView }">
     <div class="page-intro planner-hero">
       <div class="hero-copy">
-        <p class="hero-eyebrow">{{ isConciseView ? '近期行动 / STUDY FLOW' : '复习计划 / STUDY LEDGER' }}</p>
-        <h1>{{ isConciseView ? '近期复习行动' : '复习计划' }}</h1>
-        <p>{{ isConciseView ? '先完成当前这一项，再按近期日程推进；生成依据和逐项编辑保留在完整视图。' : '先选择课程、考试日期和每日学习时间，再查看估时依据，最后生成可执行的每日清单。' }}</p>
+        <h1>复习计划</h1>
+        <p>{{ isConciseView ? '看看近期安排，从下一项开始。' : '设置课程、考试日期和每日时间，生成后逐日调整。' }}</p>
       </div>
       <aside class="hero-status" :class="{ 'is-loading': loading || plansLoading }" aria-live="polite">
         <span class="hero-status-label">当前计划</span>
@@ -95,11 +94,9 @@
     <el-card v-if="!planNavigationMismatch && (isDetailedView || (!loading && !plansLoading && !currentPlan))" class="content-card plan-config" shadow="never" v-loading="loading" :aria-busy="loading">
       <div class="card-heading config-heading">
         <div class="card-heading-copy">
-          <div class="step-label">01 / 填写条件</div>
-          <h2>选择课程，设置考试日期和每日时间</h2>
+          <h2>新建复习计划</h2>
           <p v-if="isDetailedView">生成新计划会新增一份记录，不会覆盖已有计划。</p>
         </div>
-        <el-tag v-if="isDetailedView" type="info" effect="plain">不会覆盖已有计划</el-tag>
       </div>
       <el-form :model="planForm" label-width="116px" class="plan-form">
         <el-form-item label="课程" required class="plan-form-course">
@@ -110,11 +107,12 @@
         <el-form-item label="考试日期" required class="plan-form-date">
           <el-date-picker v-model="planForm.exam_date" type="date" value-format="YYYY-MM-DD" placeholder="选择考试日期" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="每日学习时间" required class="plan-form-capacity">
+        <el-form-item label="本计划每日时间上限" required class="plan-form-capacity">
           <div class="minutes-field">
             <el-input-number v-model="planForm.daily_minutes" :min="15" :max="1440" style="width: 100%" />
             <span class="form-suffix">分钟</span>
           </div>
+          <p class="submit-hint">填写扣除上课后的可用复习时间；多份计划暂不自动共享额度。</p>
         </el-form-item>
         <el-form-item label="计划名称" class="plan-form-title">
           <el-input v-model="planForm.title" placeholder="留空则使用课程名生成" style="width: 100%" />
@@ -129,8 +127,7 @@
     <el-card v-if="isDetailedView && !planNavigationMismatch" class="content-card calibration-card" shadow="never" v-loading="calibrationLoading">
       <div class="card-heading calibration-heading">
         <div class="card-heading-copy">
-          <div class="step-label">02 / 查看依据</div>
-          <h2>查看这门课的预计用时依据</h2>
+          <h2>预计用时依据</h2>
           <p class="calibration-intro">系统会参考已完成任务的实际用时，逐步修正这门课的预计工作量。</p>
         </div>
         <div class="calibration-actions">
@@ -184,11 +181,36 @@
       </div>
     </el-card>
 
+    <section v-if="!planNavigationMismatch && currentPlan && unscheduledItems.length" class="unscheduled-snapshot" aria-labelledby="unscheduled-snapshot-heading">
+      <div class="unscheduled-snapshot-heading">
+        <div>
+          <p class="step-label">生成时快照</p>
+          <h2 id="unscheduled-snapshot-heading">未排入 {{ unscheduledTotalMinutes }} 分钟</h2>
+        </div>
+        <span>按生成当时的每日上限、截止时间和主题数量计算</span>
+      </div>
+      <ul class="unscheduled-list">
+        <li v-for="item in unscheduledItems" :key="`${item.source_type}:${item.source_id}`">
+          <div>
+            <strong>{{ item.label }}</strong>
+            <span>已排 {{ item.scheduled_minutes }} 分钟 · 未排 {{ item.unscheduled_minutes }} 分钟 · {{ unscheduledReasonLabel(item.reason) }}</span>
+          </div>
+          <el-button
+            v-if="canOpenUnscheduledSource(item)"
+            link
+            type="primary"
+            :loading="unscheduledNavigationLoading === unscheduledSourceKey(item)"
+            :disabled="Boolean(unscheduledNavigationLoading)"
+            @click="openUnscheduledSource(item)"
+          >查看{{ item.source_type === 'task' ? '任务' : '资料' }}</el-button>
+        </li>
+      </ul>
+    </section>
+
     <section v-if="!planNavigationMismatch && isConciseView && currentPlan" class="concise-plan-shell" aria-labelledby="concise-plan-heading">
       <div class="concise-plan-toolbar">
         <div>
-          <p class="step-label">当前复习计划</p>
-          <h2 id="concise-plan-heading" tabindex="-1">先做这一项</h2>
+          <h2 id="concise-plan-heading" tabindex="-1">近期安排</h2>
         </div>
         <div class="toolbar-actions concise-plan-actions">
           <el-select v-if="plans.length" v-model="selectedPlanId" placeholder="选择已有计划" aria-label="选择已有复习计划" style="width: 240px" @change="selectPlan">
@@ -219,7 +241,7 @@
           <div class="step-label">03 / 生成并保存</div>
           <h2 id="detailed-plan-heading" tabindex="-1">编辑并保存计划 <el-tag v-if="currentPlan" size="small" effect="plain">{{ currentPlan.items?.length || 0 }} 项</el-tag></h2>
           <div v-if="currentPlan && isDetailedView" class="plan-meta">
-            {{ currentPlan.title }} · 考试日期 {{ currentPlan.exam_date }} · 每日 {{ currentPlan.daily_minutes }} 分钟 ·
+            {{ currentPlan.title }} · 考试日期 {{ currentPlan.exam_date }} · 每日上限 {{ currentPlan.daily_minutes }} 分钟 ·
             已完成 {{ completedItemCount }}/{{ currentPlan.items?.length || 0 }} 项
           </div>
           <p v-else-if="isDetailedView" class="table-heading-note">{{ plansLoading ? '已有计划读取中…' : '生成计划后，可在这里逐日调整并保存。' }}</p>
@@ -291,7 +313,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ElAlert,
@@ -311,14 +333,14 @@ import {
 } from 'element-plus'
 
 import { agentApi, coursesApi, exportsApi, studyPlansApi } from '../api'
-import StudyWeekBoard from '../components/StudyWeekBoard.vue'
 import EditConflictCard from '../components/EditConflictCard.vue'
 import { useViewMode } from '../composables/useViewMode'
 import { downloadFile } from '../utils/download'
 import { toDateInputValue } from '../utils/format'
-import { navigationKey } from '../utils/materialSourceNavigation'
+import { navigationKey, positiveMaterialId, validatedSourceNavigationTarget } from '../utils/materialSourceNavigation'
 import { editBaseline, editRequestConfig, isEditConflict, isEntityGone, preconditionMessage } from '../utils/editPrecondition'
 
+const StudyWeekBoard = defineAsyncComponent(() => import('../components/StudyWeekBoard.vue'))
 const loading = ref(false)
 const plansLoading = ref(false)
 const generating = ref(false)
@@ -349,6 +371,7 @@ const routePlanError = ref('')
 const pageRoot = ref(null)
 const weekBoardRef = ref(null)
 const detailFocusItemId = ref('')
+const unscheduledNavigationLoading = ref('')
 const persistedPlanItems = ref([])
 const calibration = ref(normalizeCalibration({}))
 const calibrationResetKeys = new Map()
@@ -372,6 +395,12 @@ const progressPercent = computed(() => {
 const completedItemCount = computed(() => currentPlan.value?.items?.filter((item) => item.status === 'completed').length || 0)
 const totalMinutes = computed(() => currentPlan.value?.items?.reduce((total, item) => total + (item.minutes || 0), 0) || 0)
 const completedMinutes = computed(() => currentPlan.value?.items?.reduce((total, item) => total + (item.status === 'completed' ? item.minutes || 0 : 0), 0) || 0)
+const unscheduledItems = computed(() => (Array.isArray(currentPlan.value?.unscheduled_items) ? currentPlan.value.unscheduled_items : [])
+  .filter((item) => ['task', 'material'].includes(item?.source_type)
+    && positiveMaterialId(item?.source_id) !== null
+    && Number.isInteger(item?.scheduled_minutes) && item.scheduled_minutes >= 0
+    && Number.isInteger(item?.unscheduled_minutes) && item.unscheduled_minutes > 0))
+const unscheduledTotalMinutes = computed(() => unscheduledItems.value.reduce((total, item) => total + item.unscheduled_minutes, 0))
 const selectedCourse = computed(() => courses.value.find((course) => course.id === planForm.course_id) || null)
 const planRiskWarnings = computed(() => (Array.isArray(currentPlan.value?.warnings) ? currentPlan.value.warnings : [])
   .filter((warning) => !String(warning || '').includes('已按该课程完成反馈校准系数')))
@@ -954,6 +983,48 @@ function sourceLabel(item) {
   return labels.join('、') || '课程范围'
 }
 
+function unscheduledReasonLabel(reason) {
+  return ({
+    deadline_passed: '截止时间已过',
+    daily_capacity: '每日时间不足',
+    daily_focus_limit: '每日主题已满',
+    daily_capacity_and_focus_limit: '时间与主题数量均受限',
+  })[reason] || '未能排入'
+}
+
+function unscheduledSourceKey(item) {
+  return `${item?.source_type || ''}:${item?.source_id || ''}:${item?.navigation_key || ''}`
+}
+
+function canOpenUnscheduledSource(item) {
+  return ['task', 'material'].includes(item?.source_type)
+    && positiveMaterialId(item?.source_id) !== null
+    && Boolean(navigationKey(item?.navigation_key))
+}
+
+async function openUnscheduledSource(item) {
+  if (!canOpenUnscheduledSource(item) || unscheduledNavigationLoading.value) return
+  const sourceRef = {
+    source_type: item.source_type,
+    source_id: String(item.source_id),
+    navigation_key: item.navigation_key,
+  }
+  unscheduledNavigationLoading.value = unscheduledSourceKey(item)
+  try {
+    const resolved = await agentApi.resolveSourceRefs([sourceRef])
+    const target = validatedSourceNavigationTarget(resolved, sourceRef)
+    if (!target) {
+      ElMessage.warning('该来源已删除或身份已变化，请从对应列表重新查找。')
+      return
+    }
+    await router.push(target)
+  } catch (err) {
+    ElMessage.error(err?.message || '来源入口暂时无法解析，请稍后重试。')
+  } finally {
+    unscheduledNavigationLoading.value = ''
+  }
+}
+
 async function persistPlan(items, successMessage, { includePlanFields = true } = {}) {
   if (!planSourceOperationAllowed() || !currentPlan.value || saving.value) return null
   const config = editRequestConfig(planBaseline.value)
@@ -1139,24 +1210,34 @@ onMounted(loadData)
 .plan-retry-button { min-height: 44px; flex: 0 0 auto; }
 .concise-plan-shell { min-width: 0; margin-bottom: 22px; }
 .concise-plan-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 12px; }
-.concise-plan-toolbar h2 { margin: 5px 0 0; color: var(--ledger-ink); font-family: "Aptos Display", "Microsoft YaHei", sans-serif; font-size: 18px; }
+.concise-plan-toolbar h2 { margin: 5px 0 0; color: var(--ledger-ink); font-family: inherit; font-size: 18px; }
 .concise-plan-actions { display: flex; min-width: 300px; flex: 0 1 380px; flex-wrap: wrap; gap: 8px; }
 .concise-plan-actions > .el-select { width: 260px !important; flex: 1 1 260px; }
 .concise-plan-warnings { padding: 12px 0 0; }
+.unscheduled-snapshot { margin-bottom: 16px; padding: 15px 17px; background: #fff9ee; border: 1px solid #ead6ae; border-left: 3px solid var(--ledger-amber); border-radius: 4px; }
+.unscheduled-snapshot-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; }
+.unscheduled-snapshot-heading h2 { margin: 5px 0 0; color: var(--ledger-ink); font-size: 16px; }
+.unscheduled-snapshot-heading > span { max-width: 48ch; color: var(--ledger-muted); font-size: 12px; line-height: 1.5; text-align: right; }
+.unscheduled-list { display: grid; gap: 7px; margin: 13px 0 0; padding: 0; list-style: none; }
+.unscheduled-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding-top: 7px; border-top: 1px solid #eadfc9; }
+.unscheduled-list li > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.unscheduled-list strong, .unscheduled-list span { overflow-wrap: anywhere; }
+.unscheduled-list strong { color: var(--ledger-ink); font-size: 13px; }
+.unscheduled-list span { color: var(--ledger-muted); font-size: 12px; line-height: 1.5; }
 
 .planner-hero { align-items: stretch; gap: 22px; margin-bottom: 12px; }
 .hero-copy { min-width: 0; flex: 1 1 auto; }
 .hero-eyebrow, .section-eyebrow, .step-label {
   margin: 0;
   color: var(--ledger-indigo);
-  font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .12em;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
   line-height: 1.4;
-  text-transform: uppercase;
+  text-transform: none;
 }
-.hero-copy h1 { margin-top: 7px; }
+.hero-copy h1 { margin-top: 0; }
 .hero-copy > p:last-child { max-width: 66ch; }
 .hero-status {
   display: flex;
@@ -1168,18 +1249,17 @@ onMounted(loadData)
   padding: 15px 17px;
   background: var(--ledger-paper);
   border: 1px solid var(--ledger-line);
-  border-left: 3px solid var(--ledger-indigo);
-  border-radius: 3px;
+  border-radius: 10px;
 }
 .hero-status.is-loading { border-left-color: var(--ledger-amber); }
-.hero-status-label { color: var(--ledger-muted); font-size: 12px; letter-spacing: .08em; line-height: 1.45; }
+.hero-status-label { color: var(--ledger-muted); font-size: 12px; letter-spacing: 0; line-height: 1.45; }
 .hero-status strong {
   display: block;
   min-width: 0;
   margin-top: 7px;
   overflow-wrap: anywhere;
   color: var(--ledger-ink);
-  font-family: "Aptos Display", "Microsoft YaHei", sans-serif;
+  font-family: inherit;
   font-size: 16px;
   line-height: 1.4;
   white-space: normal;
@@ -1191,36 +1271,36 @@ onMounted(loadData)
 .planning-sequence {
   margin-bottom: 22px;
   padding: 19px 20px 20px;
-  background: rgba(255, 254, 251, .82);
+  background: var(--ledger-paper);
   border: 1px solid var(--ledger-line);
   border-left: 3px solid var(--ledger-indigo);
   border-radius: 4px;
 }
 .sequence-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; }
-.sequence-heading h2 { margin: 5px 0 0; color: var(--ledger-ink); font-family: "Aptos Display", "Microsoft YaHei", sans-serif; font-size: 18px; }
+.sequence-heading h2 { margin: 5px 0 0; color: var(--ledger-ink); font-family: inherit; font-size: 18px; }
 .sequence-heading > p { max-width: 42ch; margin: 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; text-align: right; }
 .sequence-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 20px 0 0; padding: 0; list-style: none; }
 .sequence-step { display: grid; position: relative; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; min-width: 0; padding: 0 22px 0 0; }
-.sequence-step:not(:last-child) { margin-right: 22px; border-right: 1px solid #dfe4ed; }
+.sequence-step:not(:last-child) { margin-right: 22px; border-right: 1px solid var(--ledger-line); }
 .sequence-marker {
   display: grid;
   place-items: center;
   width: 42px;
   height: 42px;
   color: var(--ledger-indigo);
-  background: #f0f1ff;
-  border: 1px solid #bbc0fa;
+  background: #f1f7f3;
+  border: 1px solid #c8ddd1;
   border-radius: 3px;
-  font-family: Bahnschrift, "Arial Narrow", sans-serif;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: .04em;
+  letter-spacing: 0;
 }
 .sequence-step.is-ready .sequence-marker { color: #357862; background: #edf6f1; border-color: #a6c8b7; }
 .sequence-step.is-loading .sequence-marker { color: var(--ledger-amber-text); background: #fff7eb; border-color: #e7c995; }
 .sequence-step.is-empty .sequence-marker, .sequence-step.is-warning .sequence-marker { color: var(--ledger-coral); background: #fff2f2; border-color: #e2b2b2; }
 .sequence-body { min-width: 0; }
-.sequence-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-height: 18px; color: var(--ledger-muted); font-size: 12px; letter-spacing: .05em; line-height: 1.45; }
+.sequence-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-height: 18px; color: var(--ledger-muted); font-size: 12px; letter-spacing: 0; line-height: 1.45; }
 .sequence-topline strong { min-width: 0; overflow-wrap: anywhere; color: var(--ledger-indigo); font-size: 12px; font-weight: 700; line-height: 1.4; white-space: normal; }
 .sequence-step.is-ready .sequence-topline strong { color: #357862; }
 .sequence-step.is-loading .sequence-topline strong { color: var(--ledger-amber-text); }
@@ -1260,12 +1340,12 @@ onMounted(loadData)
 .calibration-loading, .calibration-empty { padding: 17px 0 1px; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .calibration-loading { color: var(--ledger-amber-text); }
 .calibration-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-.calibration-metric { min-width: 0; min-height: 74px; padding: 12px 13px; background: #f8f9fc; border: 1px solid #e7eaf1; border-left: 3px solid #bbc0fa; border-radius: 3px; }
+.calibration-metric { min-width: 0; min-height: 74px; padding: 12px 13px; background: #f5f8f7; border: 1px solid var(--ledger-line); border-left: 3px solid #c8ddd1; border-radius: 3px; }
 .calibration-metric:nth-child(2) { border-left-color: #e1bd7b; }
 .calibration-metric:nth-child(3) { border-left-color: #d79b9b; }
 .calibration-metric span { display: block; color: var(--ledger-muted); font-size: 12px; line-height: 1.45; }
 .calibration-metric strong { display: block; min-width: 0; margin-top: 7px; overflow-wrap: anywhere; color: var(--ledger-ink); font-size: 15px; line-height: 1.35; white-space: normal; }
-.calibration-basis { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; color: var(--ledger-muted); border-top: 1px solid #e7eaf1; font-size: 13px; line-height: 1.7; }
+.calibration-basis { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; color: var(--ledger-muted); border-top: 1px solid var(--ledger-line); font-size: 13px; line-height: 1.7; }
 .calibration-basis-label { flex: 0 0 auto; color: var(--ledger-ink); font-weight: 700; }
 .calibration-basis > span:last-child { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
 
@@ -1275,15 +1355,15 @@ onMounted(loadData)
 .plan-meta { min-width: 0; margin-top: 7px; color: var(--ledger-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .toolbar-actions { align-items: center; justify-content: flex-end; }
 .toolbar-actions .el-button { min-height: 44px; }
-.study-plans-page :deep(.source-focused-row td) { background: #f0f1ff !important; }
-.study-plans-page :deep(.source-focused-row) { outline: 3px solid rgba(89, 100, 237, .28); outline-offset: -3px; }
-.plan-summary { display: grid; grid-template-columns: 180px 180px minmax(260px, 1fr); gap: 22px; align-items: center; padding: 16px 22px; background: #f7f8fc; border-bottom: 1px solid #e2e7ee; }
-.summary-item { display: flex; min-width: 0; flex-direction: column; gap: 6px; padding-right: 18px; color: var(--ledger-muted); border-right: 1px solid #dfe4ed; font-size: 12px; }
-.summary-item strong { color: var(--ledger-ink); font-family: Bahnschrift, "Aptos Display", "Microsoft YaHei", sans-serif; font-size: 17px; }
+.study-plans-page :deep(.source-focused-row td) { background: #f1f7f3 !important; }
+.study-plans-page :deep(.source-focused-row) { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 28%, transparent); outline-offset: -3px; }
+.plan-summary { display: grid; grid-template-columns: 180px 180px minmax(260px, 1fr); gap: 22px; align-items: center; padding: 16px 22px; background: #f1f7f3; border-bottom: 1px solid var(--ledger-line); }
+.summary-item { display: flex; min-width: 0; flex-direction: column; gap: 6px; padding-right: 18px; color: var(--ledger-muted); border-right: 1px solid var(--ledger-line); font-size: 12px; }
+.summary-item strong { color: var(--ledger-ink); font-family: inherit; font-size: 17px; }
 .summary-progress-label { display: flex; justify-content: space-between; margin-bottom: 7px; color: var(--ledger-muted); font-size: 12px; }
 .summary-progress-label strong { color: var(--ledger-indigo); }
 .summary-progress :deep(.el-progress-bar__outer), .summary-progress :deep(.el-progress-bar__inner) { border-radius: 2px; }
-.summary-progress :deep(.el-progress-bar__outer) { background: #e3e7ef; }
+.summary-progress :deep(.el-progress-bar__outer) { background: #e5ede8; }
 .summary-progress :deep(.el-progress-bar__inner) { background: var(--ledger-indigo); }
 .plan-warnings { display: grid; gap: 8px; padding: 16px 22px 0; }
 .plan-warnings-concise { padding-top: 12px; }
@@ -1305,24 +1385,24 @@ onMounted(loadData)
   min-height: 44px;
   margin-top: 16px;
   padding: 8px 18px;
-  color: #fffefb;
+  color: #ffffff;
   background: var(--ledger-indigo);
   border-radius: 4px;
   font-size: 13px;
   text-decoration: none;
 }
-.plan-empty-cta:hover { background: #4853d5; }
-.plan-empty-cta:focus-visible { outline: 3px solid rgba(89, 100, 237, .42); outline-offset: 3px; }
+.plan-empty-cta:hover { background: var(--ledger-link); }
+.plan-empty-cta:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: 3px; }
 
 .plan-form :deep(.el-input__wrapper:focus-within),
 .plan-form :deep(.el-textarea__inner:focus),
 .plan-form :deep(.el-select .el-input.is-focus .el-input__wrapper),
 .plan-table-wrap :deep(.el-input__wrapper:focus-within),
 .plan-table-wrap :deep(.el-textarea__inner:focus) {
-  box-shadow: 0 0 0 3px rgba(89, 100, 237, .25), 0 0 0 1px var(--ledger-indigo) inset !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ledger-indigo) 25%, transparent), 0 0 0 1px var(--ledger-indigo) inset !important;
 }
-.study-plans-page :deep(.el-button:focus-visible) { outline: 3px solid rgba(89, 100, 237, .42); outline-offset: 3px; }
-#concise-plan-heading:focus-visible, #detailed-plan-heading:focus-visible { outline: 3px solid rgba(89, 100, 237, .42); outline-offset: 3px; }
+.study-plans-page :deep(.el-button:focus-visible) { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: 3px; }
+#concise-plan-heading:focus-visible, #detailed-plan-heading:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: 3px; }
 
 @media (max-width: 1200px) {
   .plan-summary { grid-template-columns: 150px 150px minmax(220px, 1fr); }
@@ -1354,7 +1434,7 @@ onMounted(loadData)
   .sequence-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
   .sequence-heading > p { max-width: none; text-align: left; }
   .sequence-list { display: block; }
-  .sequence-step:not(:last-child) { margin-right: 0; margin-bottom: 16px; padding-right: 0; padding-bottom: 16px; border-right: 0; border-bottom: 1px solid #dfe4ed; }
+  .sequence-step:not(:last-child) { margin-right: 0; margin-bottom: 16px; padding-right: 0; padding-bottom: 16px; border-right: 0; border-bottom: 1px solid var(--ledger-line); }
 }
 
 @media (max-width: 900px) and (max-height: 480px) and (orientation: landscape) {

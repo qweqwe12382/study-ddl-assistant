@@ -139,6 +139,11 @@ def test_m813_queue_projects_only_current_plan_delta_as_navigation_review(client
     from datetime import date
 
     course = client.post("/api/courses", json={"name": "计划差异课程"}).json()
+    material = client.post(
+        "/api/materials",
+        json={"course_id": course["id"], "original_filename": "计划差异基础资料.md"},
+    )
+    assert material.status_code == 201
     plan = client.post("/api/study-plans/generate", json={
         "course_id": course["id"], "exam_date": (date.today() + timedelta(days=5)).isoformat(), "daily_minutes": 60,
     }).json()

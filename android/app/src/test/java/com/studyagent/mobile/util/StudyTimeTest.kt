@@ -15,4 +15,13 @@ class StudyTimeTest {
         assertEquals("时间待补充", StudyTime.formatDateTime("not-a-date"))
         assertNull(StudyTime.dateOf(null))
     }
+
+    @Test
+    fun `deadline epoch keeps the source instant while display uses China time`() {
+        assertEquals(
+            1788366600000L,
+            StudyTime.epochMillis("2026-09-02T16:30:00Z"),
+        )
+        assertNull(StudyTime.epochMillis("2026-09-02"))
+    }
 }

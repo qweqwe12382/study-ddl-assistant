@@ -36,6 +36,8 @@ _SUGGESTION_ACTIONS: dict[str, str] = {
     "apply_plan_delta": "复习计划调整建议",
     "complete_task": "任务完成反馈",
     "reset_course_calibration": "课程估时校准重置",
+    "update_deadline_from_notice": "通知截止时间变更",
+    "cancel_task_from_notice": "通知任务取消",
 }
 _EVENTS: dict[str, tuple[str, str, str, str]] = {
     "suggestion_created": ("suggestion_generated", "generated", "智能体建议已生成", "已生成一项需要人工确认的建议。"),
@@ -55,6 +57,8 @@ _EVENTS: dict[str, tuple[str, str, str, str]] = {
     "task_completed": ("task_recorded", "recorded", "任务完成已记录", "已记录任务完成状态，相关调整仍需单独确认。"),
     "task_feedback_updated": ("task_recorded", "recorded", "任务完成反馈已更新", "已记录用户主动提供的完成反馈。"),
     "task_overdue": ("task_recorded", "recorded", "任务逾期状态已记录", "已记录任务逾期状态，可在关联任务中继续处理。"),
+    "task_canceled": ("task_recorded", "recorded", "任务取消已记录", "已按用户确认记录任务取消，原任务与通知证据继续保留。"),
+    "deadline_change_executed": ("suggestion_executed", "executed", "通知变更已执行", "已按用户确认更新关联任务，并保留变更回执。"),
     "actual_minutes_changed": ("task_recorded", "recorded", "实际用时已更新", "已记录任务实际用时变化。"),
     "plan_delta_evaluated": ("evaluation_recorded", "recorded", "计划差异已评估", "已完成受限的计划差异评估，未自动修改计划。"),
     "calibration_reset": ("calibration_recorded", "executed", "课程估时校准已重置", "已重置用于估时的校准窗口，历史任务记录未删除。"),

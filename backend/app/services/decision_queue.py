@@ -137,7 +137,7 @@ def _pending_suggestion_candidates(db: Session, pending: Iterable[AgentSuggestio
             )
         elif suggestion.action_type == ADJUST_PRIORITY and suggestion.source_type == "task":
             task = db.get(Task, suggestion.source_id)
-            if task is None or task.status == "completed" or task.navigation_key != suggestion.source_navigation_key:
+            if task is None or task.status in {"completed", "canceled"} or task.navigation_key != suggestion.source_navigation_key:
                 continue
             yield _item(
                 decision_id=f"priority_suggestion:{suggestion.id}", kind="suggestion_priority_review",
@@ -156,7 +156,7 @@ def _capacity_candidates(db: Session, candidates: Iterable[dict[str, object]]) -
         target_id = candidate.get("target_id")
         if action_type in (SET_TASK_ESTIMATE, START_TASK) and isinstance(target_id, int):
             task = db.get(Task, target_id)
-            if task is None or task.status == "completed":
+            if task is None or task.status in {"completed", "canceled"}:
                 continue
             if action_type == SET_TASK_ESTIMATE:
                 yield _item(

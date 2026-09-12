@@ -24,7 +24,7 @@ export function useViewMode() {
     viewMode.value = nextMode
     viewModeAnnouncement.value = nextMode === 'detailed'
       ? '已切换为完整视图。'
-      : '已切换为专注视图。'
+      : '已切换为简洁视图。'
     try {
       if (typeof window !== 'undefined') window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, nextMode)
     } catch {

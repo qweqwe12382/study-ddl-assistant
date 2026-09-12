@@ -1,5 +1,8 @@
 package com.studyagent.mobile.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -57,6 +60,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +76,7 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -97,6 +102,9 @@ import com.studyagent.mobile.ui.theme.Ink
 import com.studyagent.mobile.ui.theme.StudyAgentTheme
 import com.studyagent.mobile.ui.theme.StudyTeal
 import com.studyagent.mobile.util.StudyTime
+import com.studyagent.mobile.util.DeadlineCalendarEvent
+import com.studyagent.mobile.util.DeadlineCalendarEventFactory
+import com.studyagent.mobile.util.toCalendarInsertIntent
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -383,7 +391,7 @@ private fun AuthenticatedShell(
 
 @Composable
 private fun MobileTopBar(state: AppUiState, onRefresh: () -> Unit, onSettings: () -> Unit) {
-    val activeCount = state.tasks.count { it.status != "completed" }
+    val activeCount = state.tasks.count { it.status != "completed" && it.status != "canceled" }
     val eyebrow = when (state.tab) {
         MainTab.TODAY -> StudyTime.today().format(DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA))
         MainTab.CALENDAR -> "第 ${state.selectedWeek} 教学周"
@@ -499,7 +507,7 @@ private fun TodayScreen(state: AppUiState, onCompleteTask: (TaskItem) -> Unit, m
     val today = StudyTime.today()
     val day = today.dayOfWeek.value
     val sessions = state.academic?.classSessions.orEmpty().filter { it.weekday == day }
-    val activeTasks = state.tasks.filter { it.status != "completed" }
+    val activeTasks = state.tasks.filter { it.status != "completed" && it.status != "canceled" }
     val todayTasks = activeTasks.filter { StudyTime.dateOf(it.dueAt)?.let { date -> !date.isAfter(today) } == true }
     val nextExam = state.academic?.exams?.firstOrNull()
 
@@ -657,6 +665,7 @@ private fun TimelineTask(task: TaskItem, completing: Boolean, onComplete: (TaskI
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                DeadlineCalendarAction(task)
             }
             Spacer(Modifier.width(8.dp))
             CompletionButton(completing) { onComplete(task) }
@@ -851,7 +860,7 @@ private fun ExamCard(exam: ExamItem) {
 
 @Composable
 private fun TasksScreen(state: AppUiState, onCompleteTask: (TaskItem) -> Unit, modifier: Modifier = Modifier) {
-    val active = state.tasks.filter { it.status != "completed" }
+    val active = state.tasks.filter { it.status != "completed" && it.status != "canceled" }
     val completed = state.tasks.filter { it.status == "completed" }.takeLast(5).reversed()
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -911,10 +920,43 @@ private fun TaskCard(task: TaskItem, completing: Boolean, onComplete: (TaskItem)
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                DeadlineCalendarAction(task)
             }
             Spacer(Modifier.width(10.dp))
             CompletionButton(completing) { onComplete(task) }
         }
+    }
+}
+
+@Composable
+private fun DeadlineCalendarAction(task: TaskItem) {
+    val context = LocalContext.current
+    val calendarEvent = remember(task.name, task.courseName, task.dueAt) {
+        DeadlineCalendarEventFactory.from(task)
+    }
+    if (calendarEvent == null) return
+
+    TextButton(
+        onClick = { openCalendarEditor(context, calendarEvent) },
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 2.dp),
+    ) {
+        Text("加入系统日历", style = MaterialTheme.typography.labelLarge)
+    }
+    Text(
+        "打开后请检查提醒并保存；结束时间为截止后 1 分钟，仅作截止标记。",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+private fun openCalendarEditor(context: Context, calendarEvent: DeadlineCalendarEvent) {
+    val intent = calendarEvent.toCalendarInsertIntent()
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "未找到可打开的系统日历应用", Toast.LENGTH_SHORT).show()
+    } catch (_: SecurityException) {
+        Toast.makeText(context, "系统日历暂时无法打开，请稍后重试", Toast.LENGTH_SHORT).show()
     }
 }
 

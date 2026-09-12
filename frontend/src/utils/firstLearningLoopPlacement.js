@@ -9,17 +9,19 @@ export function strictNonNegativeInteger(value) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
 }
 
-export function isFirstLearningLoopIncomplete(progress) {
-  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) return false
+export function firstLearningProgress(progress) {
+  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) return null
 
   const counts = Object.fromEntries(countKeys.map((key) => [key, strictNonNegativeInteger(progress[key])]))
-  if (Object.values(counts).some((count) => count === null)) return false
+  if (Object.values(counts).some((count) => count === null)) return null
 
   const taskCount = counts.active_task_count + counts.completed_task_count
-  return counts.courses_count < 1
-    || counts.materials_count < 1
-    || taskCount < 1
-    || counts.completed_task_count < 1
+  return { started: taskCount > 0, completed: counts.completed_task_count > 0 }
+}
+
+export function isFirstLearningLoopIncomplete(progress) {
+  const status = firstLearningProgress(progress)
+  return status !== null && !status.completed
 }
 
 export function shouldPrioritizeFirstLearningLoop({

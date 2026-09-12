@@ -2,8 +2,7 @@
   <section class="material-inbox-focus" aria-labelledby="material-inbox-focus-title" :aria-busy="viewState === 'loading'">
     <header class="inbox-header">
       <div class="inbox-heading">
-        <p class="inbox-kicker">AI 资料入口</p>
-        <h2 id="material-inbox-focus-title">先处理最需要确认的资料</h2>
+        <h2 id="material-inbox-focus-title">待整理的资料</h2>
         <p class="inbox-description">识别结果只是候选；核对后，才会创建正式截止任务。</p>
       </div>
       <span class="inbox-state-label" :class="`is-${viewState}`">{{ stateLabel }}</span>
@@ -261,21 +260,16 @@ function runPrimaryAction(material) {
 <style scoped>
 .material-inbox-focus {
   --inbox-ink: var(--ledger-ink, #1e2a44);
-  --inbox-paper: var(--ledger-paper, #fffefb);
+  --inbox-paper: var(--ledger-paper, #ffffff);
   --inbox-canvas: var(--ledger-canvas, #f7f8fb);
   --inbox-line: var(--ledger-line, #d9e0ea);
   --inbox-muted: var(--ledger-muted, #667085);
-  --inbox-indigo: var(--ledger-indigo, #5964ed);
+  --inbox-indigo: var(--ledger-indigo, #327864);
   --inbox-amber: var(--ledger-amber, #c9822e);
   --inbox-coral: var(--ledger-coral, #c94c4c);
   min-width: 0;
-  padding: 18px;
+  padding: 0;
   color: var(--inbox-ink);
-  background: var(--inbox-paper);
-  border: 1px solid var(--inbox-line);
-  border-top: 3px solid var(--inbox-ink);
-  border-radius: 8px;
-  box-shadow: var(--ledger-shadow, 0 8px 24px rgba(30, 42, 68, .06));
 }
 
 .inbox-header,
@@ -302,8 +296,8 @@ function runPrimaryAction(material) {
 .inbox-notice p, .empty-inbox p { margin: 4px 0 0; }
 .inbox-notice .inbox-button { margin-top: 12px; }
 .inbox-queue { display: grid; gap: 10px; min-width: 0; margin-top: 16px; }
-.inbox-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, .6fr); gap: 14px; min-width: 0; padding: 14px; background: #fbfcfe; border: 1px solid #e2e7ee; border-left: 3px solid var(--inbox-indigo); border-radius: 5px; }
-.inbox-item.is-focused { background: #f5f6ff; border-color: rgba(89, 100, 237, .55); box-shadow: inset 3px 0 0 var(--inbox-indigo); }
+.inbox-item { display: grid; grid-template-columns: minmax(0, 1fr) minmax(210px, .6fr); gap: 14px; min-width: 0; padding: 16px; background: var(--inbox-paper); border: 0; border-bottom: 1px solid var(--inbox-line); border-left: 3px solid #c8ddd1; border-radius: 0 8px 8px 0; }
+.inbox-item.is-focused { background: #f1f7f3; border-color: color-mix(in srgb, var(--ledger-indigo) 55%, transparent); box-shadow: inset 3px 0 0 var(--inbox-indigo); }
 .inbox-item-main { min-width: 0; }
 .inbox-item-heading { align-items: flex-start; flex-wrap: wrap; gap: 8px; }
 .inbox-item-heading h3 { flex: 1 1 160px; min-width: 0; margin: 0; color: #2e3b54; font-size: 14px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
@@ -312,12 +306,12 @@ function runPrimaryAction(material) {
 .material-meta div { min-width: 0; }
 .material-meta dt { color: var(--inbox-muted); font-size: 12px; line-height: 1.4; }
 .material-meta dd { min-width: 0; margin: 2px 0 0; color: var(--inbox-ink); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
-.material-snippet { margin: 9px 0 0; padding-left: 8px; color: #52617a; border-left: 2px solid #c9c2ff; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; word-break: break-word; }
+.material-snippet { margin: 9px 0 0; padding-left: 8px; color: #52617a; border-left: 2px solid #c8ddd1; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; word-break: break-word; }
 .inbox-item-side { flex-direction: column; align-items: stretch; justify-content: space-between; gap: 12px; min-width: 0; }
 .status-list { flex-wrap: wrap; align-items: flex-start; gap: 6px; }
 .status-chip { max-width: 100%; padding: 4px 7px; color: #43516b; border: 1px solid var(--inbox-line); border-radius: 4px; font-size: 12px; font-weight: 650; line-height: 1.4; overflow-wrap: anywhere; }
 .status-chip.is-working, .status-chip.is-review { color: #80531d; border-color: #e4c48f; }
-.status-chip.is-ready { color: #4654ae; border-color: #bdc4f8; }
+.status-chip.is-ready { color: var(--ledger-link); border-color: #c8ddd1; }
 .status-chip.is-complete { color: #356052; border-color: #b9d8c5; }
 .status-chip.is-failed { color: #9e3f3f; border-color: #e6c1c1; }
 .item-actions { flex-wrap: wrap; gap: 8px; }
@@ -326,15 +320,15 @@ function runPrimaryAction(material) {
 .inbox-button.is-detail { flex: 1 1 96px; }
 .inbox-button.is-manage { flex: 1 1 146px; color: var(--inbox-ink); border-color: #9faabc; }
 .inbox-button:hover:not(:disabled) { color: var(--inbox-indigo); border-color: var(--inbox-indigo); }
-.inbox-button.is-primary:hover:not(:disabled) { color: var(--inbox-paper); background: #4853cf; border-color: #4853cf; }
+.inbox-button.is-primary:hover:not(:disabled) { color: var(--inbox-paper); background: var(--ledger-link); border-color: var(--ledger-link); }
 .inbox-button:disabled { color: #8490a3; background: #f2f4f7; border-color: #dce1e8; cursor: wait; }
-.inbox-button:focus-visible { outline: 3px solid rgba(89, 100, 237, .42); outline-offset: 3px; }
+.inbox-button:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: 3px; }
 .empty-inbox .inbox-button { margin-top: 12px; }
-.remaining-note { margin: 12px 0 0; padding: 10px 12px; color: #52617a; background: #f4f5ff; border-left: 3px solid var(--inbox-indigo); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.remaining-note { margin: 12px 0 0; padding: 10px 12px; color: #52617a; background: #f1f7f3; border-left: 3px solid var(--inbox-indigo); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
 .inbox-footer { flex-wrap: wrap; gap: 8px; min-width: 0; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--inbox-line); }
 
 @media (max-width: 680px) {
-  .material-inbox-focus { padding: 16px; }
+  .material-inbox-focus { padding: 0; }
   .inbox-header { flex-direction: column; gap: 8px; }
   .inbox-state-label { align-self: flex-start; }
   .inbox-item { grid-template-columns: minmax(0, 1fr); }

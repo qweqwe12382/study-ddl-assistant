@@ -3,10 +3,11 @@
     <div class="page-intro">
       <div>
         <h1>资料库</h1>
-        <p>上传或补充课程资料；解析后会生成可检索正文和待确认的截止任务候选。</p>
+        <p>保存课件和通知，确认截止时间后加入任务。</p>
       </div>
       <div class="page-actions">
         <el-button v-if="isDetailedView" class="material-manual-action" @click="openCreate">手动添加</el-button>
+        <el-button class="material-paste-action" @click="openPasteNotice">粘贴通知</el-button>
         <el-button class="material-upload-action" type="primary" @click="openUpload">上传文件</el-button>
       </div>
     </div>
@@ -22,13 +23,45 @@
     </div>
     <div v-if="loading || materialsLoading" class="sr-only" role="status" aria-live="polite">正在加载资料列表…</div>
 
-    <div v-if="isConciseView" class="material-inbox-search" role="search" aria-label="快速查找资料">
-      <div>
-         <strong>快速查找资料</strong>
-         <span>输入文件名、摘要或正文中的关键词</span>
+    <section class="material-search" role="search" aria-label="查找与筛选资料">
+      <div class="material-inbox-search">
+        <el-input v-model="keyword" placeholder="搜索文件名、摘要或正文" clearable aria-label="搜索资料文件名、摘要或正文" />
+        <button v-if="isConciseView" type="button" class="material-filter-toggle" :aria-expanded="materialFiltersOpen" aria-controls="material-filter-options" @click="materialFiltersOpen = !materialFiltersOpen">
+          {{ materialFiltersOpen ? '收起筛选' : '筛选' }}<span v-if="activeMaterialFilterCount">{{ activeMaterialFilterCount }}</span>
+        </button>
+        <p v-if="materialsSummaryReady" class="material-search-count" role="status">{{ filteredMaterials.length }} 份资料</p>
       </div>
-      <el-input v-model="keyword" placeholder="搜索资料" clearable aria-label="搜索资料文件名、摘要或正文" />
-    </div>
+      <div v-show="isDetailedView || materialFiltersOpen" id="material-filter-options" class="material-filter-controls">
+        <label>
+          <span>课程</span>
+          <el-select v-model="courseFilter" clearable placeholder="全部课程" aria-label="按课程筛选资料">
+            <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
+          </el-select>
+        </label>
+        <label>
+          <span>资料类型</span>
+          <el-select v-model="materialTypeFilter" clearable placeholder="全部类型" aria-label="按资料类型筛选">
+            <el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" />
+          </el-select>
+        </label>
+        <label>
+          <span>处理状态</span>
+          <el-select v-model="processingStatusFilter" clearable placeholder="全部状态" aria-label="按资料处理状态筛选">
+            <el-option label="已处理" value="processed" />
+            <el-option label="处理失败" value="failed" />
+            <el-option label="待处理" value="pending" />
+          </el-select>
+        </label>
+        <label>
+          <span>标签</span>
+          <el-input v-model="tagFilter" placeholder="输入标签" clearable aria-label="按标签筛选资料" />
+        </label>
+      </div>
+      <div v-if="hasUserMaterialFilters" class="material-filter-summary">
+        <p>{{ materialFilterSummary }}</p>
+        <el-button link aria-label="清除资料搜索和筛选条件" @click="resetMaterialFilters">清除筛选</el-button>
+      </div>
+    </section>
 
     <MaterialInboxFocus
       v-if="isConciseView"
@@ -45,10 +78,10 @@
       @show-all="showDetailedMaterials"
     />
 
-    <section v-if="isDetailedView" class="material-flow" aria-labelledby="material-flow-heading">
+    <details v-if="isDetailedView" class="material-flow">
+      <summary class="material-flow-toggle"><span>资料如何变成任务</span><span>识别后，由你确认创建</span></summary>
       <div class="material-flow-heading">
         <div>
-          <p class="material-flow-eyebrow">资料到任务</p>
           <h2 id="material-flow-heading">从资料到截止任务</h2>
         </div>
           <p v-if="isDetailedView" class="material-flow-heading-note">识别只提供候选，正式任务仍由你确认</p>
@@ -101,32 +134,12 @@
           </article>
         </li>
       </ol>
-    </section>
+    </details>
 
     <el-card v-if="isDetailedView" class="table-card" shadow="never" v-loading="loading || materialsLoading" :aria-busy="loading || materialsLoading">
       <div class="table-toolbar">
         <div class="material-toolbar-heading">
-          <span class="material-toolbar-kicker">资料清单</span>
           <h2 id="materials-heading" tabindex="-1">我的资料 <el-tag v-if="materialsSummaryReady" size="small" effect="plain">{{ materials.length }}</el-tag></h2>
-          <p>按课程、类型和处理状态查找当前资料。</p>
-        </div>
-        <div class="toolbar-actions material-filters" role="group" aria-label="查找与筛选资料">
-            <span class="material-toolbar-filter-label">查找和筛选</span>
-          <div class="material-filter-controls">
-            <el-input v-model="keyword" placeholder="搜索文件名、摘要或正文" clearable aria-label="搜索资料文件名、摘要或正文" style="width: 230px" />
-            <el-select v-model="courseFilter" clearable placeholder="全部课程" aria-label="按课程筛选资料" style="width: 150px">
-              <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-            </el-select>
-            <el-select v-model="materialTypeFilter" clearable placeholder="资料类型" aria-label="按资料类型筛选" style="width: 145px">
-              <el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" />
-            </el-select>
-            <el-select v-model="processingStatusFilter" clearable placeholder="处理状态" aria-label="按资料处理状态筛选" style="width: 125px">
-              <el-option label="已处理" value="processed" />
-              <el-option label="处理失败" value="failed" />
-              <el-option label="待处理" value="pending" />
-            </el-select>
-            <el-input v-model="tagFilter" placeholder="标签" clearable aria-label="按标签筛选资料" style="width: 110px" />
-          </div>
         </div>
       </div>
       <div class="table-wrap">
@@ -243,6 +256,24 @@
       </template>
     </el-dialog>
 
+    <PasteNoticeDialog
+      :visible="pasteNoticeVisible"
+      :draft="pasteNoticeDraft"
+      :submitting="pastingNotice"
+      :error="pasteNoticeError"
+      :duplicate="pasteNoticeDuplicate"
+      @close="closePasteNotice"
+      @show-existing="showExistingPastedNotice"
+      @submit="submitPastedNotice"
+    />
+    <ConfirmedTasksDialog
+      :visible="confirmedTasksVisible"
+      :refs="extractionResult?.confirmed_task_refs || []"
+      @close="confirmedTasksVisible = false"
+      @navigate="openConfirmedTaskTarget"
+      @open-task-list="openTaskListFromConfirmation"
+    />
+
     <el-dialog v-model="detailDialogVisible" title="资料详情" width="680px" destroy-on-close>
       <template v-if="detailMaterial">
         <div class="detail-grid">
@@ -307,8 +338,8 @@
       <template v-if="extractionResult">
         <el-alert
           v-if="!materialConflict"
-          :title="extractionResult.needs_review ? '结果包含待确认信息，请核对日期、任务名称和来源原文；确认后才会创建正式任务。' : '结果已通过基础校验，请确认后才会创建正式任务。'"
-          :type="extractionResult.needs_review ? 'warning' : 'success'"
+          :title="extractionResult.status === 'confirmed' ? `已创建 ${extractionResult.confirmed_task_ids?.length || 0} 条任务。你可以直接查看刚创建的任务。` : extractionResult.needs_review ? '结果包含待确认信息，请核对日期、任务名称和来源原文；确认后才会创建正式任务。' : '结果已通过基础校验，请确认后才会创建正式任务。'"
+          :type="extractionResult.status === 'confirmed' ? 'success' : extractionResult.needs_review ? 'warning' : 'success'"
           show-icon
           class="detail-alert"
         />
@@ -331,21 +362,35 @@
             <el-input v-model="extractionTagsText" placeholder="标签，用逗号分隔" aria-label="确认智能识别结果标签" style="width: 260px" />
           </div>
         </div>
-        <div class="extraction-evidence-card" role="note" aria-label="字段来源说明">
-          <div class="extraction-evidence-title">字段来源说明</div>
-          <div class="extraction-evidence-help">这里只展示与当前值匹配的系统依据；修改字段后，原始来源不会被当作当前值。</div>
-          <div v-for="(field, index) in extractionEvidenceCardItems" :key="`${field.label}-${index}`" class="extraction-evidence-field">
-            <div class="extraction-evidence-heading">
-              <span class="field-evidence-value">{{ field.label }}</span>
-              <span class="field-evidence-source">{{ field.sourceLabel }}</span>
+        <section class="extraction-evidence-card" aria-label="字段来源说明">
+          <button
+            type="button"
+            class="extraction-evidence-toggle"
+            :aria-expanded="extractionEvidenceExpanded"
+            aria-controls="extraction-evidence-details"
+            @click="extractionEvidenceExpanded = !extractionEvidenceExpanded"
+          >
+            <span>字段来源说明</span>
+            <span class="extraction-evidence-toggle-state">{{ extractionEvidenceExpanded ? '收起' : '展开' }}</span>
+          </button>
+          <p class="extraction-evidence-summary">
+            <span>课程、资料类型和标签的识别来源</span>
+            <span v-if="extractionEvidenceRevisionCount" class="field-evidence-note">{{ extractionEvidenceRevisionCount }} 项当前值已由用户修订</span>
+          </p>
+          <div v-if="extractionEvidenceExpanded" id="extraction-evidence-details" class="extraction-evidence-details" role="region" aria-label="字段来源详情">
+            <div class="extraction-evidence-help">这里只展示与当前值匹配的系统依据；修改字段后，原始来源不会被当作当前值。</div>
+            <div v-for="(field, index) in extractionEvidenceCardItems" :key="`${field.label}-${index}`" class="extraction-evidence-field">
+              <div class="extraction-evidence-heading">
+                <span class="field-evidence-value">{{ field.label }}</span>
+                <span class="field-evidence-source">{{ field.sourceLabel }}</span>
+              </div>
+              <span v-if="field.revised" class="field-evidence-note">当前值已由用户修订，原始识别来源保留</span>
+              <span v-for="(snippet, snippetIndex) in field.snippets" :key="`${field.label}-${snippetIndex}-${snippet}`" class="field-evidence-snippet">{{ snippet }}</span>
             </div>
-            <span v-if="field.revised" class="field-evidence-note">当前值已由用户修订，原始识别来源保留</span>
-            <span v-for="(snippet, snippetIndex) in field.snippets" :key="`${field.label}-${snippetIndex}-${snippet}`" class="field-evidence-snippet">{{ snippet }}</span>
+            <div v-if="!extractionEvidenceCardItems.length" class="field-evidence-source">来源待确认</div>
           </div>
-          <div v-if="!extractionEvidenceCardItems.length" class="field-evidence-source">来源待确认</div>
-        </div>
-        <p class="extraction-mobile-hint">候选字段较多，可横向滑动逐项核对；只有勾选的候选会参与校验和创建。</p>
-        <div class="table-wrap extraction-table-wrap">
+        </section>
+        <div class="table-wrap extraction-table-wrap extraction-desktop-table">
           <el-table :data="extractionTasks" empty-text="暂未识别到任务" aria-label="智能识别任务结果">
           <el-table-column label="确认" width="70">
             <template #default="{ row }"><el-checkbox v-model="row.selected" :aria-label="`选择智能识别任务：${row.name || '未命名任务'}`" /></template>
@@ -382,11 +427,12 @@
           <el-table-column label="来源 / 提示" min-width="230">
             <template #default="{ row }">
               <div class="row-meta">{{ row.source_quote || '无来源原文' }}</div>
-              <el-tag v-for="warning in row.warnings || []" :key="warning" size="small" type="warning" class="tag-gap">{{ warning }}</el-tag>
+              <el-tag v-for="warning in row.warnings || []" :key="warning" size="small" type="warning" class="tag-gap extraction-warning-tag">{{ extractionWarningLabel(warning) }}</el-tag>
             </template>
           </el-table-column>
           </el-table>
         </div>
+        <ExtractionCandidatesEditor :tasks="extractionTasks" />
         <el-alert
           v-if="!extractionTasks.length"
           title="这份资料暂未识别出可确认的任务。可编辑资料补充正文或修正内容后，再重新识别。"
@@ -403,6 +449,7 @@
           <el-button v-if="!extractionResult && !materialConflict" type="primary" :loading="extractionLoading" :disabled="!selectedExtractionProvider?.available || extractionLoading" @click="runExtraction">开始智能识别</el-button>
           <el-button v-if="extractionResult && !extractionTasks.length" type="primary" plain @click="editExtractionMaterial">编辑资料并补充正文</el-button>
           <el-button v-if="extractionResult && extractionTasks.length && extractionResult.status !== 'confirmed'" type="primary" :loading="extractionSaving" :disabled="extractionSaving || Boolean(materialConflict)" @click="confirmExtraction">确认并创建任务</el-button>
+          <el-button v-if="extractionResult?.status === 'confirmed'" type="primary" @click="openCreatedTasks">查看刚创建的任务</el-button>
         </div>
       </template>
     </el-dialog>
@@ -410,7 +457,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
 import {
   ElAlert,
@@ -439,7 +486,13 @@ import EditConflictCard from '../components/EditConflictCard.vue'
 import MaterialInboxFocus from '../components/MaterialInboxFocus.vue'
 import { useViewMode } from '../composables/useViewMode'
 import { navigationKey } from '../utils/materialSourceNavigation'
+import { extractionWarningLabel } from '../utils/extractionWarning'
 import { editBaseline, editRequestConfig, extractionPreviewBaseline, isEditConflict, isEntityGone, preconditionMessage } from '../utils/editPrecondition'
+import { buildPastedNotice, localReferenceDateTime } from '../utils/pasteNotice'
+
+const PasteNoticeDialog = defineAsyncComponent(() => import('../components/PasteNoticeDialog.vue'))
+const ConfirmedTasksDialog = defineAsyncComponent(() => import('../components/ConfirmedTasksDialog.vue'))
+const ExtractionCandidatesEditor = defineAsyncComponent(() => import('../components/ExtractionCandidatesEditor.vue'))
 
 const materialTypes = ['课程大纲', '课堂讲义', '教材或阅读材料', '作业要求', '实验资料', '复习资料', '其他']
 const extractionEvidenceSourceLabels = Object.freeze({
@@ -503,6 +556,12 @@ const uploadFileList = ref([])
 const uploadCourseId = ref(null)
 const uploadMaterialType = ref('')
 const uploading = ref(false)
+const pasteNoticeVisible = ref(false)
+const pastingNotice = ref(false)
+const pasteNoticeError = ref('')
+const pasteNoticeDuplicate = ref(false)
+const pasteNoticeDraft = reactive({ title: '', text: '', sourceTime: '' })
+const confirmedTasksVisible = ref(false)
 const retryingMaterialIds = ref([])
 const detailMaterial = ref(null)
 const extractionMaterial = ref(null)
@@ -529,6 +588,7 @@ const extractionPolicy = ref({
 const extractionCourseId = ref(null)
 const extractionMaterialType = ref('')
 const extractionTagsText = ref('')
+const extractionEvidenceExpanded = ref(false)
 const courseEvidenceView = computed(() => buildFieldEvidenceView('course_name'))
 const materialTypeEvidenceView = computed(() => buildFieldEvidenceView('material_type'))
 const tagEvidenceView = computed(buildTagEvidenceView)
@@ -559,11 +619,13 @@ const extractionEvidenceCardItems = computed(() => {
   }
   return [...fields, ...tagFields]
 })
+const extractionEvidenceRevisionCount = computed(() => extractionEvidenceCardItems.value.filter((field) => field.revised).length)
 const uploadPolicy = ref({ max_upload_size_mb: 20, max_upload_files: 10, extensions: [] })
 const form = reactive(emptyForm())
 const route = useRoute()
 const router = useRouter()
 const { isConciseView, isDetailedView, setViewMode } = useViewMode()
+const materialFiltersOpen = ref(false)
 let materialRequestId = 0
 let initialized = false
 
@@ -627,9 +689,23 @@ const inboxMaterials = computed(() => filteredMaterials.value.map((material) => 
   source_focused: material.id === routeFilters.value.materialId && (!routeFilters.value.navigationKeyProvided || Boolean(routeFilters.value.navigationKey) && navigationKey(material.navigation_key) === routeFilters.value.navigationKey),
 })))
 const flowMaterials = computed(() => filteredMaterials.value)
+const activeMaterialFilterCount = computed(() => [
+  courseFilter.value,
+  materialTypeFilter.value,
+  processingStatusFilter.value,
+  tagFilter.value.trim(),
+].filter(Boolean).length)
+const hasUserMaterialFilters = computed(() => Boolean(keyword.value.trim() || activeMaterialFilterCount.value))
+const materialFilterSummary = computed(() => [
+  keyword.value.trim() ? `搜索“${keyword.value.trim()}”` : '',
+  courseFilter.value ? courseName(courseFilter.value) : '',
+  materialTypeFilter.value,
+  processingStatusFilter.value ? statusLabel(processingStatusFilter.value) : '',
+  tagFilter.value.trim() ? `标签“${tagFilter.value.trim()}”` : '',
+].filter(Boolean).join('，'))
 const hasActiveMaterialFilter = computed(() => Boolean(
   keyword.value.trim()
-  || courseFilter.value !== null
+  || courseFilter.value
   || materialTypeFilter.value
   || processingStatusFilter.value
   || tagFilter.value.trim()
@@ -775,6 +851,73 @@ function openUpload() {
   uploadDialogVisible.value = true
 }
 
+function openPasteNotice() {
+  pasteNoticeError.value = ''
+  pasteNoticeDuplicate.value = false
+  if (!pasteNoticeDraft.sourceTime) pasteNoticeDraft.sourceTime = localReferenceDateTime()
+  pasteNoticeVisible.value = true
+}
+
+function closePasteNotice() {
+  if (pastingNotice.value) return
+  pasteNoticeVisible.value = false
+}
+
+function clearPastedNoticeDraft() {
+  pasteNoticeDraft.title = ''
+  pasteNoticeDraft.text = ''
+  pasteNoticeDraft.sourceTime = ''
+  pasteNoticeError.value = ''
+  pasteNoticeDuplicate.value = false
+}
+
+async function submitPastedNotice() {
+  if (pastingNotice.value) return
+  pasteNoticeError.value = ''
+  pasteNoticeDuplicate.value = false
+  const notice = buildPastedNotice(pasteNoticeDraft)
+  if (notice.error) {
+    pasteNoticeError.value = notice.error
+    return
+  }
+  pastingNotice.value = true
+  try {
+    const file = new File([notice.content], notice.filename, { type: 'text/plain;charset=utf-8' })
+    const uploaded = await materialsApi.upload([file], null, '课程通知', notice.sourceTime)
+    const savedMaterial = Array.isArray(uploaded) ? uploaded[0] : null
+    if (!editBaseline(savedMaterial)) throw new Error('通知已保存，但未能读取可确认的资料版本。请在资料库中重新打开。')
+    materials.value = [savedMaterial, ...materials.value.filter((material) => material.id !== savedMaterial.id)]
+    materialsLoaded.value = true
+    clearPastedNoticeDraft()
+    pasteNoticeVisible.value = false
+    await openExtraction(savedMaterial)
+  } catch (err) {
+    if (err?.status === 409 && err?.code === 'DUPLICATE_FILE') {
+      pasteNoticeDuplicate.value = true
+      pasteNoticeError.value = ''
+      return
+    }
+    pasteNoticeError.value = err?.message || '保存通知失败，请稍后重试。填写的内容已保留。'
+  } finally {
+    pastingNotice.value = false
+  }
+}
+
+async function showExistingPastedNotice() {
+  try {
+    const existingMaterials = await materialsApi.list()
+    materials.value = Array.isArray(existingMaterials) ? existingMaterials : []
+    materialsLoaded.value = true
+    keyword.value = ''
+    setViewMode('detailed')
+    pasteNoticeVisible.value = false
+    await router.push({ path: '/materials' })
+    ElMessage.info('已打开全部资料；重复通知的原文件名可能不同，请在资料清单中查找。')
+  } catch (err) {
+    pasteNoticeError.value = err?.message || '无法读取已有资料。草稿仍保留，可稍后重试。'
+  }
+}
+
 async function removeRouteQuery(keys) {
   const query = { ...route.query }
   keys.forEach((key) => { delete query[key] })
@@ -785,9 +928,20 @@ function clearRouteFilters() {
   return removeRouteQuery(['material_id', 'navigation_key', 'view'])
 }
 
+function resetMaterialFilters() {
+  keyword.value = ''
+  courseFilter.value = null
+  materialTypeFilter.value = ''
+  processingStatusFilter.value = ''
+  tagFilter.value = ''
+}
+
 function handleActionQuery(action) {
-  if (action !== 'upload') return
-  openUpload()
+  if (action === 'paste-notice') {
+    openPasteNotice()
+  } else if (action === 'upload') {
+    openUpload()
+  } else return
   removeRouteQuery(['action']).catch((err) => ElMessage.error(err?.message || '无法清除资料操作参数'))
 }
 
@@ -1061,6 +1215,7 @@ async function openExtraction(material) {
   extractionResult.value = null
   extractionTasks.value = []
   extractionError.value = ''
+  extractionEvidenceExpanded.value = false
   extractionProvider.value = extractionPolicy.value.default_provider || 'local-rules'
   extractionCourseId.value = material.course_id || null
   extractionMaterialType.value = material.material_type || ''
@@ -1343,7 +1498,7 @@ async function confirmExtraction() {
       material_type: result.material_type || extractionMaterialType.value || extractionMaterial.value.material_type,
       tags: result.tags || extractionMaterial.value.tags,
     })
-    extractionDialogVisible.value = false
+    extractionResult.value = { ...extractionResult.value, ...result }
     ElMessage.success(`已确认并创建 ${result.confirmed_task_ids.length} 条任务`)
     await loadData()
   } catch (err) {
@@ -1355,6 +1510,22 @@ async function confirmExtraction() {
   } finally {
     extractionSaving.value = false
   }
+}
+
+async function openCreatedTasks() {
+  confirmedTasksVisible.value = true
+}
+
+async function openConfirmedTaskTarget(target) {
+  confirmedTasksVisible.value = false
+  extractionDialogVisible.value = false
+  await router.push(target)
+}
+
+async function openTaskListFromConfirmation() {
+  confirmedTasksVisible.value = false
+  extractionDialogVisible.value = false
+  await router.push('/tasks')
 }
 
 function downloadMaterial(material) {
@@ -1432,14 +1603,6 @@ watch([keyword, courseFilter, materialTypeFilter, processingStatusFilter, tagFil
   searchTimer = setTimeout(loadMaterials, 250)
 })
 
-watch(isConciseView, (concise) => {
-  if (!concise) return
-  courseFilter.value = null
-  materialTypeFilter.value = ''
-  processingStatusFilter.value = ''
-  tagFilter.value = ''
-})
-
 watch(() => route.query.q, (value) => {
   const routeKeyword = typeof value === 'string' ? value : ''
   if (keyword.value !== routeKeyword) keyword.value = routeKeyword
@@ -1461,6 +1624,8 @@ onMounted(() => {
 <style scoped>
 .mb-18 { margin-bottom: 18px; }
 .tag-gap { margin: 2px 4px 2px 0; }
+.extraction-warning-tag { max-width: 100%; height: auto; line-height: 1.45; vertical-align: top; white-space: normal; }
+.extraction-warning-tag :deep(.el-tag__content) { overflow-wrap: anywhere; white-space: normal; }
 .muted { color: #667085; font-size: 12px; }
 .material-load-error,
 .material-deep-link {
@@ -1499,34 +1664,26 @@ onMounted(() => {
 .material-filters { flex-wrap: wrap; justify-content: flex-end; }
 .extraction-table-wrap { padding: 0; }
 .extraction-editor-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.extraction-evidence-card { display: grid; gap: 8px; min-width: 0; margin: 0 0 16px; padding: 12px; color: #667085; background: #fbfcff; border: 1px solid #e7eaf5; border-radius: 9px; font-size: 13px; line-height: 1.5; }
-.extraction-evidence-title { color: #344054; font-size: 13px; font-weight: 600; }
+.extraction-evidence-card { display: grid; gap: 8px; min-width: 0; margin: 0 0 16px; padding: 12px; color: #667085; background: #f1f7f3; border: 1px solid #c8ddd1; border-radius: 9px; font-size: 13px; line-height: 1.5; }
+.extraction-evidence-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; padding: 5px 0; color: #344054; text-align: left; background: transparent; border: 0; cursor: pointer; font: inherit; font-size: 13px; font-weight: 700; line-height: 1.5; }
+.extraction-evidence-toggle:hover { color: var(--ledger-link); }
+.extraction-evidence-toggle:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 50%, transparent); outline-offset: 3px; }
+.extraction-evidence-toggle-state { flex: 0 0 auto; color: var(--ledger-link); font-size: 12px; font-weight: 600; }
+.extraction-evidence-summary { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; margin: 0; color: #667085; overflow-wrap: anywhere; }
+.extraction-evidence-details { display: grid; gap: 8px; min-width: 0; }
 .extraction-evidence-help { color: #667085; overflow-wrap: anywhere; }
-.extraction-evidence-field { display: grid; gap: 4px; min-width: 0; padding-top: 8px; border-top: 1px solid #edf0f8; }
+.extraction-evidence-field { display: grid; gap: 4px; min-width: 0; padding-top: 8px; border-top: 1px solid #c8ddd1; }
 .extraction-evidence-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-width: 0; }
 .field-evidence-source { color: #667085; font-weight: 600; overflow-wrap: anywhere; }
 .field-evidence-value { color: #344054; font-weight: 600; overflow-wrap: anywhere; }
 .field-evidence-note { color: #b54708; overflow-wrap: anywhere; }
-.field-evidence-snippet { max-width: 100%; padding: 4px 6px; color: #475467; background: #f8fafc; border-left: 2px solid #c9c2ff; border-radius: 0 4px 4px 0; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; }
-.match-snippet { max-width: 100%; margin-top: 5px; color: #7b65e8; font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; white-space: normal; }
+.field-evidence-snippet { max-width: 100%; padding: 4px 6px; color: #475467; background: #f8fafc; border-left: 2px solid #c8ddd1; border-radius: 0 4px 4px 0; overflow-wrap: anywhere; word-break: break-word; white-space: pre-wrap; }
+.match-snippet { max-width: 100%; margin-top: 5px; color: var(--ledger-link); font-size: 13px; font-weight: 500; line-height: 1.5; overflow-wrap: anywhere; white-space: normal; }
 .extraction-duration-input { width: 125px; }
-.extraction-mobile-hint { display: none; }
-.source-focused-row td { background: #f5f6ff !important; }
+.source-focused-row td { background: #f1f7f3 !important; }
 
 @media (max-width: 680px) {
-  .extraction-mobile-hint {
-    display: block;
-    margin: 0 0 10px;
-    padding: 9px 11px;
-    color: #52617a;
-    background: #f4f5ff;
-    border-left: 3px solid var(--ledger-indigo, #5964ed);
-    font-size: 12px;
-    line-height: 1.55;
-  }
-  .extraction-table-wrap :deep(.el-input__wrapper),
-  .extraction-table-wrap :deep(.el-date-editor),
-  .extraction-table-wrap :deep(.el-input-number),
+  .extraction-desktop-table { display: none; }
   .extraction-editors :deep(.el-input__wrapper),
   .extraction-editors :deep(.el-select__wrapper) { min-height: 44px; }
   .provider-options { grid-template-columns: 1fr; }
@@ -1537,14 +1694,14 @@ onMounted(() => {
 }
 
 .materials-page {
-  --materials-ink: var(--ledger-ink, #1e2a44);
-  --materials-paper: var(--ledger-paper, #fffefb);
-  --materials-indigo: var(--ledger-indigo, #5964ed);
+  --materials-ink: var(--ledger-ink, #20392f);
+  --materials-paper: var(--ledger-paper, #ffffff);
+  --materials-indigo: var(--ledger-indigo, #327864);
   --materials-amber: var(--ledger-amber, #c9822e);
   --materials-amber-text: var(--ledger-amber-text, #946020);
   --materials-coral: var(--ledger-coral, #c94c4c);
-  --materials-line: var(--ledger-line, #d9e0ea);
-  --materials-muted: var(--ledger-muted, #667085);
+  --materials-line: var(--ledger-line, #dbe4de);
+  --materials-muted: var(--ledger-muted, #607268);
   min-width: 0;
 }
 
@@ -1571,41 +1728,90 @@ onMounted(() => {
   min-width: 112px;
 }
 
+.material-search {
+  min-width: 0;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--materials-line);
+}
+
 .material-inbox-search {
   display: flex;
   align-items: center;
-  gap: 16px;
-  min-width: 0;
-  margin-bottom: 12px;
-  padding: 12px 14px;
-  background: var(--materials-paper);
-  border: 1px solid var(--materials-line);
-  border-radius: 6px;
-}
-
-.material-inbox-search > div {
-  display: grid;
-  flex: 1 1 auto;
-  gap: 2px;
+  gap: 10px;
   min-width: 0;
 }
 
-.material-inbox-search strong {
-  color: var(--materials-ink);
-  font-size: 13px;
-  line-height: 1.4;
-}
-
-.material-inbox-search span {
+.material-search-count {
+  flex: 0 0 auto;
+  margin: 0;
   color: var(--materials-muted);
   font-size: 12px;
-  line-height: 1.45;
+}
+
+.material-filter-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 9px 12px;
+  color: var(--materials-indigo);
+  background: var(--materials-paper);
+  border: 1px solid var(--materials-line);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.material-filter-toggle:hover,
+.material-filter-toggle[aria-expanded="true"] {
+  background: #edf5f0;
+  border-color: var(--materials-indigo);
+}
+
+.material-filter-toggle span {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0 4px;
+  color: #fff;
+  background: var(--materials-indigo);
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.material-filter-toggle:focus-visible,
+.material-flow-toggle:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--materials-indigo) 38%, transparent);
+  outline-offset: 3px;
+}
+
+.material-filter-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.material-filter-summary p {
+  min-width: 0;
+  margin: 0;
+  color: var(--materials-muted);
+  font-size: 12px;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
+.material-filter-summary :deep(.el-button) { flex: 0 0 auto; min-height: 44px; margin: -8px 0; }
+
 .material-inbox-search :deep(.el-input) {
-  flex: 0 1 360px;
-  width: min(360px, 100%);
+  flex: 1 1 auto;
+  width: 100%;
 }
 
 .material-inbox-search :deep(.el-input__wrapper) {
@@ -1617,7 +1823,7 @@ onMounted(() => {
 }
 
 #materials-heading:focus-visible {
-  outline: 3px solid rgba(89, 100, 237, .36);
+  outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 36%, transparent);
   outline-offset: 4px;
 }
 
@@ -1630,7 +1836,23 @@ onMounted(() => {
 
 .material-flow {
   min-width: 0;
-  margin-bottom: 22px;
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--materials-line);
+}
+
+.material-flow-toggle {
+  min-height: 40px;
+  color: var(--materials-ink);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 40px;
+}
+
+.material-flow-toggle span + span {
+  margin-left: 20px;
+  color: var(--materials-muted);
+  font-size: 12px;
 }
 
 .material-flow-heading {
@@ -1639,7 +1861,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 18px;
   min-width: 0;
-  margin-bottom: 11px;
+  margin: 14px 0 11px;
 }
 
 .material-flow-eyebrow,
@@ -1685,30 +1907,19 @@ onMounted(() => {
 }
 
 .material-flow-item:not(:last-child)::after {
-  content: '→';
-  position: absolute;
-  z-index: 1;
-  top: 23px;
-  right: -11px;
-  color: var(--materials-indigo);
-  font-size: 15px;
-  line-height: 1;
+  content: none;
 }
 
 .material-flow-card {
   box-sizing: border-box;
   height: 100%;
   min-width: 0;
-  padding: 16px 16px 15px;
+  padding: 8px 14px 8px 0;
   color: var(--materials-ink);
-  background: var(--materials-paper);
-  border: 1px solid rgba(30, 42, 68, .18);
-  border-top: 3px solid var(--materials-ink);
-  border-radius: 8px;
+  border-right: 1px solid var(--materials-line);
 }
 
-.material-flow-card--recognition { border-top-color: var(--materials-indigo); }
-.material-flow-card--confirmation { border-top-color: var(--materials-amber); }
+.material-flow-item:last-child .material-flow-card { border-right: 0; }
 
 .material-flow-label {
   display: flex;
@@ -1726,19 +1937,17 @@ onMounted(() => {
   display: inline-grid;
   flex: 0 0 auto;
   place-items: center;
-  width: 34px;
+  width: 24px;
   height: 24px;
-  color: var(--materials-paper);
-  background: var(--materials-ink);
-  font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif;
+  color: var(--materials-indigo);
+  background: #edf5f0;
+  border-radius: 4px;
+  font-family: inherit;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: .08em;
 }
-
-.material-flow-card--recognition .material-flow-index { background: var(--materials-indigo); }
-.material-flow-card--confirmation .material-flow-index { background: var(--materials-amber); }
 
 .material-flow-card h3 {
   margin: 14px 0 7px;
@@ -1755,7 +1964,7 @@ onMounted(() => {
 .material-flow-action {
   min-height: 40px;
   margin: 0;
-  color: #4a5870;
+  color: var(--materials-muted);
   font-size: 13px;
   line-height: 1.65;
 }
@@ -1808,7 +2017,7 @@ onMounted(() => {
 }
 
 .material-flow-status strong { font-variant-numeric: tabular-nums; }
-.material-flow-status.is-ready { color: var(--materials-indigo); border-color: rgba(89, 100, 237, .38); }
+.material-flow-status.is-ready { color: var(--materials-indigo); border-color: color-mix(in srgb, var(--ledger-indigo) 38%, transparent); }
 .material-flow-status.is-review { color: var(--materials-amber-text); border-color: rgba(201, 130, 46, .46); }
 .material-flow-status.is-confirmed { color: var(--materials-ink); border-color: rgba(30, 42, 68, .32); }
 .material-flow-status.is-failed { color: var(--materials-coral); border-color: rgba(201, 76, 76, .42); }
@@ -1853,22 +2062,35 @@ onMounted(() => {
 }
 
 .material-filter-controls {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
   min-width: 0;
+  margin-top: 13px;
+}
+
+.material-filter-controls label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--materials-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .material-filter-controls :deep(.el-input),
 .material-filter-controls :deep(.el-select) {
   min-width: 0;
+  width: 100%;
 }
+
+.material-filter-controls :deep(.el-input__wrapper),
+.material-filter-controls :deep(.el-select__wrapper) { min-height: 44px; }
 
 .material-filter-controls :deep(.el-input__wrapper:focus-within),
 .material-filter-controls :deep(.el-select__wrapper:focus-within) {
-  box-shadow: 0 0 0 2px rgba(89, 100, 237, .28);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ledger-indigo) 28%, transparent);
 }
 
 .material-table-course {
@@ -1887,10 +2109,12 @@ onMounted(() => {
 
 @media (max-width: 680px) {
   .material-inbox-search {
-    align-items: stretch;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 8px;
   }
+
+  .material-search-count { grid-column: 1 / -1; }
 
   .material-inbox-search :deep(.el-input) {
     flex-basis: auto;
@@ -1926,8 +2150,14 @@ onMounted(() => {
   }
 
   .material-flow-card {
-    padding: 15px;
+    padding: 12px 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--materials-line);
   }
+
+  .material-flow-item:last-child .material-flow-card { border-bottom: 0; }
+  .material-flow-toggle { line-height: 1.6; padding: 8px 0; }
+  .material-flow-toggle span + span { display: block; margin: 2px 0 0 16px; }
 
   .material-filters {
     align-items: stretch;
@@ -1939,7 +2169,7 @@ onMounted(() => {
   }
 
   .material-filter-controls {
-    flex-direction: column;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
     gap: 8px;
   }

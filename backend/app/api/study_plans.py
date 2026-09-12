@@ -14,13 +14,15 @@ from app.schemas.study_plan import StudyPlanGenerate, StudyPlanItem, StudyPlanRe
 from app.services.study_plan import (
     decode_plan_agent_metadata,
     decode_plan_content,
+    decode_plan_unscheduled_items,
     encode_plan_content,
     encode_plan_content_with_metadata,
-    generate_review_items,
+    generate_review_schedule,
 )
 from app.services.agent_feedback import calibration_payload
 from app.services.edit_concurrency import check_edit_precondition
 from app.services.source_identity import new_navigation_key
+from app.time import as_local, utc_now
 
 router = APIRouter(prefix="/api/study-plans", tags=["study-plans"])
 
@@ -35,6 +37,7 @@ def _invalid_plan(message: str, *, code: str = "INVALID_STUDY_PLAN") -> HTTPExce
 
 def _read_payload(plan: StudyPlan) -> StudyPlanRead:
     items, warnings, material_count, task_count = decode_plan_content(plan.plan_content)
+    unscheduled_items = decode_plan_unscheduled_items(plan.plan_content)
     completed_items = [item for item in items if item.status == "completed"]
     return StudyPlanRead(
         id=plan.id,
@@ -50,6 +53,7 @@ def _read_payload(plan: StudyPlan) -> StudyPlanRead:
         updated_at=plan.updated_at,
         items=items,
         warnings=warnings,
+        unscheduled_items=unscheduled_items,
         material_count=material_count,
         task_count=task_count,
         completed_item_count=len(completed_items),
@@ -92,7 +96,9 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
         code="COURSE_NOT_FOUND",
         message="关联课程不存在",
     )
-    if payload.exam_date < date.today():
+    evaluated_at = utc_now()
+    start_date = as_local(evaluated_at).date()
+    if payload.exam_date < start_date:
         raise _invalid_plan("考试日期不能早于今天", code="EXAM_DATE_IN_PAST")
 
     materials = list(
@@ -111,13 +117,17 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
     )
     try:
         calibration_factor = calibration_payload(db, payload.course_id)["factor"]
-        items, warnings = generate_review_items(
-            start_date=date.today(),
+        items, warnings, unscheduled_items = generate_review_schedule(
+            # This is the explicit per-plan review ceiling supplied by the
+            # student. Shared preference capacity and timetable occupancy are
+            # separate inputs and are not deducted a second time here.
+            start_date=start_date,
             exam_date=payload.exam_date,
             daily_minutes=payload.daily_minutes,
             materials=materials,
             tasks=tasks,
             calibration_factor=calibration_factor,
+            evaluated_at=evaluated_at,
         )
     except ValueError as error:
         raise _invalid_plan(str(error), code="PLAN_RANGE_TOO_LARGE") from error
@@ -131,7 +141,8 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
             items,
             warnings,
             material_count=len(materials),
-            task_count=len([task for task in tasks if task.status != "completed"]),
+            task_count=len([task for task in tasks if task.status not in {"completed", "canceled"}]),
+            unscheduled_items=unscheduled_items,
         ),
         status="active",
     )
@@ -178,6 +189,7 @@ def update_study_plan(
 
     check_edit_precondition(db, plan, if_match)
     current_items, warnings, material_count, task_count = decode_plan_content(plan.plan_content)
+    unscheduled_items = decode_plan_unscheduled_items(plan.plan_content)
     metadata = decode_plan_agent_metadata(plan.plan_content)
     changed_fields = payload.model_fields_set
     target_exam_date = payload.exam_date if "exam_date" in changed_fields else plan.exam_date
@@ -220,6 +232,7 @@ def update_study_plan(
             material_count=material_count,
             task_count=task_count,
             metadata=metadata,
+            unscheduled_items=unscheduled_items,
         )
 
     commit_or_rollback(db)

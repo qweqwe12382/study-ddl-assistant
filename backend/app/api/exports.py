@@ -14,7 +14,7 @@ from app.models.study_plan import StudyPlan
 from app.models.task import Task
 from app.services.study_plan import decode_plan_content
 from app.services.task_service import sync_overdue_tasks
-from app.time import LOCAL_TIMEZONE, as_local
+from app.time import LOCAL_TIMEZONE, as_local, as_utc
 
 router = APIRouter(prefix="/api/exports", tags=["exports"])
 CALENDAR_TIMEZONE = LOCAL_TIMEZONE
@@ -54,7 +54,7 @@ def export_tasks_icalendar(
         .order_by(Task.due_at.asc(), Task.created_at.asc())
     )
     if not include_completed:
-        statement = statement.where(Task.status != "completed")
+        statement = statement.where(~Task.status.in_(["completed", "canceled"]))
     if course_id is not None:
         statement = statement.where(Task.course_id == course_id)
     tasks = list(db.scalars(statement).all())
@@ -83,6 +83,7 @@ def export_tasks_icalendar(
         "not_started": "未开始",
         "in_progress": "进行中",
         "completed": "已完成",
+        "canceled": "已取消",
         "overdue": "已逾期",
     }
     for task, due_at in zip(tasks, event_datetimes, strict=True):
@@ -101,7 +102,11 @@ def export_tasks_icalendar(
             description.extend(["", task.description])
 
         event = Event()
-        event.add("uid", f"task-{task.id}@learning-assistant.local")
+        # Numeric IDs are only unique inside one workspace and may be reused
+        # after deletion. Keep the calendar event tied to the task's lifetime.
+        event.add("uid", f"task-{task.navigation_key}@learning-assistant.local")
+        event.add("sequence", max(0, task.revision - 1))
+        event.add("last-modified", as_utc(task.updated_at))
         event.add("dtstamp", generated_at)
         event.add("dtstart", due_at)
         event.add("dtend", due_at + timedelta(minutes=30))

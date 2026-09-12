@@ -1,11 +1,7 @@
 <template>
   <section class="task-agenda" aria-labelledby="task-agenda-title" :aria-busy="viewState === 'loading' || viewState === 'pending'">
     <header class="task-agenda__heading">
-      <div>
-        <p class="task-agenda__kicker">截止任务 / 按时间排序</p>
-        <h2 id="task-agenda-title">截止任务安排</h2>
-        <p class="task-agenda__lede">按本地日期从近到远排列；先处理未完成的，再回看已完成记录。</p>
-      </div>
+      <h2 id="task-agenda-title">任务清单</h2>
       <span v-if="viewState === 'ready' && normalizedTasks.length" class="task-agenda__count" role="status">
         已显示 {{ visibleTasks.length }} 项
       </span>
@@ -24,16 +20,11 @@
     </div>
 
     <template v-else-if="visibleTasks.length">
-      <p class="task-agenda__guide" aria-label="时间线说明">
-        <span class="task-agenda__guide-mark" aria-hidden="true"></span>
-            <span><strong>NOW</strong> 表示此刻；每项任务都按本地时间归入对应日期。</span>
-      </p>
-
       <div class="task-agenda__timeline">
         <span class="task-agenda__spine" aria-hidden="true"></span>
         <template v-for="row in timelineRows" :key="row.id">
           <p v-if="row.type === 'now'" class="task-agenda__now" aria-label="当前时间分隔线">
-            <span>NOW</span><time :datetime="nowIso">{{ nowLabel }}</time>
+            <span>现在</span><time :datetime="nowIso">{{ nowLabel }}</time>
           </p>
 
           <section
@@ -45,47 +36,34 @@
             <header class="task-agenda__group-heading">
               <span class="task-agenda__group-node" aria-hidden="true"></span>
               <div>
-                <p>{{ row.group.code }}</p>
                 <h3 :id="`task-agenda-group-${row.group.id}`">{{ row.group.label }} <span>· {{ row.group.visibleCount }} 项</span></h3>
-                <small>{{ row.group.description }}</small>
               </div>
             </header>
 
-            <ol class="task-agenda__list">
+            <TransitionGroup tag="ol" name="task-list" class="task-agenda__list">
               <li v-for="task in row.group.tasks" :key="task.key" class="task-agenda__item">
                 <article class="task-agenda__card" :class="`task-agenda__card--${task.groupId}`">
                   <div class="task-agenda__card-topline">
-                    <span class="task-agenda__risk">{{ task.riskLabel }}</span>
-                    <span class="task-agenda__status">状态：{{ task.statusLabel }}</span>
+                    <h4>{{ task.name }}</h4>
+                    <span v-if="!task.terminal && task.statusLabel !== '逾期'" class="task-agenda__status">{{ task.statusLabel }}</span>
                   </div>
 
-                  <h4>{{ task.name }}</h4>
-                  <p class="task-agenda__course">课程：{{ task.courseName }}</p>
-
-                  <dl class="task-agenda__facts">
-                    <div>
-                      <dt>截止</dt>
-                      <dd><time v-if="task.dueIso" :datetime="task.dueIso">{{ task.dueLabel }}</time><span v-else>{{ task.dueLabel }}</span></dd>
-                    </div>
-                    <div>
-                      <dt>时间</dt>
-                      <dd>{{ task.remainingLabel }}</dd>
-                    </div>
-                    <div v-if="task.workloadLabel">
-                      <dt>工作量</dt>
-                      <dd>{{ task.workloadLabel }}</dd>
-                    </div>
-                  </dl>
+                  <p class="task-agenda__schedule">
+                    <span class="task-agenda__course" :aria-label="`课程：${task.courseName}`">{{ task.courseName }}</span>
+                    <time v-if="task.dueIso" :datetime="task.dueIso">{{ task.dueLabel }}</time>
+                    <span v-else>{{ task.dueLabel }}</span>
+                    <span v-if="task.remainingLabel" aria-hidden="true"> · </span>
+                    <span>{{ task.remainingLabel }}</span>
+                    <template v-if="task.workloadLabel">
+                      <span aria-hidden="true"> · </span>
+                      <span>{{ task.workloadLabel }}</span>
+                    </template>
+                  </p>
 
                   <div
                     class="task-agenda__source"
                     :class="`task-agenda__source--${task.sourceContext.state}`"
                   >
-                    <div class="task-agenda__source-copy">
-                      <span>{{ task.sourceContext.title }}</span>
-                      <strong v-if="task.sourceContext.label">{{ task.sourceContext.label }}</strong>
-                      <p>{{ task.sourceContext.detail }}</p>
-                    </div>
                     <button
                       v-if="task.sourceContext.state === 'available'"
                       type="button"
@@ -94,13 +72,14 @@
                       :aria-label="`${materialBusy(task) ? '正在打开资料' : '打开资料'}：${task.sourceContext.label}`"
                       @click="emit('open-material', task.source)"
                     >
-                      {{ materialBusy(task) ? '正在打开…' : '打开资料' }}
+                      {{ materialBusy(task) ? '正在打开…' : `来源：${task.sourceContext.label}` }}
                     </button>
+                    <span v-else class="task-agenda__source-copy">{{ task.sourceContext.title }}{{ task.sourceContext.label ? `：${task.sourceContext.label}` : '' }}</span>
                   </div>
 
                   <div class="task-agenda__actions" role="group" :aria-label="`任务操作：${task.name}`">
                     <button
-                      v-if="!task.completed"
+                      v-if="!task.terminal"
                       type="button"
                       class="task-agenda__action task-agenda__action--primary"
                       :disabled="hasBusyTasks"
@@ -110,6 +89,7 @@
                       {{ taskBusy(task) ? '正在完成…' : '标记完成' }}
                     </button>
                     <button
+                      v-if="task.completed"
                       type="button"
                       class="task-agenda__action"
                       :disabled="hasBusyTasks"
@@ -125,12 +105,12 @@
                       :aria-label="`编辑任务：${task.name}`"
                       @click="emit('edit-task', task.source)"
                     >
-                      编辑任务
+                      编辑
                     </button>
                   </div>
                 </article>
               </li>
-            </ol>
+            </TransitionGroup>
           </section>
         </template>
       </div>
@@ -152,7 +132,19 @@
     <div v-else class="task-agenda__empty" role="status" aria-live="polite">
       <strong>{{ emptyTitle }}</strong>
       <p>{{ emptyDetail }}</p>
-      <button type="button" class="task-agenda__show-all" @click="emit('show-all')">查看全部任务</button>
+      <div class="task-agenda__empty-actions">
+        <button
+          v-if="filtered"
+          type="button"
+          class="task-agenda__show-all task-agenda__show-all--primary"
+          @click="emit('clear-filters')"
+        >
+          清除筛选
+        </button>
+        <button type="button" class="task-agenda__show-all" @click="emit('show-all')">
+          {{ filtered ? '进入完整任务管理' : '查看全部任务' }}
+        </button>
+      </div>
     </div>
   </section>
 </template>
@@ -164,25 +156,27 @@ const DAY = 24 * 60 * 60 * 1000
 const MAX_DIRECT_ITEMS = 12
 
 const GROUPS = [
-  { id: 'overdue', code: 'PAST DUE', label: '已逾期', description: '截止时间已过，优先确认是否继续处理。' },
-  { id: 'today', code: 'TODAY', label: '今天', description: '今天到期，先安排一个可完成的下一步。' },
-  { id: 'tomorrow', code: 'TOMORROW', label: '明天', description: '明天到期，今天预留准备时间。' },
-  { id: 'next-week', code: 'NEXT 7 DAYS', label: '未来 7 天', description: '未来一周内到期，按工作量逐步推进。' },
-  { id: 'later', code: 'LATER', label: '稍后', description: '超过未来一周，可先保留在后续计划里。' },
-  { id: 'undated', code: 'DATE TBD', label: '未定日期', description: '任务已记录，但尚未提供可确认的截止日期。' },
-  { id: 'completed', code: 'COMPLETED', label: '已完成', description: '低优先层，仅保留已存在的完成记录。' },
+  { id: 'overdue', code: 'PAST DUE', label: '已逾期' },
+  { id: 'today', code: 'TODAY', label: '今天' },
+  { id: 'tomorrow', code: 'TOMORROW', label: '明天' },
+  { id: 'next-week', code: 'NEXT 7 DAYS', label: '未来 7 天' },
+  { id: 'later', code: 'LATER', label: '稍后' },
+  { id: 'undated', code: 'DATE TBD', label: '未定日期' },
+  { id: 'completed', code: 'COMPLETED', label: '已完成' },
+  { id: 'canceled', code: 'CANCELED', label: '已取消' },
 ]
 
 const props = defineProps({
   state: { type: String, default: 'loading' },
   tasks: { type: Array, default: () => [] },
+  filtered: { type: Boolean, default: false },
   busyTaskIds: { type: Array, default: () => [] },
   busyMaterialIds: { type: Array, default: () => [] },
   now: { type: [Date, String, Number], default: null },
   maxItems: { type: Number, default: MAX_DIRECT_ITEMS },
 })
 
-const emit = defineEmits(['complete-task', 'feedback-task', 'edit-task', 'open-material', 'show-all'])
+const emit = defineEmits(['complete-task', 'feedback-task', 'edit-task', 'open-material', 'show-all', 'clear-filters'])
 
 const requestedState = computed(() => (
   ['pending', 'loading', 'ready', 'error', 'invalid'].includes(props.state) ? props.state : 'invalid'
@@ -261,33 +255,38 @@ const stateTitle = computed(() => ({
 }[viewState.value] || '任务安排信息不完整'))
 
 const stateDetail = computed(() => ({
-  pending: '数据准备完成前不会显示旧数据、默认任务或推测的截止时间。',
-  loading: '加载期间不会把空列表当成“没有任务”。',
-  error: '请稍后重新进入任务清单确认截止安排；当前不会把未知内容排入时间线。',
-  invalid: '任务列表或当前时间不完整，暂时无法按本地时间归类内容。',
-}[viewState.value] || '页面不会把未知状态当成正常安排。'))
+  pending: '正在准备数据，暂不显示任务。',
+  loading: '正在加载任务列表。',
+  error: '请稍后重试，重新读取任务安排。',
+  invalid: '任务列表或当前时间不完整，暂时无法归类。',
+}[viewState.value] || '任务信息不完整，暂时无法展示。'))
 
-const emptyTitle = computed(() => invalidDateCount.value ? '暂无可确认时间线的任务' : '当前没有可展示的任务')
+const emptyTitle = computed(() => {
+  if (props.filtered && !props.tasks.length) return '没有符合筛选条件的任务'
+  return invalidDateCount.value ? '暂无可确认时间线的任务' : '当前没有可展示的任务'
+})
 const emptyDetail = computed(() => {
-  if (invalidDateCount.value) return '部分任务的截止时间无法确认，未按猜测时间展示；请在全部任务中检查。'
-  if (!props.tasks.length) return '添加任务后，这里会按本地日期生成清晰的截止任务安排。'
-  return '当前没有可直接排入时间线的任务记录。'
+  if (props.filtered && !props.tasks.length) return '调整关键词、课程或状态，或清除筛选后查看全部。'
+  if (invalidDateCount.value) return '部分任务截止时间无法确认，请在全部任务中检查。'
+  if (!props.tasks.length) return '添加任务后，这里会按日期生成截止安排。'
+  return '当前没有可直接排入时间线的任务。'
 })
 
 function normalizeTask(source, sourceIndex, now, todayKey) {
   if (!source || typeof source !== 'object') return null
 
   const completed = source.status === 'completed'
+  const canceled = source.status === 'canceled'
   const dueInput = source.due_at
   const hasDueInput = dueInput !== null && dueInput !== undefined && String(dueInput).trim() !== ''
   const parsedDue = hasDueInput ? parseDate(dueInput) : null
   if (hasDueInput && !parsedDue) return 'invalid-date'
 
   const name = cleanText(source.name) || '未命名任务'
-  const courseName = cleanText(source.course_name) || cleanText(source.course?.name) || '课程待补充'
+  const courseName = cleanText(source.course_name) || cleanText(source.course?.name) || '未归类课程'
   const dueDate = parsedDue?.date || null
   const dueDayKey = dueDate ? localDayKey(dueDate) : null
-  const groupId = groupFor({ completed, dueDate, dueDayKey, hasTime: parsedDue?.hasTime, now, todayKey })
+  const groupId = groupFor({ completed, canceled, dueDate, dueDayKey, hasTime: parsedDue?.hasTime, now, todayKey })
   const remainingLabel = remainingText({ groupId, dueDate, dueDayKey, hasTime: parsedDue?.hasTime, now, todayKey })
   const remainingMinutes = validMinutes(source.remaining_minutes)
   const estimatedMinutes = validMinutes(source.estimated_minutes)
@@ -300,16 +299,17 @@ function normalizeTask(source, sourceIndex, now, todayKey) {
     name,
     courseName,
     completed,
+    canceled,
+    terminal: completed || canceled,
     groupId,
     dueDate,
     dueTime: dueDate?.getTime() ?? null,
     dueIso: dueDate?.toISOString() || null,
     dueLabel: dueLabel(dueDate, parsedDue?.hasTime),
     remainingLabel,
-    workloadLabel: workloadText(remainingMinutes, estimatedMinutes, actualMinutes, completed),
+    workloadLabel: canceled ? null : workloadText(remainingMinutes, estimatedMinutes, actualMinutes, completed),
     sourceContext: normalizeSourceContext(source.source_context),
     statusLabel: statusText(source.status, groupId),
-    riskLabel: riskText(groupId),
     priority: validPriority(source.priority),
   }
 }
@@ -328,8 +328,9 @@ function sortTasks(tasks) {
   })
 }
 
-function groupFor({ completed, dueDate, dueDayKey, hasTime, now, todayKey }) {
+function groupFor({ completed, canceled, dueDate, dueDayKey, hasTime, now, todayKey }) {
   if (completed) return 'completed'
+  if (canceled) return 'canceled'
   if (!dueDate) return 'undated'
   if ((hasTime && dueDate.getTime() < now.getTime()) || (!hasTime && dueDayKey < todayKey)) return 'overdue'
 
@@ -393,18 +394,17 @@ function localDayDifference(first, second) {
 function dueLabel(date, hasTime) {
   if (!date) return '未设置截止日期'
   const dateText = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(date)
-  if (!hasTime) return `截止 ${dateText}（未提供具体时刻）`
+  if (!hasTime) return `截止 ${dateText}`
   const timeText = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date)
   return `截止 ${dateText} ${timeText}`
 }
 
 function remainingText({ groupId, dueDate, hasTime, now }) {
-  if (!dueDate) return '等待补充截止日期'
-  if (groupId === 'completed') return '已完成，保留记录'
+  if (!dueDate || ['completed', 'canceled'].includes(groupId)) return null
   if (groupId === 'overdue') return hasTime ? `已逾期 ${durationText(now.getTime() - dueDate.getTime())}` : '截止日已过'
   if (!hasTime) {
     const days = Math.max(0, localDayDifference(dueDate, now))
-    return days ? `距截止日 ${days} 天（未提供具体时刻）` : '截止日为今天（未提供具体时刻）'
+    return days ? `距截止 ${days} 天` : '今天截止'
   }
   return `还剩 ${durationText(dueDate.getTime() - now.getTime())}`
 }
@@ -455,49 +455,29 @@ function cleanText(value) {
 
 function normalizeSourceContext(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {
-      state: 'missing', materialId: null, label: null, title: '尚未关联资料', detail: '编辑任务时可选择一份已有资料。',
-    }
+    return { state: 'missing', materialId: null, label: null, title: '尚未关联资料' }
   }
 
   const materialId = Number(value.material_id)
   const validMaterialId = Number.isInteger(materialId) && materialId > 0 ? materialId : null
   const label = cleanText(value.label)
   if (value.state === 'available' && validMaterialId !== null && label) {
-    return {
-      state: 'available', materialId: validMaterialId, label, title: '直连来源资料', detail: '打开当前任务直接关联的学习资料。',
-    }
+    return { state: 'available', materialId: validMaterialId, label, title: '来源资料' }
   }
   if (value.state === 'deleted' && label) {
-    return {
-      state: 'deleted', materialId: null, label, title: '历史来源已删除', detail: '保留任务中的历史名称，但不提供失效入口。',
-    }
+    return { state: 'deleted', materialId: null, label, title: '来源资料（已删除）' }
   }
-  return {
-    state: 'missing', materialId: null, label: null, title: '尚未关联资料', detail: '编辑任务时可选择一份已有资料。',
-  }
+  return { state: 'missing', materialId: null, label: null, title: '尚未关联资料' }
 }
 
 function statusText(status, groupId) {
   if (groupId === 'completed') return '已完成'
-  if (groupId === 'overdue') return '已逾期'
+  if (groupId === 'canceled') return '已取消'
   return {
     in_progress: '进行中',
-    overdue: '已标记逾期',
+    overdue: '逾期',
     not_started: '未开始',
   }[status] || '待开始'
-}
-
-function riskText(groupId) {
-  return {
-    overdue: '风险：已逾期',
-    today: '风险：今天截止',
-    tomorrow: '提醒：明天截止',
-    'next-week': '安排：未来 7 天',
-    later: '安排：稍后',
-    undated: '待补充：未定日期',
-    completed: '记录：已完成',
-  }[groupId] || '任务'
 }
 
 function formatDateTime(date) {
@@ -508,25 +488,19 @@ function formatDateTime(date) {
 </script>
 
 <style scoped>
-.task-agenda { min-width: 0; padding: 20px; color: var(--ledger-ink); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 8px; box-shadow: var(--ledger-shadow); }
-.task-agenda__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; min-width: 0; }
-.task-agenda__heading > div { min-width: 0; }
-.task-agenda__kicker { margin: 0; color: var(--ledger-indigo); font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 750; letter-spacing: .12em; line-height: 1.45; }
-.task-agenda__heading h2 { margin: 6px 0 0; color: var(--ledger-ink); font-family: "Aptos Display", "Microsoft YaHei", sans-serif; font-size: 20px; line-height: 1.3; }
-.task-agenda__lede { max-width: 64ch; margin: 7px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
-.task-agenda__count { flex: 0 0 auto; min-height: 28px; padding: 5px 8px; color: #43516b; background: var(--ledger-canvas); border: 1px solid var(--ledger-line); border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.4; text-align: center; }
+.task-agenda { min-width: 0; padding: 0; color: var(--ledger-ink); }
+.task-agenda__heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
+.task-agenda__heading h2 { margin: 0; color: var(--ledger-ink); font-family: inherit; font-size: 18px; line-height: 1.4; }
+.task-agenda__count { flex: 0 0 auto; color: var(--ledger-muted); font-size: 12px; line-height: 1.4; }
 .task-agenda__state, .task-agenda__empty { display: grid; gap: 7px; margin-top: 18px; padding: 16px; background: var(--ledger-canvas); border: 1px solid var(--ledger-line); border-left: 3px solid var(--ledger-indigo); border-radius: 6px; }
 .task-agenda__state strong, .task-agenda__empty strong { color: var(--ledger-ink); font-size: 14px; line-height: 1.5; }
 .task-agenda__state p, .task-agenda__empty p { margin: 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .task-agenda__state--pending, .task-agenda__state--loading { border-left-color: var(--ledger-amber); }
 .task-agenda__state--error, .task-agenda__state--invalid { border-left-color: var(--ledger-coral); }
-.task-agenda__guide { display: flex; align-items: center; gap: 8px; margin: 18px 0 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
-.task-agenda__guide strong { color: var(--ledger-ink); font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-size: 11px; letter-spacing: .08em; }
-.task-agenda__guide-mark { flex: 0 0 auto; width: 10px; height: 10px; background: var(--ledger-paper); border: 2px solid var(--ledger-indigo); border-radius: 50%; }
-.task-agenda__timeline { position: relative; min-width: 0; margin-top: 16px; padding-left: 29px; }
+.task-agenda__timeline { position: relative; min-width: 0; margin-top: 18px; padding-left: 29px; }
 .task-agenda__spine { position: absolute; top: 6px; bottom: 8px; left: 6px; width: 2px; background: repeating-linear-gradient(to bottom, var(--ledger-line) 0 8px, transparent 8px 13px); }
 .task-agenda__now { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; margin: 0 0 16px -29px; color: var(--ledger-muted); font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-size: 11px; font-weight: 700; letter-spacing: .07em; line-height: 1.45; }
-.task-agenda__now::before { content: ''; flex: 0 0 auto; width: 14px; height: 14px; margin-right: 8px; background: var(--ledger-paper); border: 3px solid var(--ledger-indigo); border-radius: 50%; box-shadow: 0 0 0 3px #eef0ff; }
+.task-agenda__now::before { content: ''; flex: 0 0 auto; width: 14px; height: 14px; margin-right: 8px; background: var(--ledger-paper); border: 3px solid var(--ledger-indigo); border-radius: 50%; box-shadow: 0 0 0 3px #f1f7f3; }
 .task-agenda__now::after { content: ''; flex: 1 1 auto; min-width: 0; border-top: 1px solid var(--ledger-line); }
 .task-agenda__now span { color: var(--ledger-indigo); }
 .task-agenda__now time { min-width: 0; overflow-wrap: anywhere; }
@@ -537,57 +511,49 @@ function formatDateTime(date) {
 .task-agenda__group--overdue .task-agenda__group-node { border-color: var(--ledger-coral); }
 .task-agenda__group--today .task-agenda__group-node, .task-agenda__group--tomorrow .task-agenda__group-node { border-color: var(--ledger-amber); }
 .task-agenda__group--completed .task-agenda__group-node { border-style: dashed; border-color: var(--ledger-muted); }
+.task-agenda__group--canceled .task-agenda__group-node { border-style: dashed; border-color: #b3a56d; }
 .task-agenda__group-heading > div { min-width: 0; }
 .task-agenda__group-heading p { margin: 0; color: var(--ledger-indigo); font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-size: 10px; font-weight: 750; letter-spacing: .1em; line-height: 1.45; }
 .task-agenda__group--overdue .task-agenda__group-heading p { color: var(--ledger-coral); }
 .task-agenda__group--today .task-agenda__group-heading p, .task-agenda__group--tomorrow .task-agenda__group-heading p { color: var(--ledger-amber-text); }
 .task-agenda__group-heading h3 { margin: 3px 0 0; color: var(--ledger-ink); font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
 .task-agenda__group-heading h3 span { color: var(--ledger-muted); font-size: 12px; font-weight: 600; }
-.task-agenda__group-heading small { display: block; margin-top: 3px; color: var(--ledger-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
-.task-agenda__list { display: grid; gap: 10px; min-width: 0; margin: 10px 0 0; padding: 0; list-style: none; }
-.task-agenda__card { min-width: 0; padding: 14px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-left: 3px solid var(--ledger-indigo); border-radius: 6px; }
+.task-agenda__list { display: grid; gap: 0; min-width: 0; margin: 8px 0 0; padding: 0; list-style: none; }
+.task-agenda__card { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 18px; min-width: 0; padding: 12px 0; background: var(--ledger-paper); border-bottom: 1px solid var(--ledger-line); }
 .task-agenda__card--overdue { border-left-color: var(--ledger-coral); }
 .task-agenda__card--today, .task-agenda__card--tomorrow { border-left-color: var(--ledger-amber); }
-.task-agenda__card--completed { background: #fbfcfe; border-left-color: #9aa5b5; }
-.task-agenda__card-topline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-width: 0; }
-.task-agenda__risk, .task-agenda__status { min-width: 0; padding: 3px 6px; border: 1px solid var(--ledger-line); border-radius: 3px; font-size: 11px; font-weight: 700; line-height: 1.45; overflow-wrap: anywhere; }
-.task-agenda__risk { color: #43516b; background: var(--ledger-canvas); }
-.task-agenda__status { color: var(--ledger-muted); background: var(--ledger-paper); }
-.task-agenda__card--overdue .task-agenda__risk { color: var(--ledger-coral); border-color: #e6b8b8; background: #fff5f5; }
-.task-agenda__card--today .task-agenda__risk, .task-agenda__card--tomorrow .task-agenda__risk { color: var(--ledger-amber-text); border-color: #ecd0a8; background: #fff8ec; }
-.task-agenda__card h4 { margin: 10px 0 0; color: var(--ledger-ink); font-size: 15px; line-height: 1.45; overflow-wrap: anywhere; }
-.task-agenda__course { margin: 5px 0 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
-.task-agenda__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 16px; min-width: 0; margin: 13px 0 0; padding-top: 12px; border-top: 1px solid var(--ledger-line); }
-.task-agenda__facts > div { min-width: 0; }
-.task-agenda__facts dt { color: var(--ledger-muted); font-size: 11px; line-height: 1.4; }
-.task-agenda__facts dd { margin: 3px 0 0; color: var(--ledger-ink); font-size: 12px; font-weight: 650; line-height: 1.55; overflow-wrap: anywhere; }
-.task-agenda__source { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; margin-top: 12px; padding: 11px 12px; background: #f7f8ff; border: 1px solid #d9ddff; border-left: 3px solid var(--ledger-indigo); border-radius: 5px; }
-.task-agenda__source--deleted { background: #fff8ec; border-color: #ecd0a8; border-left-color: var(--ledger-amber); }
-.task-agenda__source--missing { background: var(--ledger-canvas); border-color: var(--ledger-line); border-left-color: #9aa5b5; }
-.task-agenda__source-copy { min-width: 0; }
-.task-agenda__source-copy span { display: block; color: var(--ledger-indigo); font-size: 10px; font-weight: 750; letter-spacing: .08em; line-height: 1.45; }
-.task-agenda__source--deleted .task-agenda__source-copy span { color: var(--ledger-amber-text); }
-.task-agenda__source--missing .task-agenda__source-copy span { color: var(--ledger-muted); }
-.task-agenda__source-copy strong { display: block; margin-top: 3px; color: var(--ledger-ink); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.task-agenda__source-copy p { margin: 3px 0 0; color: var(--ledger-muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
-.task-agenda__source-action { flex: 0 0 auto; min-width: 92px; min-height: 44px; padding: 8px 12px; color: var(--ledger-paper); background: var(--ledger-indigo); border: 1px solid var(--ledger-indigo); border-radius: 4px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.4; text-align: center; touch-action: manipulation; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
-.task-agenda__source-action:hover { background: #4853cf; border-color: #4853cf; }
+.task-agenda__card--completed, .task-agenda__card--canceled { background: transparent; }
+.task-agenda__card-topline { display: flex; grid-column: 1; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; min-width: 0; }
+.task-agenda__card-topline h4 { margin: 0; color: var(--ledger-ink); font-size: 15px; font-weight: 650; line-height: 1.45; overflow-wrap: anywhere; }
+.task-agenda__status { color: var(--ledger-muted); font-size: 11px; line-height: 1.45; white-space: nowrap; }
+.task-agenda__course { margin-right: 6px; color: var(--ledger-muted); font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.task-agenda__schedule { display: flex; grid-column: 1; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; margin: 5px 0 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.task-agenda__schedule time { font-variant-numeric: tabular-nums; }
+.task-agenda__source { display: flex; grid-column: 1; align-items: center; min-width: 0; margin-top: 3px; }
+.task-agenda__source-copy { min-width: 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.task-agenda__source--deleted .task-agenda__source-copy { color: var(--ledger-amber-text); }
+.task-agenda__source-action { min-width: 44px; min-height: 36px; max-width: 100%; padding: 4px 0; color: var(--ledger-link); background: transparent; border: 0; border-radius: 4px; cursor: pointer; font: inherit; font-size: 12px; line-height: 1.5; text-align: left; overflow-wrap: anywhere; touch-action: manipulation; }
+.task-agenda__source-action:hover { text-decoration: underline; text-underline-offset: 3px; }
 .task-agenda__source-action:active { box-shadow: inset 0 0 0 999px rgba(30, 42, 68, .08); }
-.task-agenda__source-action:focus-visible { outline: 3px solid rgba(89, 100, 237, .42); outline-offset: 3px; }
+.task-agenda__source-action:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: 3px; }
 .task-agenda__source-action:disabled { cursor: wait; opacity: .58; }
-.task-agenda__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.task-agenda__action, .task-agenda__show-all { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 44px; padding: 8px 12px; color: #43516b; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 4px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.4; text-align: center; touch-action: manipulation; transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
-.task-agenda__action { flex: 1 1 112px; }
+.task-agenda__actions { display: flex; grid-column: 2; grid-row: 1 / span 3; align-self: center; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; }
+.task-agenda__action, .task-agenda__show-all { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 44px; padding: 8px 12px; color: #43516b; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 8px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; line-height: 1.4; text-align: center; touch-action: manipulation; transition: color .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.task-agenda__action { flex: 0 0 auto; min-width: 44px; }
 .task-agenda__action--primary { color: var(--ledger-paper); background: var(--ledger-indigo); border-color: var(--ledger-indigo); }
-.task-agenda__action--quiet { color: var(--ledger-link); }
+.task-agenda__action--quiet { flex-grow: 0; color: var(--ledger-muted); border-color: transparent; }
 .task-agenda__action:disabled { cursor: wait; opacity: .58; }
-.task-agenda__action:hover, .task-agenda__show-all:hover { color: var(--ledger-indigo); background: #f7f8ff; border-color: var(--ledger-indigo); }
-.task-agenda__action--primary:hover { color: var(--ledger-paper); background: #4853cf; border-color: #4853cf; }
+.task-agenda__action:hover, .task-agenda__show-all:hover { color: var(--ledger-indigo); background: #f1f7f3; border-color: var(--ledger-indigo); }
+.task-agenda__action--primary:hover { color: var(--ledger-paper); background: var(--ledger-link); border-color: var(--ledger-link); }
 .task-agenda__action:active, .task-agenda__show-all:active { box-shadow: inset 0 0 0 999px rgba(30, 42, 68, .06); }
-.task-agenda__action:focus-visible, .task-agenda__show-all:focus-visible { position: relative; z-index: 1; outline: 3px solid rgba(89, 100, 237, .42); outline-offset: 3px; }
+.task-agenda__action:focus-visible, .task-agenda__show-all:focus-visible { position: relative; z-index: 1; outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: 3px; }
 .task-agenda__notice { margin: 16px 0 0; padding: 10px 12px; color: var(--ledger-amber-text); background: #fff8ec; border: 1px solid #ecd0a8; border-left: 3px solid var(--ledger-amber); border-radius: 5px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .task-agenda__show-all { width: 100%; margin-top: 16px; color: var(--ledger-link); }
-.task-agenda__empty .task-agenda__show-all { margin-top: 4px; }
-@media (max-width: 560px) { .task-agenda { padding: 16px; } .task-agenda__heading { display: grid; gap: 10px; } .task-agenda__count { justify-self: start; } .task-agenda__timeline { padding-left: 25px; } .task-agenda__now, .task-agenda__group-heading { margin-left: -25px; } .task-agenda__spine { left: 5px; } .task-agenda__now::before { width: 12px; height: 12px; margin-right: 7px; } .task-agenda__group-node { width: 11px; height: 11px; margin-right: 8px; } .task-agenda__facts { grid-template-columns: minmax(0, 1fr); gap: 8px; } .task-agenda__source { align-items: stretch; flex-direction: column; } .task-agenda__source-action { width: 100%; } .task-agenda__actions { display: grid; grid-template-columns: minmax(0, 1fr); } .task-agenda__action { width: 100%; } }
+.task-agenda__empty-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 4px; }
+.task-agenda__empty .task-agenda__show-all { margin-top: 0; }
+.task-agenda__show-all--primary { color: var(--ledger-paper); background: var(--ledger-indigo); border-color: var(--ledger-indigo); }
+.task-agenda__show-all--primary:hover { color: var(--ledger-paper); background: var(--ledger-link); border-color: var(--ledger-link); }
+@media (max-width: 420px) { .task-agenda__empty-actions { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .task-agenda { padding: 0; } .task-agenda__heading { flex-wrap: wrap; gap: 10px; } .task-agenda__count { justify-self: start; } .task-agenda__timeline { padding-left: 25px; } .task-agenda__now, .task-agenda__group-heading { margin-left: -25px; } .task-agenda__spine { left: 5px; } .task-agenda__now::before { width: 12px; height: 12px; margin-right: 7px; } .task-agenda__group-node { width: 11px; height: 11px; margin-right: 8px; } .task-agenda__card { display: block; padding: 12px 0; } .task-agenda__source { align-items: stretch; flex-direction: column; } .task-agenda__source-action { width: 100%; min-height: 44px; } .task-agenda__actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; margin-top: 10px; gap: 8px; } .task-agenda__action { width: 100%; } }
 @media (prefers-reduced-motion: reduce) { .task-agenda *, .task-agenda *::before, .task-agenda *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
 </style>

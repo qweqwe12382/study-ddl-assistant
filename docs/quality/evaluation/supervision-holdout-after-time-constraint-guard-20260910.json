@@ -1,0 +1,532 @@
+{
+  "evaluated_at": "2026-09-10T05:23:30.574534+00:00",
+  "corpus_sha256": "bdcecc3b930df912bce03b79b50a2069cd06e6d7389b2d0af6c6940ce9ba0245",
+  "code_sha256": {
+    "backend/app/services/llm_provider.py": "c68fe3d31f7af087f90f77b7944c14123d6e0b494cc71abfefa9778f2dc14e66",
+    "backend/app/services/extraction.py": "4e70a7967773523a94bf62d87cbe95ba6c72bbcc080b87bbcc3674a19f666698",
+    "backend/tests/extraction_benchmark.py": "1fe81f29146e89070848423393b4014b4a8b1e7403c9400c0e4d764f295234cc",
+    "scripts/evaluate_independent_notices.py": "274f41aadbc6b05c74f3ad9ee42863d470a1c34d2722758264e2c916e11cdd57"
+  },
+  "provenance": {
+    "kind": "supervision_holdout_synthetic_course_notices",
+    "authoring_rule": "Independently authored on 2026-09-10 after reading only the evaluator contract. This corpus must not be edited after its first evaluation or used to tune the extractor while represented as unseen.",
+    "limitation": "Synthetic Chinese course notices only. It is not a random sample, real-student accuracy measurement, OCR benchmark, or usability study."
+  },
+  "cases": 16,
+  "limitation": "Independently authored synthetic text only; exact task-name matching is not semantic task detection. Missing/name-mismatched tasks count against date scores. No OCR, real students, external model, or human correction timing measured. Do not tune and then relabel this corpus as unseen.",
+  "totals": {
+    "exact_name_tp": 6,
+    "exact_name_fp": 8,
+    "exact_name_fn": 10,
+    "dated_correct": 4,
+    "dated_total": 10,
+    "null_correct": 1,
+    "null_total": 6
+  },
+  "coverage": {
+    "positive_notices": 13,
+    "positive_notices_without_candidates": 1,
+    "negative_notices": 3,
+    "negative_notices_without_candidates": 3,
+    "expected_tasks": 16,
+    "predicted_candidates": 14,
+    "case_errors": 0
+  },
+  "case_results": [
+    {
+      "id": "holdout-01-transfer-delegation",
+      "category": "transfer_or_delegation",
+      "expected": [
+        {
+          "name": "上传课堂展示报名表",
+          "due_local": "2026-09-11T17:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": [
+          {
+            "name": "上传报名表",
+            "due_local": "2026-09-11T17:00",
+            "source_quote": "现转交各小组自行在教学平台上传报名表，截止本周五17:00。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 1,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "“转交”改变提交责任，仍有明确要求和明确截止时间。",
+      "error": null
+    },
+    {
+      "id": "holdout-02-correction-date",
+      "category": "correction",
+      "expected": [
+        {
+          "name": "提交习题4-6",
+          "due_local": "2026-09-15T22:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "更正：上一条《大学物理》作业通知中的“”是笔误",
+            "due_local": "2026-09-16T23:59",
+            "source_quote": "更正：上一条《大学物理》作业通知中的“周三”是笔误。"
+          },
+          {
+            "name": "习题4-6 （）22:00前",
+            "due_local": "2026-09-15T23:59",
+            "source_quote": "习题4-6请于9月15日（周二）22:00前提交。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 2,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "仅以更正后的明确日期为截止依据。",
+      "error": null
+    },
+    {
+      "id": "holdout-03-cancelled-workshop",
+      "category": "cancellation",
+      "expected": [],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "取消事项和“请勿前往”均不应形成待办。",
+      "error": null
+    },
+    {
+      "id": "holdout-04-two-tasks-two-deadlines",
+      "category": "multi_task",
+      "expected": [
+        {
+          "name": "提交需求访谈纪要",
+          "due_local": "2026-09-16T18:00"
+        },
+        {
+          "name": "完成互评表",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "提交需求访谈纪要",
+            "due_local": "2026-09-16T18:00",
+            "source_quote": "1. 9月16日18:00前在雨课堂提交需求访谈纪要"
+          },
+          {
+            "name": "完成互评表",
+            "due_local": null,
+            "source_quote": "2. 9月18日中午前完成互评表。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 2,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 1,
+        "null_total": 1
+      },
+      "annotation_note": "第二项只写“中午前”，没有可安全标注的精确时刻，保留空时间。",
+      "error": null
+    },
+    {
+      "id": "holdout-05-cross-line-task",
+      "category": "cross_line",
+      "expected": [
+        {
+          "name": "上传分镜脚本和素材来源说明PDF",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "上传至课程群文件",
+            "due_local": "2026-09-20T23:59",
+            "source_quote": "9月20日前上传至课程群文件。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 1,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 1
+      },
+      "annotation_note": "跨行任务有日期但没有精确时间；不猜测当天结束时刻。",
+      "error": null
+    },
+    {
+      "id": "holdout-06-information-only-room-change",
+      "category": "no_task_announcement",
+      "expected": [],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "教室变更是信息公告，没有要求学生完成的事项。",
+      "error": null
+    },
+    {
+      "id": "holdout-07-relative-tomorrow",
+      "category": "relative_date",
+      "expected": [
+        {
+          "name": "填写职业发展问卷",
+          "due_local": "2026-09-11T16:30"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": [
+          {
+            "name": "提交者也可课",
+            "due_local": "2026-09-11T16:30",
+            "source_quote": "请在明天16:30前填写《职业发展》问卷，未提交者也可课后补填。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 1,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "“明天”相对通知参考时间为2026-09-11。",
+      "error": null
+    },
+    {
+      "id": "holdout-08-relative-next-week",
+      "category": "relative_date",
+      "expected": [
+        {
+          "name": "携带离散数学练习册第2章",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 1
+      },
+      "annotation_note": "“下周一上课前”缺少课程开始时刻，保留空时间。",
+      "error": null
+    },
+    {
+      "id": "holdout-09-cross-month-extension",
+      "category": "cross_month",
+      "expected": [
+        {
+          "name": "上传最终版PPT",
+          "due_local": "2026-10-03T23:59"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "上传最终版PPT",
+            "due_local": "2026-10-03T23:59",
+            "source_quote": "数据库课程设计答辩材料延期：请在10月3日23:59前重新上传最终版PPT。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "跨月日期有明确年月日和时刻。",
+      "error": null
+    },
+    {
+      "id": "holdout-10-cross-month-relative",
+      "category": "cross_month_relative",
+      "expected": [
+        {
+          "name": "提交读书报告提纲",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "提交读书报告提纲",
+            "due_local": "2026-10-09T23:59",
+            "source_quote": "国庆后第一节《概率论》课前，请提交读书报告提纲；课程安排为10月9日恢复。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 1
+      },
+      "annotation_note": "给出了复课日但未明确“课前”的精确时刻，保留空时间。",
+      "error": null
+    },
+    {
+      "id": "holdout-11-missing-date",
+      "category": "missing_date",
+      "expected": [
+        {
+          "name": "补全联系方式",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "登记同学",
+            "due_local": null,
+            "source_quote": "机器学习小组还未登记的同学，请尽快在共享表补全联系方式，具体截止日期另行通知。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 1,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 1
+      },
+      "annotation_note": "有明确动作，但通知明说截止日期另行通知，不能填充日期。",
+      "error": null
+    },
+    {
+      "id": "holdout-12-missing-time",
+      "category": "missing_time",
+      "expected": [
+        {
+          "name": "提交摘要修改稿",
+          "due_local": null
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "提交到教学系统",
+            "due_local": "2026-09-22T23:59",
+            "source_quote": "《学术写作》摘要修改稿请于9月22日提交到教学系统，格式模板见附件。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 1,
+        "exact_name_fn": 1,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 1
+      },
+      "annotation_note": "日期明确但没有时刻；不将系统默认截止时间写入标注。",
+      "error": null
+    },
+    {
+      "id": "holdout-13-two-actions-one-date",
+      "category": "multi_task_shared_deadline",
+      "expected": [
+        {
+          "name": "确认选题",
+          "due_local": "2026-09-19T20:00"
+        },
+        {
+          "name": "填写组员分工",
+          "due_local": "2026-09-19T20:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "确认选题",
+            "due_local": "2026-09-19T20:00",
+            "source_quote": "人工智能导论小组：9月19日20:00前先确认选题，再把组员分工填入在线文档。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 1,
+        "dated_correct": 1,
+        "dated_total": 2,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "一条通知中的两个独立动作共享同一明确截止时间。",
+      "error": null
+    },
+    {
+      "id": "holdout-14-cancel-then-replacement",
+      "category": "cancellation_and_replacement",
+      "expected": [
+        {
+          "name": "观看安全视频",
+          "due_local": "2026-09-14T19:00"
+        },
+        {
+          "name": "完成视频后的三道题",
+          "due_local": "2026-09-14T19:00"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "完成视频",
+            "due_local": "2026-09-14T19:00",
+            "source_quote": "请改为在9月14日19:00前观看安全视频并完成视频后的三道题。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 1,
+        "exact_name_fn": 2,
+        "dated_correct": 0,
+        "dated_total": 2,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "被取消的是线下测验；替代要求中的两个动作有效且共享新截止时间。",
+      "error": null
+    },
+    {
+      "id": "holdout-15-no-task-grade-release",
+      "category": "no_task_announcement",
+      "expected": [],
+      "predicted": {
+        "course_name": null,
+        "review": false,
+        "tasks": []
+      },
+      "scores": {
+        "exact_name_tp": 0,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 0,
+        "dated_total": 0,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "成绩发布和开放式咨询提示不构成待办。",
+      "error": null
+    },
+    {
+      "id": "holdout-16-correction-cancelled-old-deadline",
+      "category": "correction_with_old_deadline_cancelled",
+      "expected": [
+        {
+          "name": "提交实验报告",
+          "due_local": "2026-11-02T09:30"
+        }
+      ],
+      "predicted": {
+        "course_name": null,
+        "review": true,
+        "tasks": [
+          {
+            "name": "提交实验报告",
+            "due_local": "2026-11-02T09:30",
+            "source_quote": "请于11月2日09:30前提交实验报告。"
+          }
+        ]
+      },
+      "scores": {
+        "exact_name_tp": 1,
+        "exact_name_fp": 0,
+        "exact_name_fn": 0,
+        "dated_correct": 1,
+        "dated_total": 1,
+        "null_correct": 0,
+        "null_total": 0
+      },
+      "annotation_note": "旧截止表述已作废，只应采用11月2日09:30的新时间；跨月。",
+      "error": null
+    }
+  ]
+}

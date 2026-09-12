@@ -25,6 +25,14 @@ object StudyTime {
 
     fun dateOf(value: String?): LocalDate? = parse(value)?.toLocalDate()
 
+    /**
+     * Returns the absolute instant represented by an API deadline. Formatting continues to use
+     * China time, while consumers such as Calendar receive the same instant in milliseconds.
+     */
+    fun epochMillis(value: String?): Long? = parse(value)?.let { timestamp ->
+        runCatching { timestamp.toInstant().toEpochMilli() }.getOrNull()
+    }
+
     fun countdown(value: String?): String {
         val target = parse(value) ?: return "时间待补充"
         val now = OffsetDateTime.now(chinaZone)

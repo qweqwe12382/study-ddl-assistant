@@ -29,7 +29,7 @@ export function toDateInputValue(value = new Date()) {
 }
 
 export function isOverdue(task) {
-  return task.status !== 'completed' && task.due_at && new Date(task.due_at).getTime() < Date.now()
+  return !['completed', 'canceled'].includes(task.status) && task.due_at && new Date(task.due_at).getTime() < Date.now()
 }
 
 export function statusLabel(status) {
@@ -38,6 +38,7 @@ export function statusLabel(status) {
     in_progress: '进行中',
     completed: '已完成',
     overdue: '已逾期',
+    canceled: '已取消',
   }[status] || status
 }
 
@@ -47,5 +48,6 @@ export function statusType(status) {
     in_progress: 'warning',
     completed: 'success',
     overdue: 'danger',
+    canceled: 'info',
   }[status] || 'info'
 }

@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 import secrets
 import logging
@@ -28,6 +29,7 @@ from app.services.agent_feedback import create_plan_delta_candidates
 from app.services.llm_provider import external_provider_available
 from app.services.edit_concurrency import check_edit_precondition
 from app.models.user import User
+from app.time import deadline_to_utc, utc_now
 from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/api/materials", tags=["materials"])
@@ -193,6 +195,7 @@ def create_material(payload: MaterialManualCreate, db: Session = Depends(get_db)
         message="关联课程不存在",
     )
     material_data = payload.model_dump()
+    material_data["source_time"] = deadline_to_utc(payload.source_time) if payload.source_time is not None else utc_now()
     if payload.extracted_text:
         material_data["processing_status"] = "processed"
     material = Material(**material_data)
@@ -240,6 +243,7 @@ def upload_materials(
     files: list[UploadFile] = File(...),
     course_id: int | None = Form(default=None),
     material_type: str | None = Form(default=None),
+    source_time: datetime | None = Form(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Material]:
@@ -253,6 +257,9 @@ def upload_materials(
             detail={"code": "TOO_MANY_FILES", "message": f"一次最多上传 {settings.max_upload_files} 个文件"},
         )
     _validate_course(db, course_id)
+    # Relative deadlines belong to the notification's reference instant, not
+    # the date of a later extraction/retry. Naive input denotes Shanghai time.
+    reference_time = deadline_to_utc(source_time) if source_time is not None else utc_now()
 
     prepared_files: list[PreparedUpload] = []
     existing_hashes = set(db.scalars(select(Material.content_hash).where(Material.content_hash.is_not(None))).all())
@@ -287,6 +294,7 @@ def upload_materials(
                 stored_path=stored_path,
                 file_type=prepared.file_type,
                 material_type=material_type or None,
+                source_time=reference_time,
                 tags=[],
                 processing_status="pending",
             )
@@ -376,6 +384,7 @@ def _extraction_response(material: Material) -> ExtractionRead:
             "error": material.extraction_error,
             "extracted_at": material.extracted_at,
             "confirmed_task_ids": stored.get("confirmed_task_ids", []),
+            "confirmed_task_refs": stored.get("confirmed_task_refs", []),
         }
     )
     return ExtractionRead.model_validate(payload)
@@ -503,6 +512,10 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
     result_payload["needs_review"] = False
     result_payload["warnings"] = list(dict.fromkeys(warning for candidate in selected for warning in candidate.warnings))
     result_payload["confirmed_task_ids"] = [task.id for task in created]
+    result_payload["confirmed_task_refs"] = [
+        {"id": task.id, "navigation_key": task.navigation_key, "name": task.name}
+        for task in created
+    ]
     material.extraction_result = result_payload
     # The confirmation event belongs to the same transaction as the formal
     # tasks.  It is intentionally aggregate-only: detailed extraction content

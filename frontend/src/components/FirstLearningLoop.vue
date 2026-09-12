@@ -1,195 +1,90 @@
 <template>
-  <section
-    class="first-learning-loop"
-    :class="{ 'is-compact': isCompact }"
-    :aria-labelledby="isCompact ? undefined : 'first-learning-loop-title'"
-    :aria-label="isCompact ? '上手进度' : undefined"
-  >
-    <button
-      v-if="hidden"
-      type="button"
-      class="loop-restore"
-      aria-label="显示上手进度"
-      @click="restore"
-    >
-      显示上手进度
-    </button>
-
-    <template v-else>
-      <header v-if="!isCompact" class="loop-header">
-        <div>
-          <p class="loop-kicker">上手进度</p>
-          <h2 id="first-learning-loop-title">完成 4 步，开始安排学习</h2>
-          <p class="loop-summary">记录课程、资料、任务和一次完成反馈，之后就能看到更贴合实际的安排。</p>
-        </div>
-        <button type="button" class="loop-hide" @click="hide">稍后再看</button>
-      </header>
-      <button v-else type="button" class="loop-hide loop-hide-compact" @click="hide">稍后再看</button>
-
-      <div v-if="state !== 'ready'" class="loop-data-state" :class="`loop-data-state--${state}`" role="status" aria-live="polite">
-        <strong>{{ stateTitle }}</strong>
-        <span>{{ stateDetail }}</span>
-        <button v-if="state === 'error' || state === 'invalid'" type="button" class="loop-retry" @click="$emit('retry')">重试</button>
+  <section class="first-learning-loop" :class="{ 'is-collapsed': hidden || status?.completed }" aria-label="开始使用学伴管家">
+    <Transition name="soft-swap" mode="out-in">
+      <p v-if="state === 'ready' && status?.completed" key="complete" class="loop-finished"><span aria-hidden="true">✓</span> 已完成第一项任务，接下来按自己的节奏学习。</p>
+      <button v-else-if="hidden" key="hidden" type="button" class="loop-restore" @click="setHidden(false)">查看上手提示</button>
+      <div v-else-if="state !== 'ready' || !status" key="loading" class="loop-data-state" role="status">
+        <span>{{ state === 'loading' ? '正在读取你的学习记录…' : '暂时无法读取上手进度。' }}</span>
+        <button v-if="state !== 'loading'" type="button" class="loop-secondary" @click="$emit('retry')">重新读取</button>
       </div>
-
-      <template v-else>
-        <p v-if="!isCompact" class="loop-ready-state" role="status">进度已更新</p>
-        <div v-if="isCompact" class="loop-compact-ticket" role="status" aria-live="polite">
-          <template v-if="currentStep">
-            <span class="loop-progress">{{ progressLabel }}</span>
-            <strong>下一步：{{ currentStep.title }}</strong>
-            <p>{{ currentStep.concise }}</p>
-            <button type="button" class="loop-primary" @click="emitAction(currentStep.action)">{{ currentStep.actionLabel }}</button>
-          </template>
-          <template v-else>
-            <strong>4 步已完成</strong>
-            <p>第一条学习记录已经建立。</p>
-            <button type="button" class="loop-primary" @click="emitAction('complete')">查看任务</button>
-          </template>
+      <div v-else :key="status.started ? 'started' : 'new'" class="loop-content">
+        <div class="loop-topline">
+          <span class="loop-progress">{{ status.started ? '已经迈出第一步' : '第一次使用，从这里开始' }}</span>
+          <button type="button" class="loop-hide" @click="setHidden(true)">稍后再看</button>
         </div>
-
-        <ol v-else class="loop-steps" aria-label="学习记录建立步骤">
-          <li v-for="step in steps" :key="step.key" :class="['loop-step', { 'is-complete': step.complete, 'is-current': !step.complete && step.key === currentStep?.key }]">
-            <span class="loop-step-number" aria-hidden="true">{{ step.order }}</span>
-            <div class="loop-step-content">
-              <div class="loop-step-title-row">
-                <strong>{{ step.title }}</strong>
-                <span>{{ step.complete ? '已完成' : '未完成' }}</span>
-              </div>
-              <p>{{ step.evidence }}</p>
-              <button v-if="!step.complete" type="button" class="loop-secondary" @click="emitAction(step.action)">{{ step.actionLabel }}</button>
-            </div>
-          </li>
+        <h2>{{ status.started ? '开始做你的第一项任务' : '先记下一件要做的事' }}</h2>
+        <p class="loop-summary">{{ status.started ? '做完后标记完成，就能留下第一条学习记录。用时和难度可以稍后补充。' : '写下作业或复习内容就能开始。课程、日期和预计用时，都可以稍后补充。' }}</p>
+        <div class="loop-actions">
+          <button type="button" class="loop-primary" @click="$emit('navigate', status.started ? 'complete' : 'task')">{{ status.started ? '去做第一项任务' : '记下第一项任务' }}</button>
+          <button v-if="!status.started" type="button" class="loop-secondary" @click="startFromMaterial">{{ materialSourceAvailable ? '核对已有资料' : '粘贴课程通知' }}</button>
+        </div>
+        <ol class="loop-steps" aria-label="开始学习的两个步骤">
+          <li :class="{ 'is-complete': status.started }"><span aria-hidden="true">{{ status.started ? '✓' : '1' }}</span>记下一项任务</li>
+          <li><span aria-hidden="true">2</span>做完后标记完成</li>
         </ol>
-      </template>
-    </template>
+        <p v-if="!concise" class="loop-optional">想按课程整理？<button type="button" @click="$emit('navigate', 'course')">添加课程</button>，也可以以后再安排。</p>
+      </div>
+    </Transition>
   </section>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue'
-
-import { strictNonNegativeInteger } from '../utils/firstLearningLoopPlacement'
-
-const HIDDEN_STORAGE_KEY = 'study-ledger:first-learning-loop-hidden'
+import { computed, ref, watch } from 'vue'
+import { authSession } from '../auth/session'
+import { firstLearningProgress } from '../utils/firstLearningLoopPlacement'
 
 const props = defineProps({
   state: { type: String, default: 'loading' },
   concise: { type: Boolean, default: false },
-  compact: { type: Boolean, default: false },
   progress: { type: Object, default: () => ({}) },
   materialSourceAvailable: { type: Boolean, default: false },
 })
-
 const emit = defineEmits(['retry', 'navigate', 'open-material-source'])
+const status = computed(() => firstLearningProgress(props.progress))
 const hidden = ref(false)
-const isCompact = computed(() => props.compact || props.concise)
+// Keep one student's dismissed guide from hiding it for the next account.
+const storageKey = computed(() => `study-ledger:get-started:${authSession.user?.id || 'guest'}`)
+watch(storageKey, (key) => {
+  try { hidden.value = window.localStorage.getItem(key) === 'hidden' }
+  catch { hidden.value = false }
+}, { immediate: true })
 
-const counts = computed(() => ({
-  courses: safeCount(props.progress.courses_count),
-  materials: safeCount(props.progress.materials_count),
-  tasks: safeCount(props.progress.active_task_count) !== null && safeCount(props.progress.completed_task_count) !== null
-    ? safeCount(props.progress.active_task_count) + safeCount(props.progress.completed_task_count)
-    : null,
-  completed: safeCount(props.progress.completed_task_count),
-}))
-
-const steps = computed(() => [
-  { key: 'course', order: '01', title: '新增课程', concise: '先添加一门课程。', evidence: `课程：${countLabel(counts.value.courses, '门')}`, complete: counts.value.courses !== null && counts.value.courses >= 1, action: 'course', actionLabel: '新增课程' },
-  { key: 'material', order: '02', title: '上传资料', concise: '上传一份课程资料。', evidence: `资料：${countLabel(counts.value.materials, '份')}`, complete: counts.value.materials !== null && counts.value.materials >= 1, action: 'material', actionLabel: props.materialSourceAvailable ? '查看待处理资料' : '上传资料' },
-  { key: 'task', order: '03', title: '新增任务', concise: '把要做的事记成任务。', evidence: `任务：${countLabel(counts.value.tasks, '条')}（进行中 ${countLabel(safeCount(props.progress.active_task_count), '条')}，已完成 ${countLabel(safeCount(props.progress.completed_task_count), '条')}）`, complete: counts.value.tasks !== null && counts.value.tasks >= 1, action: 'task', actionLabel: props.materialSourceAvailable ? '查看待确认资料' : '新增任务' },
-  { key: 'complete', order: '04', title: '完成一项任务', concise: '完成一项任务，留下学习记录。', evidence: `已完成：${countLabel(counts.value.completed, '条')}`, complete: counts.value.completed !== null && counts.value.completed >= 1, action: 'complete', actionLabel: '查看任务' },
-])
-
-const completedSteps = computed(() => steps.value.filter((step) => step.complete).length)
-const currentStep = computed(() => steps.value.find((step) => !step.complete) || null)
-const progressCountsReady = computed(() => Object.values(counts.value).every((count) => count !== null))
-const progressLabel = computed(() => progressCountsReady.value ? `上手进度 ${completedSteps.value}/4` : '进度数据待确认')
-const stateTitle = computed(() => ({ loading: '正在读取上手进度', error: '上手进度加载失败', invalid: '上手进度暂不可用' }[props.state] || '上手进度暂不可用'))
-const stateDetail = computed(() => ({ loading: '正在确认课程、资料、任务和完成记录。', error: '请重试后再查看进度。', invalid: '进度信息不完整，暂时无法显示。' }[props.state] || '进度信息暂时无法显示。'))
-
-function safeCount(value) {
-  return strictNonNegativeInteger(value)
-}
-
-function countLabel(value, unit) {
-  return value === null ? '待确认' : `${value}${unit}`
-}
-
-function emitAction(action) {
-  if ((action === 'material' || action === 'task') && props.materialSourceAvailable) {
-    emit('open-material-source')
-    return
-  }
-  emit('navigate', action)
-}
-
-function hide() {
-  hidden.value = true
+function setHidden(value) {
+  hidden.value = value
   try {
-    if (typeof window !== 'undefined') window.localStorage.setItem(HIDDEN_STORAGE_KEY, 'true')
-  } catch {
-    // Preference persistence is optional; the current page still updates.
-  }
+    if (value) window.localStorage.setItem(storageKey.value, 'hidden')
+    else window.localStorage.removeItem(storageKey.value)
+  } catch { /* The guide still works when storage is unavailable. */ }
 }
-
-function restore() {
-  hidden.value = false
-  try {
-    if (typeof window !== 'undefined') window.localStorage.removeItem(HIDDEN_STORAGE_KEY)
-  } catch {
-    // Preference persistence is optional; the current page still updates.
-  }
+function startFromMaterial() {
+  if (props.materialSourceAvailable) emit('open-material-source')
+  else emit('navigate', 'notice')
 }
-
-onMounted(() => {
-  try {
-    hidden.value = typeof window !== 'undefined' && window.localStorage.getItem(HIDDEN_STORAGE_KEY) === 'true'
-  } catch {
-    hidden.value = false
-  }
-})
 </script>
 
 <style scoped>
-.first-learning-loop { margin: 0 0 22px; padding: 18px 20px; color: #22304b; background: linear-gradient(115deg, #f4f7ff 0%, #fbfcff 65%, #f0f7ff 100%); border: 1px solid #d9e4f2; border-left: 4px solid #4f6fe8; border-radius: 14px; box-shadow: 0 10px 24px rgba(42, 75, 132, .06); }
-.first-learning-loop.is-compact { margin-bottom: 14px; padding: 10px 12px; border-left-width: 3px; border-radius: 10px; }
-.loop-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.loop-header > div { min-width: 0; }
-.loop-kicker { margin: 0; color: #4f6fe8; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
-.loop-header h2 { margin: 5px 0 0; font-size: 18px; line-height: 1.35; }
-.loop-summary { max-width: 680px; margin: 7px 0 0; color: #667085; font-size: 13px; line-height: 1.65; }
-.loop-hide, .loop-restore, .loop-retry, .loop-primary, .loop-secondary { min-height: 44px; border-radius: 8px; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
-.loop-hide { flex: 0 0 auto; padding: 0 10px; color: #52627c; background: transparent; border: 0; }
-.loop-hide-compact { display: block; margin: -5px -4px 1px auto; padding: 0 8px; }
-.loop-hide:hover { color: #314bc2; background: #eaf0ff; }
-.loop-data-state { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 16px; padding: 13px; background: #fff; border: 1px solid #dce4f0; border-radius: 10px; font-size: 12px; line-height: 1.55; }
-.first-learning-loop.is-compact .loop-data-state { margin-top: 4px; padding: 10px; }
-.loop-data-state span { color: #667085; }
-.loop-data-state--error, .loop-data-state--invalid { border-color: #f0cfcd; background: #fff9f9; }
-.loop-data-state--error strong, .loop-data-state--invalid strong { color: #a84444; }
-.loop-ready-state { margin: 14px 0 0; color: #55708c; font-size: 12px; line-height: 1.5; }
-.loop-retry, .loop-secondary { padding: 0 13px; color: #3852c4; background: #fff; border: 1px solid #b9c8f3; }
-.loop-progress { color: #52627c; font-size: 12px; font-weight: 700; line-height: 1.5; }
-.loop-compact-ticket { display: grid; justify-items: start; gap: 5px; margin-top: 4px; padding: 10px 12px; background: #fff; border: 1px solid #dce4f0; border-radius: 8px; }
-.loop-compact-ticket strong { font-size: 14px; line-height: 1.4; }
-.loop-compact-ticket p { margin: 0; color: #667085; font-size: 13px; line-height: 1.6; }
-.loop-compact-ticket .loop-primary { margin-top: 2px; }
-.loop-current p, .loop-step p { margin: 0; color: #667085; font-size: 12px; line-height: 1.6; }
-.loop-primary { margin-top: 3px; padding: 0 15px; color: #fff; background: #4f6fe8; border: 1px solid #4f6fe8; }
-.loop-primary:hover { background: #3d5bd0; }
-.loop-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 16px 0 0; padding: 0; list-style: none; }
-.loop-step { display: flex; min-width: 0; gap: 9px; padding: 12px; background: #fff; border: 1px solid #dce4f0; border-radius: 10px; }
-.loop-step.is-current { border-color: #91a8f4; box-shadow: inset 0 2px 0 #4f6fe8; }
-.loop-step.is-complete { background: #f8fcff; border-color: #cfe4dc; }
-.loop-step-number { flex: 0 0 auto; color: #7890b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 800; }
-.loop-step-content { display: grid; min-width: 0; gap: 6px; }
-.loop-step-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.loop-step-title-row strong { min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
-.loop-step-title-row span { flex: 0 0 auto; color: #477e65; font-size: 12px; font-weight: 700; line-height: 1.5; }
-.loop-step:not(.is-complete) .loop-step-title-row span { color: #9a6d27; }
-.loop-restore { width: 100%; color: #3852c4; background: #f6f8ff; border: 1px dashed #aebdeb; }
-.loop-hide:focus-visible, .loop-restore:focus-visible, .loop-retry:focus-visible, .loop-primary:focus-visible, .loop-secondary:focus-visible { outline: 3px solid rgba(79, 111, 232, .35); outline-offset: 2px; }
-@media (max-width: 850px) { .loop-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .first-learning-loop { padding: 16px; } .first-learning-loop.is-compact { padding: 10px 12px; } .loop-header { display: block; } .loop-hide { margin-top: 5px; padding-left: 0; } .loop-hide-compact { margin-top: -2px; padding-left: 8px; } .loop-compact-ticket { padding: 10px 11px; } .loop-steps { grid-template-columns: 1fr; } .loop-primary, .loop-secondary, .loop-retry { width: 100%; } }
+.first-learning-loop { min-width: 0; margin-bottom: 24px; padding: 28px; border: 1px solid var(--ledger-line); border-top: 3px solid var(--ledger-indigo); border-radius: var(--ledger-radius); background: var(--ledger-paper); }
+.first-learning-loop.is-collapsed { padding: 0; border: 0; background: transparent; }
+.loop-topline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.loop-progress { color: var(--ledger-link); font-size: 13px; font-weight: 600; }
+.loop-hide, .loop-restore, .loop-optional button { min-height: 44px; padding: 8px 0; color: var(--ledger-muted); border: 0; background: transparent; cursor: pointer; font-size: 12px; }
+.loop-hide:hover, .loop-restore:hover, .loop-optional button:hover { color: var(--ledger-link); text-decoration: underline; text-underline-offset: 4px; }
+.loop-content h2 { margin: 12px 0 0; color: var(--ledger-ink); font-size: 25px; font-weight: 600; line-height: 1.5; }
+.loop-summary { max-width: 62ch; margin: 12px 0 0; color: var(--ledger-muted); font-size: 14px; line-height: 1.8; }
+.loop-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.loop-primary, .loop-secondary { min-height: 44px; padding: 10px 18px; border: 1px solid #d1e1d8; border-radius: 8px; color: var(--ledger-link); background: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
+.loop-primary { color: #fff; background: var(--ledger-indigo); border-color: var(--ledger-indigo); }
+.loop-primary:hover { background: var(--ledger-link); }
+.loop-secondary:hover { background: #f3f8f5; border-color: var(--ledger-indigo); }
+.loop-steps { display: flex; flex-wrap: wrap; gap: 14px 28px; margin: 26px 0 0; padding: 18px 0 0; border-top: 1px solid #d9e8df; list-style: none; }
+.loop-steps li { display: flex; align-items: center; gap: 8px; color: var(--ledger-muted); font-size: 12px; }
+.loop-steps li span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #eef4ef; color: var(--ledger-link); }
+.loop-steps .is-complete span { color: #2d7155; background: #dceee4; }
+.loop-optional { margin: 12px 0 0; color: var(--ledger-muted); font-size: 12px; }
+.loop-optional button { color: var(--ledger-link); }
+.loop-finished { margin: 0; padding: 12px 0; color: #526b61; font-size: 13px; line-height: 1.7; }
+.loop-finished span { margin-right: 8px; color: #357862; }
+.loop-data-state { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--ledger-muted); font-size: 13px; }
+.first-learning-loop button:focus-visible { outline: 3px solid rgba(50, 120, 100, .35); outline-offset: 3px; }
+@media (max-width: 560px) { .first-learning-loop { padding: 18px; } .loop-content h2 { font-size: 21px; } .loop-actions { flex-direction: column; } .loop-steps { gap: 12px; } }
 </style>

@@ -1171,11 +1171,11 @@ def test_m6_generates_editable_staged_plan_and_preserves_manual_edits(client):
 
     assert response.status_code == 201
     plan = response.json()
-    assert len(plan["items"]) == 6
+    assert len(plan["items"]) == 2
     assert plan["material_count"] == 1
     assert plan["task_count"] == 1
     assert plan["completed_item_count"] == 0
-    assert plan["total_minutes"] == 360
+    assert plan["total_minutes"] == 90
     assert plan["completed_minutes"] == 0
     assert any("专利评估" in point for point in plan["items"][0]["knowledge_points"])
     assert any(item["source_task_ids"] == [task["id"]] for item in plan["items"])
@@ -1208,6 +1208,11 @@ def test_m6_generates_editable_staged_plan_and_preserves_manual_edits(client):
 
 def test_m6_rejects_plan_item_after_exam_date(client):
     course = client.post("/api/courses", json={"name": "算法设计"}).json()
+    material = client.post(
+        "/api/materials",
+        json={"course_id": course["id"], "original_filename": "算法复习范围.md"},
+    )
+    assert material.status_code == 201
     exam_date = date.today() + timedelta(days=2)
     plan = client.post(
         "/api/study-plans/generate",
@@ -1222,7 +1227,7 @@ def test_m6_rejects_plan_item_after_exam_date(client):
     assert response.json()["error"]["code"] == "PLAN_DATE_AFTER_EXAM"
 
 
-def test_m6_combines_multiple_topics_when_available_days_are_short(client):
+def test_m6_reports_topics_that_do_not_fit_available_minutes(client):
     course = client.post("/api/courses", json={"name": "操作系统"}).json()
     for index in range(4):
         client.post(
@@ -1246,7 +1251,9 @@ def test_m6_combines_multiple_topics_when_available_days_are_short(client):
     assert response.status_code == 201
     plan = response.json()
     assert any("多个主题" in warning for warning in plan["warnings"])
-    assert any(len(item["source_material_ids"]) > 1 for item in plan["items"])
+    assert sum(len(item["source_material_ids"]) for item in plan["items"]) == 2
+    assert sum("资料“" in warning and "60 分钟未排入" in warning for warning in plan["warnings"]) == 2
+    assert all(item["minutes"] <= 60 for item in plan["items"])
 
 
 def test_m7_empty_course_plan_explains_missing_sources(client):
@@ -1345,7 +1352,7 @@ def test_tasks_icalendar_export_has_timezone_alarm_and_active_filter(client):
     events = calendar.walk("VEVENT")
     assert len(events) == 1
     event = events[0]
-    assert str(event["uid"]) == f"task-{active['id']}@learning-assistant.local"
+    assert str(event["uid"]) == f"task-{active['navigation_key']}@learning-assistant.local"
     assert str(event["summary"]) == "[DDL] 提交进程调度实验"
     assert event.decoded("dtstart").utcoffset() == timedelta(hours=8)
     assert "检查报告和源代码" in str(event["description"])

@@ -9,14 +9,18 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "navigation:check": "node tests/contracts/check-material-source-navigation.mjs",
+    "api-base:check": "node tests/contracts/check-api-base-url.mjs",
     "edit:check": "node tests/contracts/check-edit-precondition.mjs",
     "onboarding:check": "node tests/contracts/check-first-learning-loop-placement.mjs",
     "plan-delta:check": "node tests/contracts/check-plan-delta-display.mjs",
     "focus:check": "node tests/contracts/check-focus-timer.mjs",
     "quick-add:check": "node tests/contracts/check-quick-add.mjs",
+    "task-filters:check": "node tests/contracts/check-task-filters.mjs",
+    "paste-notice:check": "node tests/contracts/check-paste-notice.mjs",
+    "deadline-radar:check": "node tests/contracts/check-deadline-radar.mjs",
     "semester-week:check": "node tests/contracts/check-semester-week.mjs",
     "bundle:check": "node tests/contracts/check-bundle-budget.mjs",
-    "verify": "npm run lint && npm run navigation:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run focus:check && npm run quick-add:check && npm run semester-week:check && npm run build && npm run bundle:check"
+    "verify": "npm run lint && npm run navigation:check && npm run api-base:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run focus:check && npm run quick-add:check && npm run task-filters:check && npm run paste-notice:check && npm run deadline-radar:check && npm run semester-week:check && npm run build && npm run bundle:check"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

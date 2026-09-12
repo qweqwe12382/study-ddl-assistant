@@ -28,7 +28,7 @@ def _not_found() -> HTTPException:
 
 
 def _validate_duration_pair(estimated_minutes: int | None, remaining_minutes: int | None, *, status: str) -> None:
-    if remaining_minutes is not None and estimated_minutes is None and status != "completed":
+    if remaining_minutes is not None and estimated_minutes is None and status not in {"completed", "canceled"}:
         raise HTTPException(
             status_code=422,
             detail={"code": "TASK_DURATION_INVALID", "message": "填写剩余时长前必须先填写预计时长"},
@@ -63,7 +63,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> Task:
         message="关联资料不存在",
     )
     task_data = payload.model_dump()
-    if task_data["status"] == "completed":
+    if task_data["status"] in {"completed", "canceled"}:
         task_data["remaining_minutes"] = 0
     task = Task(**task_data, source_material_name=material.original_filename if material else None)
     db.add(task)
@@ -84,6 +84,11 @@ def complete_task(
     task = db.get(Task, task_id)
     if task is None:
         raise _not_found()
+    if task.status == "canceled":
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "TASK_CANCELED", "message": "已取消任务需先恢复为待办状态，才能标记完成"},
+        )
     check_edit_precondition(db, task, if_match)
     try:
         complete_task_with_feedback(
@@ -142,7 +147,10 @@ def update_task(
     )
     target_status = changes.get("status", task.status)
     target_estimated = changes.get("estimated_minutes", task.estimated_minutes)
-    target_remaining = 0 if target_status == "completed" else changes.get("remaining_minutes", task.remaining_minutes)
+    terminal_status = target_status in {"completed", "canceled"}
+    target_remaining = 0 if terminal_status else changes.get("remaining_minutes", task.remaining_minutes)
+    if task.status == "canceled" and not terminal_status and "remaining_minutes" not in changes and target_remaining == 0:
+        target_remaining = target_estimated
     _validate_duration_pair(target_estimated, target_remaining, status=target_status)
     check_edit_precondition(db, task, if_match)
     if "material_id" in changes and changes["material_id"] is not None:
@@ -151,11 +159,16 @@ def update_task(
     before_status = task.status
     for field, value in changes.items():
         setattr(task, field, value)
-    if target_status == "completed":
+    if terminal_status:
         task.remaining_minutes = 0
+    elif before_status == "canceled" and target_remaining is not None:
+        task.remaining_minutes = target_remaining
+    if target_status == "completed":
         if before_status != "completed":
             from app.time import utc_now
             task.completed_at = utc_now()
+    elif before_status in {"completed", "canceled"} or target_status == "canceled":
+        task.completed_at = None
     flush_or_rollback(db)
     if before_status != "completed" and task.status == "completed":
         db.add(AgentEvent(
@@ -166,6 +179,15 @@ def update_task(
             payload={"completion_path": "task_update", "after": task_feedback_snapshot(task)},
         ))
         create_plan_delta_candidates(db, task, "task_completed")
+    if before_status != "canceled" and task.status == "canceled":
+        db.add(AgentEvent(
+            event_type="task_canceled",
+            entity_type="task",
+            entity_id=task.id,
+            entity_navigation_key=task.navigation_key,
+            payload={"cancellation_path": "task_update", "after": task_feedback_snapshot(task)},
+        ))
+        create_plan_delta_candidates(db, task, "task_canceled")
     if "actual_minutes" in changes and before_actual != task.actual_minutes:
         create_plan_delta_candidates(db, task, "actual_minutes_changed")
     if task.status == "overdue" and before_status != "overdue":

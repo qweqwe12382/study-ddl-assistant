@@ -2,9 +2,8 @@
   <section class="academic-calendar-page" :aria-busy="loading">
     <div class="page-intro calendar-intro">
       <div>
-        <div class="calendar-kicker">TERM LEDGER / 学期日程</div>
         <h1>课表与考试</h1>
-        <p>按周查看固定课程，把考试时间、地点和座位集中在一处管理。</p>
+        <p>查看每周课程，记好考试时间和地点。</p>
       </div>
       <div class="page-actions">
         <el-button class="integration-entry" @click="integrationDialogVisible = true">导入教务日程</el-button>
@@ -28,14 +27,14 @@
     </div>
 
     <template v-if="courses.length">
-      <section class="today-ribbon" aria-labelledby="today-ribbon-title">
+      <section v-if="semesterCurrentWeek && selectedWeek === semesterCurrentWeek" class="today-ribbon" aria-labelledby="today-ribbon-title">
         <div class="today-stamp">
           <span>{{ todayLabel.month }}</span>
           <strong>{{ todayLabel.day }}</strong>
           <small>{{ todayLabel.weekday }}</small>
         </div>
         <div class="today-copy">
-          <span class="section-eyebrow">第 {{ selectedWeek }} 周 · {{ todayLabel.weekday }}</span>
+          <span class="section-eyebrow">今天的课程</span>
           <h2 id="today-ribbon-title">{{ todayHeadline }}</h2>
           <p>{{ todayDetail }}</p>
         </div>
@@ -48,7 +47,7 @@
 
       <div class="semester-week-bar" role="status">
         <template v-if="semesterCurrentWeek">
-          <span>按开学日推算，今天是 <strong>第 {{ semesterCurrentWeek }} 周</strong>。</span>
+          <span>本学期第 <strong>{{ semesterCurrentWeek }}</strong> 周</span>
           <button v-if="selectedWeek !== semesterCurrentWeek" type="button" @click="jumpToCurrentWeek">跳到本周</button>
         </template>
         <label v-else class="semester-start-setter">
@@ -66,9 +65,8 @@
       <section class="schedule-ledger" aria-labelledby="schedule-title">
         <header class="ledger-header">
           <div>
-            <span class="section-eyebrow">WEEKLY TIMETABLE</span>
             <h2 id="schedule-title">第 {{ selectedWeek }} 周课表</h2>
-          <p>选择周次即可查看单双周课程；保存前会提示时间冲突。</p>
+            <p>按周查看单双周课程，点击课程即可编辑。</p>
           </div>
           <div class="week-switcher" aria-label="切换课表周次">
             <button type="button" :disabled="selectedWeek <= 1" aria-label="查看上一周" @click="changeWeek(-1)">←</button>
@@ -85,11 +83,10 @@
             v-for="day in weekdays"
             :key="day.value"
             class="day-column"
-            :class="{ 'is-today': day.value === todayWeekday }"
+            :class="{ 'is-today': day.value === todayWeekday && selectedWeek === semesterCurrentWeek }"
             :aria-labelledby="`weekday-${day.value}`"
           >
             <header>
-              <span>{{ day.short }}</span>
               <strong :id="`weekday-${day.value}`">{{ day.label }}</strong>
               <small>{{ sessionsFor(day.value).length }} 节</small>
             </header>
@@ -126,7 +123,7 @@
               role="tab"
               :aria-selected="activeWeekday === day.value"
               :aria-controls="`day-panel-${day.value}`"
-              :class="{ 'is-active': activeWeekday === day.value, 'is-today': day.value === todayWeekday }"
+              :class="{ 'is-active': activeWeekday === day.value, 'is-today': day.value === todayWeekday && selectedWeek === semesterCurrentWeek }"
               @click="activeWeekday = day.value"
             >
               <span>{{ day.short }}</span>
@@ -156,7 +153,7 @@
               </span>
               <span aria-hidden="true">›</span>
             </button>
-            <div v-if="!sessionsFor(activeWeekday).length" class="mobile-empty-day">这一页留白，正好安排自习或休息。</div>
+            <div v-if="!sessionsFor(activeWeekday).length" class="mobile-empty-day">当天没有课程，可以添加上课时间。</div>
           </div>
         </div>
       </section>
@@ -164,9 +161,8 @@
       <section class="exam-ledger" aria-labelledby="exam-title">
         <header class="exam-header">
           <div>
-            <span class="section-eyebrow">EXAM TICKETS</span>
             <h2 id="exam-title">考试安排</h2>
-            <p>按时间顺序查看地点和座位；过去的考试可按需展开。</p>
+            <p>按日期排序，查看考场与座位。</p>
           </div>
           <label class="past-exam-toggle">
             <el-checkbox v-model="includePastExams">显示已结束考试</el-checkbox>
@@ -200,7 +196,6 @@
           </article>
         </div>
         <div v-else class="exam-empty">
-          <span aria-hidden="true">EXAM / —</span>
           <strong>{{ includePastExams ? '还没有考试记录' : '近期没有考试安排' }}</strong>
           <p>添加考试后，这里会按日期显示倒计时、考场和座位。</p>
           <el-button type="primary" @click="openExamDialog()">添加第一场考试</el-button>
@@ -731,91 +726,90 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.academic-calendar-page { --calendar-blue: #3157e6; --calendar-mint: #78e5cc; --calendar-yellow: #ffc857; color: var(--ledger-ink); }
-.calendar-kicker, .section-eyebrow, .ticket-time, .today-stamp, .exam-date-block, .week-switcher { font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif; font-variant-numeric: tabular-nums; }
-.calendar-intro h1 { font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0; }
-.calendar-kicker, .section-eyebrow { color: #5a6882; font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.academic-calendar-page { --calendar-blue: var(--ledger-link); --calendar-mint: #dceee3; --calendar-yellow: #ffc857; color: var(--ledger-ink); }
+.calendar-kicker, .section-eyebrow, .ticket-time, .today-stamp, .exam-date-block, .week-switcher { font-family: inherit; font-variant-numeric: tabular-nums; }
+.calendar-intro h1 { font-family: inherit; font-size: clamp(24px, 2.3vw, 30px); font-weight: 700; letter-spacing: 0; }
+.calendar-kicker, .section-eyebrow { color: var(--ledger-muted); font-size: 12px; font-weight: 700; letter-spacing: 0; }
 .course-gate, .calendar-error { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding: 18px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 6px; }
-.semester-week-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -6px 0 16px; padding: 10px 14px; background: #f6f8ff; border: 1px solid #dbe2f7; border-radius: 6px; color: #4c5a76; font-size: 12.5px; }
+.semester-week-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -6px 0 16px; padding: 10px 14px; background: #f1f7f3; border: 1px solid #c8ddd1; border-radius: 6px; color: var(--ledger-muted); font-size: 12.5px; }
 .semester-week-bar strong { color: var(--calendar-blue); }
-.semester-week-bar button { min-height: 36px; padding: 0 12px; color: var(--calendar-blue); background: #fff; border: 1px solid #b9c6ee; border-radius: 4px; font-weight: 700; cursor: pointer; }
+.semester-week-bar button { min-height: 36px; padding: 0 12px; color: var(--calendar-blue); background: #fff; border: 1px solid #c8ddd1; border-radius: 4px; font-weight: 700; cursor: pointer; }
 .semester-week-bar button:hover { border-color: var(--calendar-blue); }
 .semester-start-setter { display: inline-flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.semester-start-setter input { min-height: 36px; padding: 0 9px; border: 1px solid #b9c6ee; border-radius: 4px; background: #fff; color: var(--ledger-ink); font-size: 12.5px; }
+.semester-start-setter input { min-height: 36px; padding: 0 9px; border: 1px solid #c8ddd1; border-radius: 4px; background: #fff; color: var(--ledger-ink); font-size: 12.5px; }
 .course-gate-mark { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; color: #fff; background: var(--calendar-blue); border-radius: 4px; font-weight: 800; }
 .course-gate > div:nth-child(2) { min-width: 0; flex: 1; }
 .course-gate strong { font-size: 15px; }
 .course-gate p { margin: 5px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.55; }
-.course-gate a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border: 1px solid #cbd4e2; border-radius: 4px; font-size: 13px; font-weight: 700; }
+.course-gate a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border: 1px solid var(--ledger-line); border-radius: 4px; font-size: 13px; font-weight: 700; }
 .calendar-error { justify-content: space-between; color: #9f3c3c; border-color: #e2b8b8; background: #fff8f7; }
 .calendar-error button { min-height: 40px; padding: 0 12px; color: #923737; background: #fff; border: 1px solid #d9a7a7; border-radius: 4px; cursor: pointer; }
-.today-ribbon { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, .42fr); align-items: stretch; margin-bottom: 18px; overflow: hidden; background: #16213d; border: 1px solid #16213d; border-radius: 7px; box-shadow: var(--ledger-shadow); }
-.today-stamp { display: grid; align-content: center; min-width: 104px; padding: 16px 20px; color: #16213d; background: var(--calendar-mint); text-align: center; }
-.today-stamp span, .today-stamp small { font-size: 10px; font-weight: 700; letter-spacing: .05em; }
+.today-ribbon { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(220px, .42fr); align-items: stretch; margin-bottom: 18px; overflow: hidden; background: #f1f7f3; border: 1px solid var(--ledger-line); border-radius: 12px; }
+.today-stamp { display: grid; align-content: center; min-width: 104px; padding: 16px 20px; color: var(--ledger-link); background: var(--calendar-mint); text-align: center; }
+.today-stamp span, .today-stamp small { font-size: 12px; font-weight: 700; letter-spacing: 0; }
 .today-stamp strong { margin: 3px 0; font-size: 22px; font-weight: 700; line-height: 1; }
-.today-copy { min-width: 0; padding: 18px 22px; color: #fff; }
-.today-copy .section-eyebrow { color: #aab8d2; }
-.today-copy h2 { margin: 6px 0 5px; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 16px; font-weight: 700; }
-.today-copy p { margin: 0; color: #c9d2e4; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
-.nearest-exam { display: grid; align-content: center; gap: 5px; padding: 17px 21px; background: #fffefb; border-left: 1px dashed #73809b; }
-.nearest-exam span { color: #68758c; font-size: 11px; font-weight: 700; }
-.nearest-exam strong { color: #26334d; font-size: 14px; overflow-wrap: anywhere; }
-.nearest-exam small { color: #5e6b80; line-height: 1.45; }
-.nearest-exam.is-empty { background: #f2f4f8; }
-.schedule-ledger, .exam-ledger { margin-bottom: 18px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 7px; box-shadow: var(--ledger-shadow); }
+.today-copy { min-width: 0; padding: 18px 22px; color: var(--ledger-ink); }
+.today-copy .section-eyebrow { color: var(--ledger-muted); }
+.today-copy h2 { margin: 6px 0 5px; font-family: inherit; font-size: 16px; font-weight: 700; }
+.today-copy p { margin: 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.nearest-exam { display: grid; align-content: center; gap: 5px; padding: 17px 21px; background: #ffffff; border-left: 1px solid var(--ledger-line); }
+.nearest-exam span { color: var(--ledger-muted); font-size: 11px; font-weight: 700; }
+.nearest-exam strong { color: var(--ledger-ink); font-size: 14px; overflow-wrap: anywhere; }
+.nearest-exam small { color: var(--ledger-muted); line-height: 1.45; }
+.nearest-exam.is-empty { background: #f5f8f7; }
+.schedule-ledger, .exam-ledger { margin-bottom: 18px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 12px; }
 .ledger-header, .exam-header { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 20px 22px; border-bottom: 1px solid var(--ledger-line); }
-.ledger-header h2, .exam-header h2 { margin: 5px 0 0; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 16px; font-weight: 700; }
+.ledger-header h2, .exam-header h2 { margin: 5px 0 0; font-family: inherit; font-size: 16px; font-weight: 700; }
 .ledger-header p, .exam-header p { margin: 5px 0 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.5; }
 .week-switcher { display: grid; grid-template-columns: 44px 66px 44px; gap: 6px; }
 .week-switcher :deep(.el-input-number) { width: 100%; min-width: 0; }
-.week-switcher button { min-height: 44px; color: #34415a; background: #fff; border: 1px solid #cbd4e1; border-radius: 4px; cursor: pointer; }
-.week-switcher button:disabled { color: #a4adba; background: #f3f5f8; cursor: not-allowed; }
+.week-switcher button { min-height: 44px; color: var(--ledger-ink); background: #fff; border: 1px solid var(--ledger-line); border-radius: 4px; cursor: pointer; }
+.week-switcher button:disabled { color: #a4adba; background: #f5f8f7; cursor: not-allowed; }
 .week-switcher :deep(.el-input__wrapper) { min-height: 44px; padding: 0 8px; }
 .desktop-week-board { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 0; }
-.day-column { min-width: 0; border-right: 1px solid #e1e6ee; }
+.day-column { min-width: 0; border-right: 1px solid var(--ledger-line); }
 .day-column:last-child { border-right: 0; }
-.day-column > header { display: grid; grid-template-columns: auto 1fr; gap: 2px 7px; min-height: 67px; padding: 12px 11px; background: #f6f8fb; border-bottom: 1px solid #e1e6ee; }
-.day-column > header span { grid-row: span 2; display: grid; place-items: center; width: 27px; height: 35px; color: #536077; background: #fff; border: 1px solid #d8dee8; border-radius: 3px; font-weight: 700; }
+.day-column > header { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-height: 50px; padding: 12px 11px; background: #f5f8f7; border-bottom: 1px solid var(--ledger-line); }
 .day-column > header strong { min-width: 0; font-size: 12px; }
-.day-column > header small { color: #7b8597; font-size: 10px; }
-.day-column.is-today > header { background: #eef0ff; }
-.day-column.is-today > header span { color: #fff; background: var(--calendar-blue); border-color: var(--calendar-blue); }
+.day-column > header small { color: var(--ledger-muted); font-size: 12px; }
+.day-column.is-today > header { background: #f1f7f3; }
+.day-column.is-today > header strong { color: var(--calendar-blue); }
 .day-session-list { display: flex; flex-direction: column; gap: 8px; min-height: 238px; padding: 9px; }
-.class-ticket { position: relative; width: 100%; min-height: 116px; padding: 11px 10px 10px 13px; overflow: hidden; color: #27344e; background: #fff; border: 1px solid #dce2eb; border-radius: 5px; cursor: pointer; text-align: left; }
+.class-ticket { position: relative; width: 100%; min-height: 116px; padding: 11px 10px 10px 13px; overflow: hidden; color: var(--ledger-ink); background: #fff; border: 1px solid var(--ledger-line); border-radius: 5px; cursor: pointer; text-align: left; }
 .class-ticket::before { position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--course-color); content: ""; }
-.class-ticket:hover { border-color: #aebae0; transform: translateY(-1px); }
-.class-ticket .ticket-time { display: block; color: #58667f; font-size: 10px; font-weight: 700; }
+.class-ticket:hover { border-color: var(--ledger-indigo); }
+.class-ticket .ticket-time { display: block; color: var(--ledger-muted); font-size: 12px; font-weight: 700; }
 .class-ticket strong { display: block; margin-top: 7px; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
-.class-ticket > span:not(.ticket-time), .class-ticket small { display: block; margin-top: 6px; color: #66738a; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
-.empty-day { display: grid; place-items: center; gap: 4px; min-height: 82px; color: #7b879a; background: transparent; border: 1px dashed #d0d7e2; border-radius: 5px; cursor: pointer; font-size: 11px; }
+.class-ticket > span:not(.ticket-time), .class-ticket small { display: block; margin-top: 6px; color: var(--ledger-muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.empty-day { display: grid; place-items: center; gap: 4px; min-height: 82px; color: var(--ledger-muted); background: transparent; border: 1px dashed var(--ledger-line); border-radius: 5px; cursor: pointer; font-size: 11px; }
 .empty-day span { font-size: 20px; line-height: 1; }
-.empty-day:hover { color: var(--calendar-blue); border-color: #aeb8e7; background: #f7f8ff; }
+.empty-day:hover { color: var(--calendar-blue); border-color: #c8ddd1; background: #f1f7f3; }
 .mobile-week-board { display: none; }
 .exam-header { align-items: flex-end; }
 .past-exam-toggle { display: inline-flex; align-items: center; min-height: 44px; }
 .exam-list { padding: 0 22px 12px; }
-.exam-ticket { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; gap: 18px; align-items: stretch; padding: 18px 0; border-bottom: 1px dashed #d7dee8; }
+.exam-ticket { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; gap: 18px; align-items: stretch; padding: 18px 0; border-bottom: 1px dashed var(--ledger-line); }
 .exam-ticket:last-child { border-bottom: 0; }
 .exam-ticket.is-past { opacity: .66; }
-.exam-date-block { display: grid; align-content: center; padding: 10px; color: #16213d; background: #fff4d8; border: 1px solid #efdba8; border-radius: 4px; text-align: center; }
-.exam-date-block span, .exam-date-block small { font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+.exam-date-block { display: grid; align-content: center; padding: 10px; color: var(--ledger-ink); background: #fff4d8; border: 1px solid #efdba8; border-radius: 4px; text-align: center; }
+.exam-date-block span, .exam-date-block small { font-size: 12px; font-weight: 700; letter-spacing: 0; }
 .exam-date-block strong { margin: 3px 0; font-size: 20px; font-weight: 700; line-height: 1; }
 .exam-main { min-width: 0; }
 .exam-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.exam-tags span { padding: 3px 7px; color: #4e5c73; background: #eef1f6; border-radius: 3px; font-size: 10px; font-weight: 700; }
+.exam-tags span { padding: 3px 7px; color: var(--ledger-ink); background: #f5f8f7; border-radius: 3px; font-size: 12px; font-weight: 700; }
 .exam-tags span:last-child { color: #85551e; background: #fff2d7; }
-.exam-main h3 { margin: 8px 0 2px; font-family: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
-.exam-main > p { margin: 0; color: #66738a; font-size: 12px; overflow-wrap: anywhere; }
+.exam-main h3 { margin: 8px 0 2px; font-family: inherit; font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.exam-main > p { margin: 0; color: var(--ledger-muted); font-size: 12px; overflow-wrap: anywhere; }
 .exam-main dl { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 12px 0 0; }
 .exam-main dl div { min-width: 150px; }
-.exam-main dt { color: #7b8799; font-size: 10px; }
-.exam-main dd { margin: 3px 0 0; color: #3f4d65; font-size: 12px; overflow-wrap: anywhere; }
+.exam-main dt { color: var(--ledger-muted); font-size: 12px; }
+.exam-main dd { margin: 3px 0 0; color: var(--ledger-ink); font-size: 12px; overflow-wrap: anywhere; }
 .exam-actions { display: flex; align-items: center; gap: 6px; }
-.exam-actions button { min-width: 52px; min-height: 44px; color: #46536a; background: #fff; border: 1px solid #d0d7e1; border-radius: 4px; cursor: pointer; }
-.exam-actions button:hover { color: var(--calendar-blue); border-color: #aeb8e7; }
+.exam-actions button { min-width: 52px; min-height: 44px; color: var(--ledger-ink); background: #fff; border: 1px solid var(--ledger-line); border-radius: 4px; cursor: pointer; }
+.exam-actions button:hover { color: var(--calendar-blue); border-color: #c8ddd1; }
 .exam-actions .danger-action:hover { color: #a13e3e; border-color: #d9aaaa; }
 .exam-empty { display: grid; justify-items: center; padding: 40px 20px 44px; text-align: center; }
-.exam-empty > span { color: #7a8598; font-family: Bahnschrift, "Arial Narrow", sans-serif; font-size: 11px; letter-spacing: .12em; }
+.exam-empty > span { color: var(--ledger-muted); font-family: inherit; font-size: 11px; letter-spacing: 0; }
 .exam-empty strong { margin-top: 10px; font-size: 16px; }
 .exam-empty p { margin: 7px 0 18px; color: var(--ledger-muted); font-size: 13px; }
 .form-grid.two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
@@ -826,33 +820,33 @@ onMounted(() => {
   .desktop-week-board { display: none; }
   .mobile-week-board { display: block; }
   .mobile-day-tabs { display: grid; grid-template-columns: repeat(7, minmax(48px, 1fr)); overflow-x: auto; border-bottom: 1px solid var(--ledger-line); }
-  .mobile-day-tabs button { min-width: 48px; min-height: 58px; padding: 7px 4px; color: #657188; background: #f7f8fb; border: 0; border-right: 1px solid #e2e7ef; cursor: pointer; }
+  .mobile-day-tabs button { min-width: 48px; min-height: 58px; padding: 7px 4px; color: var(--ledger-muted); background: #f5f8f7; border: 0; border-right: 1px solid var(--ledger-line); cursor: pointer; }
   .mobile-day-tabs button:last-child { border-right: 0; }
   .mobile-day-tabs span, .mobile-day-tabs strong { display: block; }
   .mobile-day-tabs span { font-size: 11px; }
   .mobile-day-tabs strong { margin-top: 3px; font-size: 14px; }
-  .mobile-day-tabs button.is-active { color: #fff; background: #3157e6; }
-  .mobile-day-tabs button.is-today:not(.is-active) { color: #26344e; box-shadow: inset 0 -3px var(--calendar-mint); }
+  .mobile-day-tabs button.is-active { color: #fff; background: var(--ledger-link); }
+  .mobile-day-tabs button.is-today:not(.is-active) { color: var(--ledger-ink); box-shadow: inset 0 -3px var(--calendar-mint); }
   .mobile-day-panel { padding: 16px; }
   .mobile-day-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
   .mobile-day-heading div { display: grid; gap: 3px; }
-  .mobile-day-heading span { color: #67748a; font-size: 11px; }
+  .mobile-day-heading span { color: var(--ledger-muted); font-size: 11px; }
   .mobile-day-heading strong { font-size: 15px; }
-  .mobile-class-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 13px; width: 100%; min-height: 72px; margin-top: 8px; padding: 10px 12px; color: #334158; background: #fff; border: 1px solid #dce2eb; border-left: 5px solid var(--course-color); border-radius: 5px; cursor: pointer; text-align: left; }
-  .mobile-class-time { font-family: Bahnschrift, "Arial Narrow", sans-serif; font-size: 11px; font-weight: 700; }
+  .mobile-class-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 13px; width: 100%; min-height: 72px; margin-top: 8px; padding: 10px 12px; color: var(--ledger-ink); background: #fff; border: 1px solid var(--ledger-line); border-left: 5px solid var(--course-color); border-radius: 5px; cursor: pointer; text-align: left; }
+  .mobile-class-time { font-family: inherit; font-size: 11px; font-weight: 700; }
   .mobile-class-main { min-width: 0; display: grid; gap: 5px; }
   .mobile-class-main strong, .mobile-class-main small { overflow-wrap: anywhere; }
-  .mobile-class-main small { color: #66738a; line-height: 1.4; }
-  .mobile-empty-day { padding: 24px 10px; color: #778397; background: #f8f9fb; border: 1px dashed #d5dce6; border-radius: 5px; text-align: center; font-size: 12px; }
+  .mobile-class-main small { color: var(--ledger-muted); line-height: 1.4; }
+  .mobile-empty-day { padding: 24px 10px; color: var(--ledger-muted); background: #f5f8f7; border: 1px dashed var(--ledger-line); border-radius: 5px; text-align: center; font-size: 12px; }
 }
 
 @media (max-width: 760px) {
   .today-ribbon { grid-template-columns: 78px minmax(0, 1fr); }
   .today-stamp { min-width: 78px; padding: 14px 10px; }
   .today-copy { padding: 17px 15px; }
-  .calendar-intro h1 { font-size: 20px; }
+  .calendar-intro h1 { font-size: 25px; }
   .today-copy h2 { font-size: 15px; }
-  .nearest-exam { grid-column: 1 / -1; min-height: 78px; border-top: 1px dashed #73809b; border-left: 0; }
+  .nearest-exam { grid-column: 1 / -1; min-height: 78px; border-top: 1px solid var(--ledger-line); border-left: 0; }
   .ledger-header, .exam-header { align-items: flex-start; flex-direction: column; padding: 18px 16px; }
   .week-switcher { width: 100%; grid-template-columns: 48px minmax(0, 1fr) 48px; }
   .past-exam-toggle { min-height: 32px; }

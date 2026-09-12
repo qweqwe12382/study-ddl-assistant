@@ -126,7 +126,7 @@ def build_weekly_review(db: Session, *, evaluated_at: datetime | None = None) ->
         due_at = as_utc(task.due_at)
         # Open tasks are late now; a completed task is late only if it was
         # completed after its deadline. Both must have a deadline in this week.
-        if task.status != "completed":
+        if task.status not in {"completed", "canceled"}:
             is_late = due_at < now and window_start <= due_at < window_end
         else:
             # A late completion belongs to the review period of the completion

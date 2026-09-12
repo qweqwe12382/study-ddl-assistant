@@ -8,6 +8,12 @@ const MAX_ACTUAL_MINUTES = 10080
 export const CUSTOM_MINUTES_MIN = 15
 export const CUSTOM_MINUTES_MAX = 240
 
+/** Measure active time from a clock, independent of delayed render callbacks. */
+export function activeElapsedSeconds(accumulatedSeconds, startedAtMs, nowMs, targetSeconds) {
+  const elapsed = Math.max(0, accumulatedSeconds) + Math.max(0, nowMs - startedAtMs) / 1000
+  return Math.min(Math.max(0, targetSeconds), elapsed)
+}
+
 /** Clamp a custom focus duration to the supported 15-240 range, or null. */
 export function normalizeCustomMinutes(value) {
   const parsed = typeof value === 'number' ? Math.floor(value) : Number.parseInt(value, 10)

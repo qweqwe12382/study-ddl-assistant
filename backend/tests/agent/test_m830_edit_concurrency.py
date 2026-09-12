@@ -53,6 +53,11 @@ def _create_task(client, *, course_id: int | None = None, name: str = "M8.30 任
 
 
 def _create_plan(client, course_id: int) -> dict:
+    material = client.post(
+        "/api/materials",
+        json={"course_id": course_id, "original_filename": "M8.30 计划基础资料.md"},
+    )
+    assert material.status_code == 201, material.text
     response = client.post(
         "/api/study-plans/generate",
         json={

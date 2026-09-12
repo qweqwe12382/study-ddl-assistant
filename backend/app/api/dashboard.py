@@ -45,7 +45,7 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
     tasks = list(
         db.scalars(select(Task).options(selectinload(Task.course), selectinload(Task.material))).all()
     )
-    active = [task for task in tasks if task.status != "completed"]
+    active = [task for task in tasks if task.status not in {"completed", "canceled"}]
     overdue = [
         task for task in active
         if task.status == "overdue" or (task.due_at and as_utc(task.due_at) < now)
@@ -78,7 +78,7 @@ def get_dashboard(db: Session = Depends(get_db)) -> DashboardRead:
         active_task_count=len(active),
         due_soon_count=len(upcoming),
         overdue_count=len(overdue),
-        completed_task_count=len(tasks) - len(active),
+        completed_task_count=sum(task.status == "completed" for task in tasks),
         study_streak_days=compute_study_streak(completed_days, as_local(now).date()),
         materials_count=db.scalar(select(func.count(Material.id))) or 0,
         courses_count=db.scalar(select(func.count(Course.id))) or 0,

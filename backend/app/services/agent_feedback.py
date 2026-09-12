@@ -127,14 +127,15 @@ def _candidate_changes(plan: StudyPlan, task: Task, trigger: str) -> list[dict[s
     _items, _metadata, eligible = _eligible_plan_items(plan)
     if not eligible:
         return []
-    if trigger == "task_completed":
+    if trigger in {"task_completed", "task_canceled"}:
         targets = [item for item in eligible if any(ref.source_id == task.id and ref.navigation_key == task.navigation_key for ref in item.source_task_refs)]
         changes: list[dict[str, Any]] = []
         for item in targets:
             after = item.model_copy(deep=True)
             after.source_task_ids = [value for value in after.source_task_ids if value != task.id]
             after.source_task_refs = [ref for ref in after.source_task_refs if ref.navigation_key != task.navigation_key]
-            after.content = f"{after.content}\n智能体差异：关联任务“{task.name}”已完成，预留时段改作复盘或缓冲。"[:2000]
+            terminal_label = "已完成" if trigger == "task_completed" else "已取消"
+            after.content = f"{after.content}\n智能体差异：关联任务“{task.name}”{terminal_label}，预留时段改作复盘或缓冲。"[:2000]
             changes.append({"item_id": item.id, "before": item.model_dump(mode="json"), "after": after.model_dump(mode="json")})
         return changes
     # New/overdue/actual-time triggers need a visible yet narrow adjustment.
@@ -144,6 +145,7 @@ def _candidate_changes(plan: StudyPlan, task: Task, trigger: str) -> list[dict[s
         "task_created": "新增任务",
         "task_overdue": "逾期任务回收",
         "actual_minutes_changed": "实际用时反馈",
+        "deadline_changed": "截止时间变化",
     }
     note = labels.get(trigger, "任务变化")
     minutes = task.actual_minutes if trigger == "actual_minutes_changed" else (task.remaining_minutes or task.estimated_minutes)
@@ -168,7 +170,7 @@ def create_plan_delta_candidates(db: Session, task: Task, trigger: str, *, now: 
 
     evaluated_at = now or utc_now()
     event_payload = {"trigger": trigger, "task_snapshot": task_feedback_snapshot(task)}
-    if trigger != "task_completed":
+    if trigger not in {"task_completed", "task_canceled"}:
         db.add(AgentEvent(event_type=trigger, entity_type="task", entity_id=task.id, entity_navigation_key=task.navigation_key, payload=event_payload))
     if task.course_id is None:
         db.add(AgentEvent(event_type="plan_delta_evaluated", entity_type="task", entity_id=task.id, entity_navigation_key=task.navigation_key,
@@ -203,7 +205,7 @@ def create_plan_delta_candidates(db: Session, task: Task, trigger: str, *, now: 
         suggestion = AgentSuggestion(
             action_type=APPLY_PLAN_DELTA, status="pending", source_type="study_plan", source_id=plan.id, source_navigation_key=plan.navigation_key,
             source_name=plan.title, title=f"复核“{plan.title}”的计划差异",
-            explanation=f"检测到“{task.name}”发生{ {'task_created':'新增','task_completed':'完成','task_overdue':'逾期','actual_minutes_changed':'实际用时变化'}.get(trigger, '状态') }，仅提出未完成且未人工修改的计划项调整。",
+            explanation=f"检测到“{task.name}”发生{ {'task_created':'新增','task_completed':'完成','task_canceled':'取消','task_overdue':'逾期','actual_minutes_changed':'实际用时变化','deadline_changed':'截止时间变化'}.get(trigger, '状态') }，仅提出未完成且未人工修改的计划项调整。",
             reason_code=trigger, current_payload={"task_id": task.id, "task_snapshot": task_feedback_snapshot(task),
                                                     "plan_snapshot": common["plan_snapshot"]},
             proposed_payload={"plan_id": plan.id, "trigger": trigger, "changes": changes},
