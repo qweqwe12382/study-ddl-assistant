@@ -67,7 +67,7 @@ def test_m811_confirmation_records_aggregate_event_and_safe_activity_projection(
     assert item["event"] == "material_extraction_confirmed"
     assert item["status"] == "recorded"
     assert item["title"] == "资料抽取已确认"
-    assert item["description"] == "已确认资料抽取结果，并创建正式 DDL 任务。"
+    assert item["description"] == "资料已整理，可在来源中查看本次确认结果。"
     assert item["source"] == {
         "status": "available",
         "source_ref": {

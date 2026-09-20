@@ -76,14 +76,17 @@
     </template>
 
     <div v-else class="deadline-flow__state deadline-flow__state--empty" role="status" aria-live="polite">
-      <strong>未来 7 天暂时没有要交的任务</strong>
-      <p>{{ emptyStateDetail }}</p>
+      <el-icon class="deadline-flow__empty-icon" aria-hidden="true"><Calendar /></el-icon>
+      <strong>近期没有要交的任务</strong>
+      <p v-if="tasks.length">{{ emptyStateDetail }}</p>
+      <router-link to="/tasks?action=quick-task" class="deadline-flow__empty-link">记下新的安排</router-link>
     </div>
   </section>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import { Calendar } from '@element-plus/icons-vue'
 import { dashboardMaterialSourceContext, navigationSourceCacheKey } from '../utils/materialSourceNavigation'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -149,9 +152,9 @@ const stateTitle = computed(() => ({
 }[viewState.value] || '截止任务信息不完整'))
 
 const stateDetail = computed(() => ({
-  loading: '加载期间不会用旧数据、默认任务或推测的截止时间替代。',
-  error: '请刷新后再确认安排；当前不会把未知数据当成正常任务。',
-  invalid: '任务列表或参考时间不完整，暂时无法按时间归类这些内容。',
+  loading: '正在同步最新安排…',
+  error: '刷新页面后重试。',
+  invalid: '部分日期需要核对，请打开全部任务检查。',
 }[viewState.value] || '信息未确认前，不会显示为正常安排。'))
 
 const emptyStateDetail = computed(() => {
@@ -310,6 +313,9 @@ function taskAriaLabel(task) {
 </script>
 
 <style scoped>
+.deadline-flow__empty-icon { width: 42px; height: 42px; margin-bottom: 10px; color: var(--ledger-link); background: #eaf2ed; border-radius: 12px; font-size: 23px; }
+.deadline-flow__empty-link { display: inline-flex; align-items: center; align-self: start; min-height: 44px; margin-top: 8px; color: var(--ledger-link); font-size: 13px; }
+.deadline-flow__empty-link:hover { text-decoration: underline; text-underline-offset: 4px; }
 .deadline-flow { min-width: 0; padding: 24px 26px; color: var(--ledger-ink); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: var(--ledger-radius); }
 .deadline-flow__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; min-width: 0; }
 .deadline-flow__heading > div { min-width: 0; }

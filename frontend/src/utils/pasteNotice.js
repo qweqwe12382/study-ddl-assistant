@@ -1,4 +1,4 @@
-/** Pure helpers for storing a pasted course notification as a text material. */
+/** Pure helpers for storing pasted learning content as a text material. */
 
 export const MAX_PASTE_NOTICE_CHARACTERS = 20_000
 
@@ -27,7 +27,7 @@ export function localReferenceDateTime(value = new Date()) {
 
 export function pasteNoticeFilename(title) {
   const cleanTitle = typeof title === 'string' ? title.trim().replace(/[\\/:*?"<>|]/g, ' ') : ''
-  return `${(cleanTitle || '课程通知').slice(0, 120)}.txt`
+  return `${(cleanTitle || '粘贴资料').slice(0, 120)}.txt`
 }
 
 export function validLocalReferenceDateTime(value) {
@@ -53,7 +53,7 @@ export function buildPastedNotice({ title, text, sourceTime }) {
     return { error: '请填写通知的参考时间' }
   }
   return {
-    filename: pasteNoticeFilename(title),
+    filename: pasteNoticeFilename(typeof title === 'string' && title.trim() ? title : content.split(/\r?\n/, 1)[0]),
     content,
     sourceTime,
   }

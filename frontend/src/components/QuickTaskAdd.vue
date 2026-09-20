@@ -3,12 +3,15 @@
     <label class="quick-add-label" for="quick-task-name">先记下来</label>
     <div class="quick-add-entry">
       <input id="quick-task-name" ref="nameInput" v-model="name" class="quick-add-name" name="quick_task_name" type="text" maxlength="200" placeholder="例如：完成高数第三章习题" :disabled="submitting" aria-describedby="quick-add-help quick-add-feedback" @keydown.enter="onEnter">
-      <button class="quick-add-submit" type="submit" :disabled="submitting">{{ submitting ? '正在添加…' : '添加任务' }}</button>
+      <button class="quick-add-submit" type="submit" :disabled="submitting">{{ submitting ? '正在添加…' : submitLabel }}</button>
     </div>
     <div class="quick-add-options-heading">
       <p id="quick-add-help">{{ dueSummary }}</p>
+      <div class="quick-dates" role="group" aria-label="常用截止日期">
+        <button v-for="chip in QUICK_DUE_CHIPS.slice(0, 2)" :key="chip.key" type="button" class="quick-chip" :class="{ active: dueChip === chip.key }" :aria-pressed="dueChip === chip.key" :disabled="submitting" @click="dueChip = dueChip === chip.key ? '' : chip.key">{{ chip.label }}截止</button>
+      </div>
       <button type="button" class="quick-add-toggle" :aria-expanded="optionsOpen" aria-controls="quick-add-options" @click="optionsOpen = !optionsOpen">
-        {{ optionsOpen ? '收起选项' : '设置日期和课程' }}<span class="option-chevron" :class="{ 'is-open': optionsOpen }" aria-hidden="true">⌄</span>
+        {{ optionsOpen ? '收起选项' : '更多选项' }}<el-icon class="option-chevron" :class="{ 'is-open': optionsOpen }" aria-hidden="true"><ArrowDown /></el-icon>
       </button>
     </div>
     <Transition name="reveal-panel">
@@ -41,10 +44,11 @@
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { ArrowDown } from '@element-plus/icons-vue'
 import { tasksApi } from '../api'
 import { QUICK_DUE_CHIPS, buildQuickAddPayload } from '../utils/quickTaskAdd'
 
-defineProps({ courses: { type: Array, default: () => [] } })
+defineProps({ courses: { type: Array, default: () => [] }, submitLabel: { type: String, default: '添加任务' } })
 const emit = defineEmits(['created'])
 const name = ref('')
 const nameInput = ref(null)
@@ -56,9 +60,9 @@ const optionsOpen = ref(false)
 const feedback = ref('')
 const feedbackError = ref(false)
 const dueSummary = computed(() => {
-  if (!dueChip.value) return '只填任务名即可，其他信息稍后补充。'
+  if (!dueChip.value) return '回车添加，日期可稍后补充'
   const label = dueChip.value === 'custom' ? customDate.value : QUICK_DUE_CHIPS.find(chip => chip.key === dueChip.value)?.label
-  return `截止：${label || '请选择日期'} 23:59；精确时间可在添加后编辑。`
+  return `截止 ${label || '请选择日期'} 23:59（可编辑）`
 })
 function clearDate() { dueChip.value = ''; customDate.value = '' }
 function focusInput() { nameInput.value?.focus({ preventScroll: true }) }
@@ -76,12 +80,12 @@ async function submitQuickAdd() {
   if (built.error) { feedbackError.value = true; feedback.value = built.error; focusInput(); return }
   submitting.value = true
   try {
-    await tasksApi.create(built.payload)
-    feedback.value = `已记下「${built.payload.name}」，可以在下方查看。`
+    const created = await tasksApi.create(built.payload)
+    feedback.value = `已添加「${built.payload.name}」`
     name.value = ''
     courseId.value = null
     clearDate()
-    emit('created')
+    emit('created', created)
   } catch (error) {
     feedbackError.value = true
     feedback.value = error?.message || '添加失败，请重试。填写的内容已保留。'
@@ -94,6 +98,9 @@ async function submitQuickAdd() {
 </script>
 
 <style scoped>
+.quick-dates { display: flex; gap: 6px; margin-left: auto; }
+.quick-dates .quick-chip { border: 0; background: transparent; padding: 8px; }
+.quick-dates .quick-chip.active { background: #f1f7f3; box-shadow: inset 0 0 0 1px var(--ledger-indigo); }
 .quick-add { min-width: 0; margin-bottom: 18px; padding: 16px 18px; border: 1px solid var(--ledger-line); border-radius: var(--ledger-radius); background: var(--ledger-paper); }
 .quick-add-label { display: block; margin-bottom: 9px; color: var(--ledger-ink); font-size: 14px; font-weight: 650; }
 .quick-add-entry { display: flex; align-items: stretch; gap: 10px; }
@@ -119,5 +126,5 @@ async function submitQuickAdd() {
 .quick-custom-date input { min-width: 0; max-width: 100%; border: 0; background: transparent; color: var(--ledger-ink); }
 .quick-add-feedback { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 0; color: #2e7156; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .quick-add-feedback.is-error { color: #b14242; }
-@media (max-width: 560px) { .quick-add { padding: 14px; } .quick-add-entry { gap: 8px; } .quick-add-submit { padding: 10px 12px; } .quick-add-name, .quick-add-course { font-size: 16px; } }
+@media (max-width: 560px) { .quick-add { padding: 14px; } .quick-add-entry { gap: 8px; } .quick-add-submit { padding: 10px 12px; } .quick-add-name, .quick-add-course { font-size: 16px; } .quick-add-options-heading p { flex-basis: 100%; margin: 6px 0 0; } .quick-dates { margin-left: 0; margin-right: auto; } }
 </style>

@@ -19,8 +19,12 @@
     "paste-notice:check": "node tests/contracts/check-paste-notice.mjs",
     "deadline-radar:check": "node tests/contracts/check-deadline-radar.mjs",
     "semester-week:check": "node tests/contracts/check-semester-week.mjs",
+    "commands:check": "node tests/contracts/check-workspace-commands.mjs",
+    "workflow:check": "node tests/contracts/check-daily-workflow.mjs",
+    "downloads:check": "node tests/contracts/check-downloads.mjs",
+    "motion:check": "node tests/contracts/check-motion.mjs",
     "bundle:check": "node tests/contracts/check-bundle-budget.mjs",
-    "verify": "npm run lint && npm run navigation:check && npm run api-base:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run focus:check && npm run quick-add:check && npm run task-filters:check && npm run paste-notice:check && npm run deadline-radar:check && npm run semester-week:check && npm run build && npm run bundle:check"
+    "verify": "npm run lint && npm run navigation:check && npm run api-base:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run focus:check && npm run quick-add:check && npm run task-filters:check && npm run paste-notice:check && npm run deadline-radar:check && npm run semester-week:check && npm run commands:check && npm run workflow:check && npm run downloads:check && npm run motion:check && npm run build && npm run bundle:check"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
@@ -32,6 +36,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.1",
     "eslint": "^9.33.0",
+    "eslint-plugin-vue": "^10.11.0",
     "prettier": "^3.6.2",
     "vite": "^7.1.3"
   }

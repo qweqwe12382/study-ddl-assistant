@@ -378,6 +378,9 @@ def _filename_task_name(filename: str) -> str:
     return stem[:200]
 
 
+from app.services.material_intent import describe_material, is_learning_activity, REVIEW_OUTLINE
+
+
 class RuleBasedProvider:
     name = "local-rules"
 
@@ -401,7 +404,7 @@ class RuleBasedProvider:
             line, start, end = part.text, part.start, part.end
             if index in consumed or _COURSE_LINE_PATTERN.fullmatch(line.strip("。！？")):
                 continue
-            if not _is_task_part(line):
+            if is_learning_activity(line, filename) or not _is_task_part(line):
                 continue
 
             quote_start, quote_end = start, end
@@ -443,7 +446,7 @@ class RuleBasedProvider:
 
         # A task-specific filename can conservatively label a bare deadline,
         # preserving the original local-provider behavior.
-        if not tasks and filename_course and _has_task_hint(filename_stem) and not _clearly_informational_notice(text):
+        if not tasks and filename_course and _has_task_hint(filename_stem) and not REVIEW_OUTLINE.search(f"{filename}\n{text}") and not _clearly_informational_notice(text):
             for part in parts:
                 if _is_deadline_only(part.text):
                     tasks.append(
@@ -471,12 +474,12 @@ class RuleBasedProvider:
         # expression with no attributable task is the case that needs review.
         result_warnings = (
             ["NO_TASK_CANDIDATE"]
-            if not tasks and find_deadline_mentions(text) and not _clearly_informational_notice(text)
+            if not tasks and find_deadline_mentions(text) and not REVIEW_OUTLINE.search(f"{filename}\n{text}") and not is_learning_activity(text) and not _clearly_informational_notice(text)
             else []
         )
         return {
             "course_name": course_name,
-            "material_type": "作业要求" if tasks else None,
+            "material_type": describe_material(text, filename, tasks)["material_type"],
             "tags": tags,
             "tasks": tasks,
             "warnings": result_warnings,
@@ -842,9 +845,10 @@ class OpenAICompatibleProvider:
                     {
                         "role": "system",
                         "content": (
-                            "你是学习资料DDL抽取器。只输出JSON，字段为 course_name、material_type、tags、tasks。"
+                            "你负责整理学习资料并识别真实义务。只输出JSON，字段为 course_name、material_type、tags、tasks。"
                             "tasks中的每项包含name、task_type、description、due_at、priority、source_quote、confidence。"
-                            "无法确认的字段使用null，并保留原文source_quote。"
+                            "tasks仅包含需要提交、参加或完成的正式任务。复习提纲、阅读安排、自测练习和个人复习计划中的日期不属于截止任务；没有任务时返回空数组。混合文档仍须保留明确的提交要求。"
+                            "material_type区分复习资料、复习安排、课堂讲义、作业要求、课程通知等。无法确认的字段使用null，并保留原文source_quote。"
                         ),
                     },
                     {"role": "user", "content": f"文件名：{filename}\n正文：\n{text}"},

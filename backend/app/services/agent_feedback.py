@@ -125,6 +125,12 @@ def _eligible_plan_items(plan: StudyPlan) -> tuple[list[StudyPlanItem], dict[str
 
 def _candidate_changes(plan: StudyPlan, task: Task, trigger: str) -> list[dict[str, Any]]:
     _items, _metadata, eligible = _eligible_plan_items(plan)
+    selection = _metadata.get("source_selection")
+    if isinstance(selection, dict) and not any(
+        ref.get("source_id") == task.id and ref.get("navigation_key") == task.navigation_key
+        for ref in selection.get("tasks", []) if isinstance(ref, dict)
+    ):
+        return []
     if not eligible:
         return []
     if trigger in {"task_completed", "task_canceled"}:

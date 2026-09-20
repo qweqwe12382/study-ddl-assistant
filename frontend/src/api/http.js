@@ -1,8 +1,10 @@
 import axios from 'axios'
 import { resolveApiBaseUrl } from '../utils/apiBaseUrl'
 
+export const apiBaseUrl = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, window.location.hostname, import.meta.env.DEV).replace(/\/$/, '')
+
 const http = axios.create({
-  baseURL: resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, window.location.hostname, import.meta.env.DEV),
+  baseURL: apiBaseUrl,
   timeout: 10000,
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },

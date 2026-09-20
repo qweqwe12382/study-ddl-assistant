@@ -52,7 +52,7 @@ _EVENTS: dict[str, tuple[str, str, str, str]] = {
     "plan_delta_expired": ("suggestion_expired", "expired", "复习计划调整已过期", "关联任务或计划已变化，原调整不再执行。"),
     "material_extraction_confirmed": (
         "material_extraction_confirmed", "recorded", "资料抽取已确认",
-        "已确认资料抽取结果，并创建正式 DDL 任务。",
+        "资料已整理，可在来源中查看本次确认结果。",
     ),
     "task_completed": ("task_recorded", "recorded", "任务完成已记录", "已记录任务完成状态，相关调整仍需单独确认。"),
     "task_feedback_updated": ("task_recorded", "recorded", "任务完成反馈已更新", "已记录用户主动提供的完成反馈。"),

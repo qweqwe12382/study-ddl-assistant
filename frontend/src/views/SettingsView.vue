@@ -3,7 +3,7 @@
     <div class="page-intro">
       <div>
         <h1>设置</h1>
-        <p>管理课程、学习时间、提醒和 AI 使用偏好。</p>
+        <p>管理课程、学习时间和提醒偏好。</p>
       </div>
       <el-button v-if="isDetailedView && coursesState === 'ready'" type="primary" @click="openCreate">新增课程</el-button>
     </div>
@@ -60,16 +60,6 @@
           <span class="rule-index-label">站内提醒</span>
           <strong>{{ reminderRuleState.label }}</strong>
           <span v-if="isDetailedView || reminderPreferenceState !== 'ready'">{{ reminderRuleState.detail }}</span>
-        </a>
-        <a
-          href="#settings-external-ai"
-          class="rule-index-link"
-          :class="`rule-index-link--${llmRuleState.tone}`"
-          :aria-label="`外部 AI：${llmRuleState.label}，定位到外部 AI 配置`"
-        >
-          <span class="rule-index-label">外部 AI</span>
-          <strong>{{ llmRuleState.label }}</strong>
-          <span v-if="isDetailedView || llmState !== 'ready'">{{ llmRuleState.detail }}</span>
         </a>
       </nav>
     </section>
@@ -301,63 +291,6 @@
         </div>
       </el-card>
 
-      <el-card
-        id="settings-external-ai"
-        class="content-card llm-card settings-section"
-        shadow="never"
-        v-loading="llmLoading"
-        :aria-busy="llmLoading"
-        aria-labelledby="settings-external-ai-heading"
-        tabindex="-1"
-      >
-        <div class="card-heading">
-          <h2 id="settings-external-ai-heading">外部 AI 配置</h2>
-          <el-tag v-if="llmState === 'ready'" :type="llmSettings.api_key_configured ? 'success' : 'info'">{{ llmSettings.api_key_configured ? '已配置' : '未配置' }}</el-tag>
-          <span v-else class="section-state" role="status">{{ llmRuleState.label }}</span>
-        </div>
-        <div class="external-ai-safety-note">
-          <el-tag type="warning" size="small" effect="plain">按次授权</el-tag>
-          <p>外部 AI 可选使用：只有你在资料处理中明确选择时才会调用；使用外部服务时，资料正文可能发送给该服务。</p>
-        </div>
-        <p v-if="isDetailedView && llmState === 'ready'" class="settings-help">API Key 只保存在后端本地 <code>.env</code>，页面不会显示完整密钥。</p>
-        <el-alert v-if="llmError" :title="llmError" type="warning" show-icon closable class="mb-18" @close="llmError = ''" />
-        <div v-if="isConciseView" class="llm-concise-summary">
-          <p>{{ llmRuleState.detail }}</p>
-          <div class="llm-concise-actions">
-            <el-button v-if="llmState === 'ready'" plain aria-label="在完整视图中配置外部 AI" @click="openDetailedSection('settings-external-ai')">编辑外部 AI</el-button>
-          </div>
-        </div>
-        <template v-if="isDetailedView">
-          <template v-if="llmState === 'ready'">
-            <el-form :model="llmForm" label-width="105px" class="dialog-form">
-            <el-form-item label="API 地址">
-              <el-input v-model="llmForm.base_url" placeholder="可留空，使用默认地址" />
-            </el-form-item>
-            <el-form-item label="模型名称" required>
-              <el-input v-model="llmForm.model" placeholder="例如：gpt-4o-mini" />
-            </el-form-item>
-            <el-form-item label="API Key">
-              <el-input v-model="llmForm.api_key" type="password" show-password :placeholder="llmSettings.api_key_configured ? '已配置，留空则保持不变' : '粘贴 API Key（只保存到后端）'" />
-            </el-form-item>
-            <el-form-item label="请求超时">
-              <el-input-number v-model="llmForm.timeout_seconds" :min="1" :max="300" controls-position="right" />
-              <span class="unit-label">秒</span>
-            </el-form-item>
-            <el-form-item label="失败重试">
-              <el-input-number v-model="llmForm.max_retries" :min="0" :max="5" controls-position="right" />
-              <span class="unit-label">次</span>
-            </el-form-item>
-            <el-form-item>
-              <el-checkbox v-model="llmForm.clear_api_key">清除已保存的 API Key</el-checkbox>
-            </el-form-item>
-            </el-form>
-            <div class="llm-actions">
-              <el-button type="primary" :loading="llmSaving" @click="saveLlmSettings">保存 AI 配置</el-button>
-            </div>
-          </template>
-          <div v-else class="preference-unavailable" role="status">{{ llmRuleState.detail }}</div>
-        </template>
-      </el-card>
     </div>
 
     <el-dialog v-model="dialogVisible" :title="editingId ? '编辑课程' : '新增课程'" width="480px" destroy-on-close>
@@ -399,7 +332,7 @@ import {
   ElTableColumn,
 } from 'element-plus'
 
-import { agentApi, coursesApi, resetApi, settingsApi, studyPreferencesApi } from '../api'
+import { agentApi, coursesApi, resetApi, studyPreferencesApi } from '../api'
 import { authSession, logout } from '../auth/session'
 import { useViewMode } from '../composables/useViewMode'
 
@@ -419,10 +352,6 @@ const courses = ref([])
 const coursesState = ref('pending')
 const courseError = ref('')
 const form = reactive(emptyForm())
-const llmLoading = ref(false)
-const llmSaving = ref(false)
-const llmState = ref('pending')
-const llmError = ref('')
 const preferenceLoading = ref(false)
 const preferenceSaving = ref(false)
 const preferenceResetting = ref(false)
@@ -436,21 +365,6 @@ const reminderPreferenceAvailable = ref(false)
 const preferenceSnapshot = ref(null)
 const reminderPreferenceSnapshot = ref(null)
 const loadRequestId = ref(0)
-const llmSettings = reactive({
-  base_url: '',
-  model: '',
-  api_key_configured: false,
-  timeout_seconds: 30,
-  max_retries: 2,
-})
-const llmForm = reactive({
-  base_url: '',
-  model: '',
-  api_key: '',
-  timeout_seconds: 30,
-  max_retries: 2,
-  clear_api_key: false,
-})
 const preferenceForm = reactive({
   weekly_available_minutes: 600,
   daily_max_minutes: 120,
@@ -532,27 +446,6 @@ const reminderRuleState = computed(() => {
   return { label: '已加载', detail: `${frequencyLabel} · ${riskLabel} · ${categories}`, tone: 'ready' }
 })
 
-const llmRuleState = computed(() => {
-  if (llmState.value === 'pending') {
-    return { label: '等待数据', detail: '还没有读取外部 AI 配置；密钥状态尚未确定。', tone: 'pending' }
-  }
-  if (llmState.value === 'loading') {
-    return { label: '读取中', detail: '正在读取外部 AI 配置；密钥状态尚未确定。', tone: 'loading' }
-  }
-  if (llmState.value === 'managed') {
-    return { label: '由管理员管理', detail: '外部 AI 配置由实例管理员维护，无需在这里设置。', tone: 'managed' }
-  }
-  if (llmState.value === 'error') {
-    return { label: '读取失败', detail: llmError.value || '外部 AI 配置暂时不可用，请稍后重试。', tone: 'error' }
-  }
-  const configured = llmSettings.api_key_configured
-  return {
-    label: configured ? '已配置' : '未配置',
-    detail: configured ? '已读取 API Key 配置状态；密钥不会在页面显示。' : '已读取配置；当前未设置 API Key。',
-    tone: 'ready',
-  }
-})
-
 const courseNamesSummary = computed(() => {
   const names = courses.value.map((course) => course.name).filter(Boolean)
   if (names.length <= 3) return names.join('、')
@@ -622,10 +515,6 @@ function safeErrorMessage(value, fallback) {
     .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '密钥已省略')
 }
 
-function isLlmAdminRestriction(value) {
-  return value?.status === 403 && value?.code === 'ADMIN_REQUIRED'
-}
-
 function finiteNumber(value, fallback) {
   const number = Number(value)
   return Number.isFinite(number) ? number : fallback
@@ -642,7 +531,7 @@ function normalizePreferredSlots(value) {
     try {
       const parsed = JSON.parse(value)
       if (Array.isArray(parsed)) return normalizePreferredSlots(parsed)
-    } catch (_err) {
+    } catch {
       return value.split(',').map((slot) => slot.trim()).filter((slot) => ['morning', 'afternoon', 'evening'].includes(slot))
     }
   }
@@ -811,36 +700,6 @@ function applyReminderPreferences(value) {
   return result
 }
 
-function normalizeLlmSettings(value) {
-  if (!isRecord(value) || typeof value.api_key_configured !== 'boolean') {
-    return { ok: false, error: '外部 AI 配置服务返回了无法识别的数据格式。' }
-  }
-  const timeout = finiteNumber(value.timeout_seconds, NaN)
-  const retries = finiteNumber(value.max_retries, NaN)
-  if (!Number.isFinite(timeout) || timeout < 1 || timeout > 300) {
-    return { ok: false, error: '外部 AI 配置服务返回了无效的请求超时。' }
-  }
-  if (!Number.isInteger(retries) || retries < 0 || retries > 5) {
-    return { ok: false, error: '外部 AI 配置服务返回了无效的失败重试次数。' }
-  }
-  if (value.base_url !== null && value.base_url !== undefined && typeof value.base_url !== 'string') {
-    return { ok: false, error: '外部 AI 配置服务返回了无效的 API 地址。' }
-  }
-  if (value.model !== null && value.model !== undefined && typeof value.model !== 'string') {
-    return { ok: false, error: '外部 AI 配置服务返回了无效的模型名称。' }
-  }
-  return {
-    ok: true,
-    value: {
-      base_url: value.base_url || '',
-      model: value.model || '',
-      api_key_configured: value.api_key_configured,
-      timeout_seconds: timeout,
-      max_retries: retries,
-    },
-  }
-}
-
 function openCreate() {
   resetForm()
   dialogVisible.value = true
@@ -861,16 +720,13 @@ async function loadCourses() {
   const requestId = ++loadRequestId.value
   const isCurrentRequest = () => requestId === loadRequestId.value
   loading.value = true
-  llmLoading.value = true
   preferenceLoading.value = true
   reminderPreferenceLoading.value = true
   error.value = ''
   courseError.value = ''
-  llmError.value = ''
   preferenceError.value = ''
   reminderPreferenceError.value = ''
   coursesState.value = 'loading'
-  llmState.value = 'loading'
   preferenceState.value = 'loading'
   reminderPreferenceState.value = 'loading'
   reminderPreferenceAvailable.value = false
@@ -878,9 +734,8 @@ async function loadCourses() {
   reminderPreferenceSnapshot.value = null
   courses.value = []
   try {
-    const [courseResult, llmResult, preferenceResult, reminderPreferenceResult] = await Promise.allSettled([
+    const [courseResult, preferenceResult, reminderPreferenceResult] = await Promise.allSettled([
       coursesApi.list(),
-      settingsApi.getLlm(),
       studyPreferencesApi.get(),
       agentApi.reminderPreferences(),
     ])
@@ -897,22 +752,6 @@ async function loadCourses() {
         : '课程服务返回了无法识别的数据格式。'
       courses.value = []
       courseWeights.value = {}
-    }
-
-    if (llmResult.status === 'fulfilled') {
-      const applied = applyLlmSettings(llmResult.value)
-      if (applied.ok) {
-        llmState.value = 'ready'
-      } else {
-        llmState.value = 'error'
-        llmError.value = applied.error
-      }
-    } else if (isLlmAdminRestriction(llmResult.reason)) {
-      llmState.value = 'managed'
-      llmForm.api_key = ''
-    } else {
-      llmState.value = 'error'
-      llmError.value = safeErrorMessage(llmResult.reason, '外部 AI 配置读取失败，请稍后重试。')
     }
 
     if (preferenceResult.status === 'fulfilled') {
@@ -938,7 +777,7 @@ async function loadCourses() {
       reminderPreferenceAvailable.value = false
     }
 
-    const failedResourceCount = [courseError.value, llmError.value, preferenceError.value, reminderPreferenceError.value]
+    const failedResourceCount = [courseError.value, preferenceError.value, reminderPreferenceError.value]
       .filter(Boolean)
       .length
     error.value = failedResourceCount
@@ -947,7 +786,6 @@ async function loadCourses() {
   } finally {
     if (!isCurrentRequest()) return
     loading.value = false
-    llmLoading.value = false
     preferenceLoading.value = false
     reminderPreferenceLoading.value = false
   }
@@ -1062,63 +900,6 @@ async function resetStudyPreferences() {
     ElMessage.error(message)
   } finally {
     preferenceResetting.value = false
-  }
-}
-
-function applyLlmSettings(value) {
-  const result = normalizeLlmSettings(value)
-  if (!result.ok) return result
-  const data = result.value
-  Object.assign(llmSettings, data)
-  Object.assign(llmForm, {
-    base_url: data.base_url,
-    model: data.model,
-    api_key: '',
-    timeout_seconds: data.timeout_seconds,
-    max_retries: data.max_retries,
-    clear_api_key: false,
-  })
-  return result
-}
-
-async function saveLlmSettings() {
-  if (llmState.value !== 'ready') return
-  if (!llmForm.model.trim()) {
-    ElMessage.warning('请填写模型名称')
-    return
-  }
-  llmSaving.value = true
-  try {
-    const payload = {
-      base_url: llmForm.base_url.trim(),
-      model: llmForm.model.trim(),
-      timeout_seconds: llmForm.timeout_seconds,
-      max_retries: llmForm.max_retries,
-      clear_api_key: llmForm.clear_api_key,
-    }
-    if (llmForm.api_key.trim()) payload.api_key = llmForm.api_key.trim()
-    const result = await settingsApi.updateLlm(payload)
-    const applied = applyLlmSettings(result)
-    if (!applied.ok) {
-      llmState.value = 'error'
-      llmError.value = applied.error
-      ElMessage.error(applied.error)
-      return
-    }
-    llmState.value = 'ready'
-    ElMessage.success('AI 配置已保存，现在可以在资料处理中选择外部 AI')
-  } catch (err) {
-    if (isLlmAdminRestriction(err)) {
-      llmState.value = 'managed'
-      llmForm.api_key = ''
-      llmError.value = ''
-      return
-    }
-    const message = safeErrorMessage(err, '外部 AI 配置保存失败，请稍后重试。')
-    llmError.value = message
-    ElMessage.error(message)
-  } finally {
-    llmSaving.value = false
   }
 }
 
@@ -1259,7 +1040,7 @@ onMounted(loadCourses)
 .rule-book-heading h2 { margin: 0; color: var(--ledger-ink); font-family: inherit; font-size: 15px; font-weight: 600; }
 .rule-book-heading p:not(.rule-book-kicker) { max-width: 62ch; margin: 7px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .rule-book-mark { flex: 0 0 auto; color: var(--ledger-muted); font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: 0; }
-.rule-index { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.rule-index { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
 .rule-index-link {
   display: flex;
   min-width: 0;
@@ -1303,8 +1084,7 @@ onMounted(loadCourses)
 .table-heading { min-width: 0; }
 .table-state, .section-state { min-width: 0; overflow-wrap: anywhere; color: var(--ledger-muted); font-size: 12px; line-height: 1.5; white-space: normal; }
 .section-edit-button,
-.section-summary-action,
-.llm-concise-actions .el-button { min-height: 44px; }
+.section-summary-action { min-height: 44px; }
 .section-summary {
   display: flex;
   align-items: flex-start;
@@ -1366,38 +1146,8 @@ onMounted(loadCourses)
 .reminder-safety-note > span { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
 .reminder-preference-actions { margin-top: 16px; }
 .preference-unavailable { padding: 14px 4px 2px; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-.llm-card { grid-column: 1 / -1; }
 .settings-help { margin: 0 0 18px; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-.external-ai-safety-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  min-width: 0;
-  margin: 2px 0 14px;
-  padding: 11px 12px;
-  color: #7a5d2e;
-  background: #fffaf0;
-  border: 1px solid #f5ead1;
-  border-radius: 9px;
-}
-.external-ai-safety-note p { min-width: 0; margin: 0; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
-.llm-concise-summary {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 2px;
-  padding: 14px 16px;
-  color: var(--ledger-ink);
-  background: #f1f7f3;
-  border: 1px solid #c8ddd1;
-  border-radius: 8px;
-}
-.llm-concise-summary p { min-width: 0; margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-.llm-concise-actions { flex: 0 0 auto; }
-.llm-concise-actions .el-button { min-height: 44px; }
 .unit-label { margin-left: 8px; color: var(--ledger-muted); font-size: 13px; }
-.llm-actions { display: flex; justify-content: flex-end; margin-top: 2px; }
 :global(html) { scroll-padding-top: 96px; }
 @media (prefers-reduced-motion: reduce) {
   :global(html) { scroll-behavior: auto; }
@@ -1427,7 +1177,6 @@ onMounted(loadCourses)
   .course-weight-grid { grid-template-columns: minmax(0, 1fr); }
   .preference-actions { justify-content: flex-start; flex-wrap: wrap; }
   .reminder-safety-note { align-items: flex-start; }
-  .llm-card { grid-column: auto; }
   .section-summary { flex-wrap: wrap; }
 }
 @media (max-width: 560px) {
@@ -1437,16 +1186,14 @@ onMounted(loadCourses)
   .rule-index-link { min-height: 0; }
   .settings-inline-alert { margin-right: 16px; margin-left: 16px; }
   .preference-card :deep(.el-form-item__label),
-  .reminder-preference-card :deep(.el-form-item__label),
-  .llm-card :deep(.el-form-item__label) {
+  .reminder-preference-card :deep(.el-form-item__label) {
     width: 100% !important;
     padding: 0 0 6px;
     line-height: 1.4;
     text-align: left;
   }
   .preference-card :deep(.el-form-item__content),
-  .reminder-preference-card :deep(.el-form-item__content),
-  .llm-card :deep(.el-form-item__content) {
+  .reminder-preference-card :deep(.el-form-item__content) {
     min-width: 0;
     margin-left: 0 !important;
   }
@@ -1460,8 +1207,7 @@ onMounted(loadCourses)
   .section-edit-button,
   .section-summary-action,
   .reset-zone .el-button,
-  .preference-actions .el-button,
-  .llm-actions .el-button { min-height: 44px; }
+  .preference-actions .el-button { min-height: 44px; }
   .number-with-unit { min-width: 0; flex-wrap: wrap; }
   .number-with-unit .el-input-number { width: min(100%, 220px); }
   .course-weight-row { align-items: flex-start; flex-direction: column; }
@@ -1471,13 +1217,9 @@ onMounted(loadCourses)
   .reminder-preference-form :deep(.el-radio-group) { display: flex; flex-wrap: wrap; gap: 6px; }
   .reminder-preference-form :deep(.el-radio-button) { margin: 0; }
   .reminder-preference-form :deep(.el-radio-button__inner) { min-height: 44px; padding: 10px 12px; }
-  .llm-concise-summary { flex-direction: column; padding: 12px; }
-  .llm-concise-actions,
-  .llm-concise-actions .el-button { width: 100%; }
   .section-summary { padding: 12px; }
   .section-summary > .el-button { width: 100%; }
   .summary-facts { gap: 6px; }
-  .external-ai-safety-note { flex-direction: column; gap: 6px; }
 }
 @media (max-width: 390px) {
   .rule-book-heading h2 { font-size: 17px; }

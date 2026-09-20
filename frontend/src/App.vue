@@ -2,7 +2,7 @@
   <router-view v-if="$route.meta.publicLayout" />
   <WorkspaceShell v-else>
     <router-view v-slot="{ Component }">
-      <Transition name="workspace-page" mode="out-in">
+      <Transition name="workspace-page" mode="out-in" appear>
         <div :key="$route.path" class="workspace-page"><component :is="Component" /></div>
       </Transition>
     </router-view>

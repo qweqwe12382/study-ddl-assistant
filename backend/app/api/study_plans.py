@@ -22,6 +22,7 @@ from app.services.study_plan import (
 from app.services.agent_feedback import calibration_payload
 from app.services.edit_concurrency import check_edit_precondition
 from app.services.source_identity import new_navigation_key
+from app.services.material_intent import material_source_option
 from app.time import as_local, utc_now
 
 router = APIRouter(prefix="/api/study-plans", tags=["study-plans"])
@@ -87,6 +88,34 @@ def list_study_plans(
     return [_read_payload(plan) for plan in db.scalars(statement).all()]
 
 
+@router.get("/sources")
+def list_plan_sources(course_id: int, db: Session = Depends(get_db)) -> dict:
+    require_entity(db, Course, course_id, code="COURSE_NOT_FOUND", message="关联课程不存在")
+    materials = db.scalars(select(Material).where(Material.course_id == course_id).order_by(Material.created_at.desc())).all()
+    tasks = db.scalars(select(Task).where(Task.course_id == course_id, Task.status.notin_(["completed", "canceled"])).order_by(Task.due_at.asc())).all()
+    return {"course_id": course_id, "materials": [material_source_option(material) for material in materials],
+            "tasks": [{"source_id": task.id, "navigation_key": task.navigation_key, "revision": task.revision,
+                       "label": task.name, "due_at": task.due_at, "available": True, "recommended": False,
+                       "hint": "无截止时间，按可用时间安排" if not task.due_at else "按任务截止安排"} for task in tasks]}
+
+
+def _select_sources(db, rows, refs, *, material=False):
+    if refs is None:
+        return rows
+    by_id = {row.id: row for row in rows}
+    selected = []
+    for ref in refs:
+        row = by_id.get(ref.source_id)
+        if row is None or row.navigation_key != ref.navigation_key or row.revision != ref.revision:
+            raise HTTPException(status_code=409, detail={"code": "PLAN_SOURCE_CHANGED", "message": "所选内容已变更或不属于当前课程，请刷新复习范围后重新选择"})
+        if (material and not material_source_option(row)["available"]) or (not material and row.status in {"completed", "canceled"}):
+            raise _invalid_plan("所选内容当前不可安排，请刷新复习范围", code="PLAN_SOURCE_UNAVAILABLE")
+        check_edit_precondition(db, row, f'"{ref.navigation_key}:{ref.revision}"')
+        if row not in selected:
+            selected.append(row)
+    return selected
+
+
 @router.post("/generate", response_model=StudyPlanRead, status_code=status.HTTP_201_CREATED)
 def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db)) -> StudyPlanRead:
     course = require_entity(
@@ -115,6 +144,15 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
             .order_by(Task.due_at.asc(), Task.created_at.asc())
         ).all()
     )
+    explicit_selection = payload.material_sources is not None or payload.task_sources is not None
+    if explicit_selection:
+        # A partially supplied explicit selection still excludes the other kind.
+        materials = _select_sources(db, materials, payload.material_sources or [], material=True)
+        tasks = _select_sources(db, tasks, payload.task_sources or [])
+        if not materials and not tasks:
+            raise _invalid_plan("请至少选择一份资料或一条任务", code="EMPTY_PLAN_SOURCES")
+    selection = {"materials": [{"source_id": row.id, "navigation_key": row.navigation_key} for row in materials],
+                 "tasks": [{"source_id": row.id, "navigation_key": row.navigation_key} for row in tasks]} if explicit_selection else None
     try:
         calibration_factor = calibration_payload(db, payload.course_id)["factor"]
         items, warnings, unscheduled_items = generate_review_schedule(
@@ -143,6 +181,7 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
             material_count=len(materials),
             task_count=len([task for task in tasks if task.status not in {"completed", "canceled"}]),
             unscheduled_items=unscheduled_items,
+            source_selection=selection,
         ),
         status="active",
     )

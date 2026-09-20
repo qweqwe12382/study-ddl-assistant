@@ -1,3 +1,10 @@
+from datetime import datetime
+
+import pytest
+
+from app.services import task_service
+
+
 REFERENCE_TIME = "2026-09-11T01:00:00Z"
 
 
@@ -31,13 +38,19 @@ def _radar_payload(task, notice_text: str) -> dict:
     }
 
 
-def test_deadline_radar_previews_an_earlier_deadline_without_mutating_task(client):
+@pytest.mark.parametrize(
+    "wall_time",
+    [REFERENCE_TIME, "2030-01-01T00:00:00Z"],
+    ids=["before-deadlines", "after-deadlines"],
+)
+def test_deadline_radar_previews_an_earlier_deadline_without_mutating_task(client, monkeypatch, wall_time):
+    monkeypatch.setattr(task_service, "utc_now", lambda: datetime.fromisoformat(wall_time))
     configured = client.put(
         "/api/study-preferences",
         json={"weekly_available_minutes": 600, "daily_limit_minutes": 120, "buffer_ratio": 0},
     )
     task = _create_task(client)
-    _create_task(
+    other_task = _create_task(
         client,
         name="同日课程展示",
         due_at="2026-09-13T05:00:00Z",
@@ -63,13 +76,20 @@ def test_deadline_radar_previews_an_earlier_deadline_without_mutating_task(clien
     assert changed_day["affected"] is True
     assert "提前至2026年9月13日12:00" in preview["evidence"]["quote"]
 
-    saved = client.get(f"/api/tasks/{task['id']}").json()
-    assert saved["due_at"] == task["due_at"]
-    assert saved["revision"] == task["revision"]
+    # Observe the preview before GET /tasks/{id}, which independently persists
+    # overdue transitions for every task using the wall clock.
     activity_after = client.get("/api/agent/activity").json()["items"]
     assert [item["activity_id"] for item in activity_after] == [
         item["activity_id"] for item in activity_before
     ]
+
+    # Keep the observation requests from introducing their own transitions.
+    # A mutation by preview is still caught by full snapshots of both tasks.
+    monkeypatch.setattr(task_service, "utc_now", lambda: datetime.fromisoformat(REFERENCE_TIME))
+    for original in (task, other_task):
+        saved = client.get(f"/api/tasks/{original['id']}")
+        assert saved.status_code == 200
+        assert saved.json() == original
 
 
 def test_deadline_radar_apply_is_confirmed_auditable_and_idempotent(client):

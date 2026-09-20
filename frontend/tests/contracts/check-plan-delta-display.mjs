@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 
-import { normalizePlanDeltaLines } from '../../src/utils/planDeltaDisplay.js'
+import { normalizePlanDeltaLines, planStateLines } from '../../src/utils/planDeltaDisplay.js'
+
+// Completion can produce protected plan items in a dashboard briefing. They
+// must remain readable without exposing navigation identities or crashing it.
+assert.deepEqual(planStateLines([{ id: 'done-1', title: '已经完成的复习', status: 'completed', minutes: 30, navigation_key: 'private-key' }]), [
+  '计划项 ID：done-1', '标题：已经完成的复习', '时长：30 分钟', '状态：completed',
+])
+assert.deepEqual(planStateLines(null), [])
 
 const navigationKey = 'a'.repeat(32)
 const finalNote = '智能体差异：实际用时反馈75分钟，请在确认后纳入本时段。'

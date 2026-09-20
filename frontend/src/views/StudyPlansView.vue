@@ -3,30 +3,41 @@
     <div class="page-intro planner-hero">
       <div class="hero-copy">
         <h1>复习计划</h1>
-        <p>{{ isConciseView ? '看看近期安排，从下一项开始。' : '设置课程、考试日期和每日时间，生成后逐日调整。' }}</p>
+        <el-button v-if="currentPlan && !planNavigationMismatch" plain @click="togglePlanCreator">{{ creatingPlan ? '收起新计划' : '新建计划' }}</el-button>
+        <p>{{ creatingPlan ? '选好复习内容和可用时间，就能生成每日安排。' : '看看近期安排，从下一项开始。' }}</p>
       </div>
-      <aside class="hero-status" :class="{ 'is-loading': loading || plansLoading }" aria-live="polite">
+      <aside v-if="!creatingPlan" class="hero-status" :class="{ 'is-loading': loading || plansLoading }" aria-live="polite">
         <span class="hero-status-label">当前计划</span>
         <strong>{{ loading || plansLoading ? '正在读取' : planNavigationMismatch ? '来源已失效' : currentPlan ? currentPlan.title : '待建立计划' }}</strong>
         <span class="hero-status-meta">
-          {{ planNavigationMismatch ? '清除定位后可重新选择计划' : currentPlan ? `考试 ${currentPlan.exam_date}` : selectedCourse ? selectedCourse.name : loading ? '正在读取课程' : '尚未选择课程' }}
+          {{ planNavigationMismatch ? '清除定位后可重新选择计划' : currentPlan ? `复习至 ${currentPlan.exam_date} · ${currentPlan.material_count || 0} 份资料 · ${currentPlan.task_count || 0} 条任务` : selectedCourse ? selectedCourse.name : loading ? '正在读取课程' : '尚未选择课程' }}
         </span>
+        <el-select v-if="courses.length > 1 && !planNavigationMismatch" :model-value="planForm.course_id" class="plan-course-switch" aria-label="切换课程查看计划" :disabled="loading || plansLoading" @update:model-value="browseCourse">
+          <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
+        </el-select>
       </aside>
     </div>
 
-    <div v-if="isDetailedView && !planNavigationMismatch" class="page-actions planner-export-actions" aria-label="导出操作">
+    <nav class="schedule-switch" aria-label="日程与学习安排">
+      <router-link to="/schedule">课表与考试 <small>固定时间</small></router-link>
+      <span aria-current="page">复习计划 <small>每天学什么</small></span>
+    </nav>
+
+    <details v-if="isDetailedView && !planNavigationMismatch && !creatingPlan" class="plan-export-details"><summary>导出计划与学习记录</summary>
+    <div class="page-actions planner-export-actions" aria-label="导出操作">
       <el-button @click="downloadFile(exportsApi.tasksCsvUrl())">导出截止任务 CSV</el-button>
       <el-button @click="downloadFile(exportsApi.tasksCalendarUrl())">导出待办日历</el-button>
       <el-button @click="downloadFile(exportsApi.materialsMarkdownUrl())">导出资料 Markdown</el-button>
-      <el-button :disabled="!currentPlan" @click="downloadFile(exportsApi.studyPlanMarkdownUrl(currentPlan.id))">导出计划 Markdown</el-button>
+      <el-button :disabled="!currentPlan" @click="downloadFile(exportsApi.studyPlanMarkdownUrl(currentPlan.id), `${currentPlan.title || '复习计划'}.md`)">导出计划 Markdown</el-button>
     </div>
+    </details>
 
     <div v-if="error" class="plan-global-error">
       <el-alert :title="error" type="error" show-icon :closable="false" role="alert" />
       <el-button plain class="plan-retry-button" :loading="loading || plansLoading" :disabled="loading || plansLoading" @click="loadData">重新读取计划</el-button>
     </div>
     <EditConflictCard :visible="Boolean(planConflict)" :title="planConflictTitle" :message="planConflictMessage" :latest-fields="planConflict?.latestFields || []" @view-latest="viewLatestPlan" @discard="discardPlanDraft" />
-    <el-alert v-if="deepLinkLabel && !planNavigationMismatch" :title="deepLinkLabel" type="info" show-icon role="status" :closable="false" class="mb-18" />
+    <el-alert v-if="deepLinkLabel && !planNavigationMismatch && !creatingPlan" :title="deepLinkLabel" type="info" show-icon role="status" :closable="false" class="mb-18" />
     <section v-if="planNavigationMismatch" class="plan-source-expired" role="status" aria-live="polite">
       <strong>原来的计划已失效，未能打开新的同编号计划。</strong>
       <p>清除当前定位后，可以重新选择计划。</p>
@@ -34,97 +45,64 @@
     </section>
     <div v-if="loading || plansLoading" class="sr-only" role="status" aria-live="polite">正在加载复习计划…</div>
 
-    <section v-if="isDetailedView && !planNavigationMismatch" class="planning-sequence" aria-labelledby="planning-sequence-heading">
-      <div class="sequence-heading">
-        <div>
-          <p class="section-eyebrow">计划生成步骤</p>
-          <h2 id="planning-sequence-heading">从设定条件到每日安排</h2>
-        </div>
-        <p v-if="isDetailedView">按下面 3 步生成计划；状态会在数据读取后更新。</p>
-      </div>
-      <ol class="sequence-list">
-        <li class="sequence-step" :class="`is-${setupStepState.tone}`">
-          <div class="sequence-marker" aria-hidden="true">01</div>
-          <div class="sequence-body">
-            <div class="sequence-topline"><span>填写条件</span><strong>{{ setupStepState.label }}</strong></div>
-            <h3>选择课程，设置考试日期和每日时间</h3>
-            <p v-if="isDetailedView">{{ selectedCourse ? `当前课程：${selectedCourse.name}` : loading ? '课程列表读取后即可选择。' : '先选择一门课程，再填写考试日期和每日学习时间。' }}</p>
-            <div v-if="isDetailedView" class="sequence-detail">
-              <span>{{ loading ? '课程读取中' : courses.length ? `${courses.length} 门课程可选` : '暂无可选课程' }}</span>
-              <span>{{ planForm.exam_date ? `考试日期 ${planForm.exam_date}` : '考试日期待填写' }}</span>
-            </div>
-          </div>
-        </li>
-        <li class="sequence-step" :class="`is-${calibrationStepState.tone}`">
-          <div class="sequence-marker" aria-hidden="true">02</div>
-          <div class="sequence-body">
-            <div class="sequence-topline"><span>查看依据</span><strong>{{ calibrationStepState.label }}</strong></div>
-            <h3>查看这门课的预计用时依据</h3>
-            <p v-if="isDetailedView">{{ calibrationLoading || loading ? '正在读取这门课程的完成反馈和预计用时依据。' : '先了解估时依据，再决定每日学习时间是否需要调整。' }}</p>
-            <div v-if="isDetailedView" class="sequence-detail">
-              <span v-if="calibrationLoading || loading">依据读取中</span>
-              <span v-else-if="!planForm.course_id">先选择课程</span>
-              <span v-else-if="calibrationError">依据暂时不可用</span>
-              <span v-else-if="calibration.available && calibration.sample_count !== null">{{ calibration.sample_count }} 次有效反馈</span>
-              <span v-else-if="calibration.available">反馈数量待积累</span>
-              <span v-else>暂无完成反馈</span>
-              <span v-if="calibrationLoading || loading">等待课程</span>
-              <span v-else-if="calibrationError">保留原始估时</span>
-              <span v-else-if="calibration.available && calibration.eligible">已形成依据</span>
-              <span v-else-if="calibration.available">样本积累中</span>
-              <span v-else>保留原始估时</span>
-            </div>
-          </div>
-        </li>
-        <li class="sequence-step" :class="`is-${planStepState.tone}`">
-          <div class="sequence-marker" aria-hidden="true">03</div>
-          <div class="sequence-body">
-            <div class="sequence-topline"><span>生成结果</span><strong>{{ planStepState.label }}</strong></div>
-            <h3>编辑并保存计划</h3>
-            <p v-if="isDetailedView">{{ currentPlan ? '可以在表格中调整日期、主题、内容、时长和状态，完成后保存。' : '生成计划后，这里会出现可编辑的每日安排。' }}</p>
-            <div v-if="isDetailedView" class="sequence-detail">
-              <span>{{ planItemCountLabel }}</span>
-              <span>{{ saving ? '正在保存' : currentPlan ? '修改后请保存' : '生成后可编辑' }}</span>
-            </div>
-          </div>
-        </li>
-      </ol>
-    </section>
-
-    <el-card v-if="!planNavigationMismatch && (isDetailedView || (!loading && !plansLoading && !currentPlan))" class="content-card plan-config" shadow="never" v-loading="loading" :aria-busy="loading">
+    <el-card v-if="!planNavigationMismatch && (creatingPlan || (!loading && !plansLoading && !currentPlan))" class="content-card plan-config" shadow="never" v-loading="loading" :aria-busy="loading">
       <div class="card-heading config-heading">
         <div class="card-heading-copy">
           <h2>新建复习计划</h2>
-          <p v-if="isDetailedView">生成新计划会新增一份记录，不会覆盖已有计划。</p>
         </div>
       </div>
-      <el-form :model="planForm" label-width="116px" class="plan-form">
-        <el-form-item label="课程" required class="plan-form-course">
-          <el-select v-model="planForm.course_id" placeholder="选择课程" style="width: 100%" @change="onCourseChange">
-            <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="考试日期" required class="plan-form-date">
-          <el-date-picker v-model="planForm.exam_date" type="date" value-format="YYYY-MM-DD" placeholder="选择考试日期" style="width: 100%" />
-        </el-form-item>
-        <el-form-item label="本计划每日时间上限" required class="plan-form-capacity">
-          <div class="minutes-field">
-            <el-input-number v-model="planForm.daily_minutes" :min="15" :max="1440" style="width: 100%" />
-            <span class="form-suffix">分钟</span>
+      <el-form :model="planForm" label-position="top" class="plan-form" :disabled="generating" @submit.prevent="generatePlan">
+        <section class="plan-form-section" aria-labelledby="plan-content-heading">
+          <h3 id="plan-content-heading"><span aria-hidden="true">1</span>复习什么</h3>
+          <el-form-item label="课程" required class="plan-form-course">
+            <CourseSelect :model-value="planForm.course_id" :courses="courses" :disabled="generating" @created="onCourseCreated" @update:model-value="changeCourse" />
+          </el-form-item>
+          <PlanSourcePicker ref="sourcePicker" :course-id="planForm.course_id" :material-id="positiveRouteId(route.query.course_id) === planForm.course_id ? positiveRouteId(route.query.material_id) : null" :material-key="String(route.query.material_key || '')" :exam-date="planForm.exam_date" :daily-minutes="planForm.daily_minutes" :disabled="generating" @change="sourceSelection = $event" />
+        </section>
+        <section class="plan-form-section" aria-labelledby="plan-time-heading">
+          <h3 id="plan-time-heading"><span aria-hidden="true">2</span>什么时候复习</h3>
+          <div class="plan-time-fields">
+            <el-form-item label="复习到哪天" required class="plan-form-date">
+              <el-date-picker v-model="planForm.exam_date" type="date" value-format="YYYY-MM-DD" placeholder="选择复习截止日期" :disabled-date="disabledBeforeToday" style="width: 100%" @change="examDateEdited = true" />
+              <div class="plan-date-presets" role="group" aria-label="快捷复习期限">
+                <button v-for="days in [7, 14]" :key="days" type="button" :disabled="generating" @click="setReviewDays(days)">先安排{{ days === 7 ? '一' : '两' }}周</button>
+                <button v-if="knownExamDate" type="button" :disabled="generating" @click="planForm.exam_date = knownExamDate; examDateEdited = false">使用考试日期</button>
+              </div>
+              <p class="plan-date-hint" role="status">{{ !examDateEdited && knownExamDate && planForm.exam_date === knownExamDate ? '已带入这门课最近的考试日期，可修改。' : !examDateEdited && !routeExamDate() ? '暂按两周安排复习，可选期限或修改日期。' : '按所选日期安排复习。' }}</p>
+            </el-form-item>
+            <el-form-item label="每天可用时间" required class="plan-form-capacity">
+              <div class="minutes-field">
+                <el-input-number v-model="planForm.daily_minutes" :min="15" :max="1440" :step="15" style="width: 100%" />
+                <span class="form-suffix">分钟</span>
+              </div>
+            </el-form-item>
           </div>
-          <p class="submit-hint">填写扣除上课后的可用复习时间；多份计划暂不自动共享额度。</p>
-        </el-form-item>
-        <el-form-item label="计划名称" class="plan-form-title">
-          <el-input v-model="planForm.title" placeholder="留空则使用课程名生成" style="width: 100%" />
-        </el-form-item>
+          <div class="duration-presets" aria-label="每天复习时间快捷选择">
+            <button v-for="minutes in [30, 60, 90]" :key="minutes" type="button" :aria-pressed="planForm.daily_minutes === minutes" :disabled="generating" @click="planForm.daily_minutes = minutes">{{ minutes }} 分钟</button>
+          </div>
+          <p class="submit-hint capacity-note">从今天开始安排。请填写扣除上课等安排后可用的时间；这个上限只用于本计划，多份计划的用时需自行合计。</p>
+        </section>
+        <details class="plan-extra-options">
+          <summary>更多设置<span>{{ planForm.title.trim() || '计划名称可自动填写' }}</span></summary>
+          <el-form-item label="计划名称" class="plan-form-title">
+            <el-input v-model="planForm.title" :maxlength="200" placeholder="留空则使用课程名生成" style="width: 100%" />
+          </el-form-item>
+          <router-link class="plan-import-link" :to="{ path: '/materials', query: { action: 'upload', intent: 'plan', ...(planForm.course_id ? { course_id: planForm.course_id } : {}), ...(planForm.exam_date ? { exam_date: planForm.exam_date } : {}), ...(planForm.daily_minutes ? { daily_minutes: planForm.daily_minutes } : {}) } }">已有计划文件？作为参考导入</router-link>
+        </details>
+        <div v-if="generationError" class="plan-generation-error" role="alert">
+          <p>{{ generationError }}</p>
+          <el-button v-if="sourceRefreshRequired" plain :disabled="generating" @click="refreshPlanSources">刷新所选内容</el-button>
+        </div>
         <el-form-item class="plan-form-submit">
-          <el-button type="primary" :loading="generating" :disabled="loading || plansLoading || !courses.length || !planForm.course_id || generating" @click="generatePlan">生成计划</el-button>
-          <span v-if="isDetailedView" class="submit-hint">生成后仍可逐日调整</span>
+          <el-button native-type="submit" type="primary" :loading="generating" :disabled="loading || plansLoading || !planForm.course_id || generating || !sourcesReady || !planForm.exam_date">生成并保存计划</el-button>
+          <span class="submit-hint">{{ sourcesReady ? '仅安排已选内容，生成后可修改。' : '先选好复习内容，再生成计划。' }}</span>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <el-card v-if="isDetailedView && !planNavigationMismatch" class="content-card calibration-card" shadow="never" v-loading="calibrationLoading">
+    <template v-if="!creatingPlan">
+    <details v-if="isDetailedView && !planNavigationMismatch" class="plan-calibration-details"><summary>预计用时依据与重置</summary>
+    <el-card class="content-card calibration-card" shadow="never" v-loading="calibrationLoading">
       <div class="card-heading calibration-heading">
         <div class="card-heading-copy">
           <h2>预计用时依据</h2>
@@ -180,6 +158,8 @@
         {{ planForm.course_id ? '暂时没有可用的完成反馈；完成任务并选择“完成并反馈”后，这里会逐步形成校准依据。' : '先选择课程，查看该课程的估时校准依据。' }}
       </div>
     </el-card>
+
+    </details>
 
     <section v-if="!planNavigationMismatch && currentPlan && unscheduledItems.length" class="unscheduled-snapshot" aria-labelledby="unscheduled-snapshot-heading">
       <div class="unscheduled-snapshot-heading">
@@ -238,10 +218,9 @@
     <el-card v-else-if="!planNavigationMismatch && isDetailedView" class="table-card plan-card" shadow="never" v-loading="plansLoading" :aria-busy="plansLoading">
       <div class="table-toolbar">
         <div class="table-heading">
-          <div class="step-label">03 / 生成并保存</div>
           <h2 id="detailed-plan-heading" tabindex="-1">编辑并保存计划 <el-tag v-if="currentPlan" size="small" effect="plain">{{ currentPlan.items?.length || 0 }} 项</el-tag></h2>
           <div v-if="currentPlan && isDetailedView" class="plan-meta">
-            {{ currentPlan.title }} · 考试日期 {{ currentPlan.exam_date }} · 每日上限 {{ currentPlan.daily_minutes }} 分钟 ·
+            {{ currentPlan.title }} · 复习至 {{ currentPlan.exam_date }} · 每日上限 {{ currentPlan.daily_minutes }} 分钟 ·
             已完成 {{ completedItemCount }}/{{ currentPlan.items?.length || 0 }} 项
           </div>
           <p v-else-if="isDetailedView" class="table-heading-note">{{ plansLoading ? '已有计划读取中…' : '生成计划后，可在这里逐日调整并保存。' }}</p>
@@ -306,9 +285,10 @@
       </div>
       <div v-else class="empty-state plan-empty">
         <p class="plan-empty-message">{{ planEmptyMessage }}</p>
-        <router-link v-if="isNoCoursesReady" class="plan-empty-cta" to="/settings?action=create-course">先添加课程</router-link>
+        <el-button plain type="primary" @click="togglePlanCreator">新建计划</el-button>
       </div>
     </el-card>
+    </template>
   </div>
 </template>
 
@@ -332,14 +312,23 @@ import {
   ElTableColumn,
 } from 'element-plus'
 
-import { agentApi, coursesApi, exportsApi, studyPlansApi } from '../api'
+import { academicCalendarApi, agentApi, coursesApi, exportsApi, studyPlansApi } from '../api'
 import EditConflictCard from '../components/EditConflictCard.vue'
+import CourseSelect from '../components/CourseSelect.vue'
 import { useViewMode } from '../composables/useViewMode'
 import { downloadFile } from '../utils/download'
 import { toDateInputValue } from '../utils/format'
 import { navigationKey, positiveMaterialId, validatedSourceNavigationTarget } from '../utils/materialSourceNavigation'
 import { editBaseline, editRequestConfig, isEditConflict, isEntityGone, preconditionMessage } from '../utils/editPrecondition'
+import { nextCourseExamDate } from '../utils/dailyWorkflow'
 
+const PlanSourcePicker = defineAsyncComponent(() => import('../components/PlanSourcePicker.vue'))
+const creatingPlan = ref(false)
+const sourceSelection = ref(null)
+const sourcePicker = ref(null)
+const generationError = ref('')
+const sourceRefreshRequired = ref(false)
+const sourcesReady = computed(() => sourceSelection.value?.ready && sourceSelection.value.courseId === planForm.course_id && (sourceSelection.value.material_sources.length + sourceSelection.value.task_sources.length > 0))
 const StudyWeekBoard = defineAsyncComponent(() => import('../components/StudyWeekBoard.vue'))
 const loading = ref(false)
 const plansLoading = ref(false)
@@ -347,6 +336,9 @@ const generating = ref(false)
 const saving = ref(false)
 const error = ref('')
 const courses = ref([])
+const knownExams = ref([])
+const examDateEdited = ref(false)
+const knownExamDate = computed(() => nextCourseExamDate(knownExams.value, planForm.course_id))
 const plans = ref([])
 const currentPlan = ref(null)
 const planBaseline = ref(null)
@@ -376,6 +368,7 @@ const persistedPlanItems = ref([])
 const calibration = ref(normalizeCalibration({}))
 const calibrationResetKeys = new Map()
 const route = useRoute()
+creatingPlan.value = wantsPlanCreator()
 const router = useRouter()
 const { isConciseView, isDetailedView, setViewMode } = useViewMode()
 let plansRequestId = 0
@@ -383,8 +376,8 @@ let calibrationRequestId = 0
 
 const planForm = reactive({
   course_id: null,
-  exam_date: defaultExamDate(),
-  daily_minutes: 60,
+  exam_date: routeExamDate() || defaultExamDate(),
+  daily_minutes: routeDailyMinutes() || 60,
   title: '',
 })
 
@@ -405,43 +398,6 @@ const selectedCourse = computed(() => courses.value.find((course) => course.id =
 const planRiskWarnings = computed(() => (Array.isArray(currentPlan.value?.warnings) ? currentPlan.value.warnings : [])
   .filter((warning) => !String(warning || '').includes('已按该课程完成反馈校准系数')))
 
-const setupStepState = computed(() => {
-  if (loading.value) return { tone: 'loading', label: '读取中' }
-  if (error.value && !courses.value.length) return { tone: 'warning', label: '读取失败' }
-  if (!courses.value.length) return { tone: 'empty', label: '暂无课程' }
-  if (!planForm.course_id) return { tone: 'pending', label: '待选择课程' }
-  if (!planForm.exam_date || !planForm.daily_minutes) return { tone: 'pending', label: '条件待补充' }
-  return currentPlan.value ? { tone: 'ready', label: '已同步' } : { tone: 'active', label: '可生成' }
-})
-
-const calibrationStepState = computed(() => {
-  if (loading.value || calibrationLoading.value) return { tone: 'loading', label: '读取中' }
-  if (error.value && !courses.value.length) return { tone: 'warning', label: '读取失败' }
-  if (!planForm.course_id) return { tone: 'pending', label: '待选择课程' }
-  if (calibrationError.value) return { tone: 'warning', label: '读取失败' }
-  if (!calibration.value.available) return { tone: 'empty', label: '暂无反馈' }
-  return calibration.value.eligible ? { tone: 'ready', label: '依据可用' } : { tone: 'active', label: '样本积累中' }
-})
-
-const planStepState = computed(() => {
-  if (loading.value || plansLoading.value) return { tone: 'loading', label: '读取中' }
-  if (routePlanNotFound.value) return { tone: 'warning', label: '未找到计划' }
-  if (routePlanError.value || plansError.value) return { tone: 'warning', label: '读取失败' }
-  if (generating.value) return { tone: 'active', label: '正在生成' }
-  if (!currentPlan.value) return { tone: 'pending', label: '待生成' }
-  if (saving.value) return { tone: 'active', label: '正在保存' }
-  return { tone: 'ready', label: '可编辑' }
-})
-
-const planItemCountLabel = computed(() => {
-  if (loading.value || plansLoading.value) return '明细读取中'
-  if (routePlanNotFound.value) return '未找到计划明细'
-  if (routePlanError.value || plansError.value) return '明细读取失败'
-  if (!currentPlan.value) return '尚未生成计划'
-  if (!Array.isArray(currentPlan.value.items)) return '明细待读取'
-  return `${currentPlan.value.items.length} 项可编辑`
-})
-
 const planEmptyMessage = computed(() => {
   if (loading.value || plansLoading.value) return '正在读取复习计划…'
   if (routePlanNotFound.value && routeFilters.value.planId) return '未找到链接中的复习计划；请从当前课程列表选择或生成新计划。'
@@ -450,16 +406,6 @@ const planEmptyMessage = computed(() => {
   if (!courses.value.length) return '还没有课程，先添加课程，再生成一份复习计划。'
   return '请选择课程并生成一份复习计划。'
 })
-
-const isNoCoursesReady = computed(() => (
-  !loading.value
-  && !plansLoading.value
-  && !error.value
-  && !plansError.value
-  && !routePlanError.value
-  && !routePlanNotFound.value
-  && courses.value.length === 0
-))
 
 function positiveRouteId(value) {
   const id = Number(value)
@@ -525,7 +471,7 @@ function weeklyDelayedItemCount(plan) {
 }
 
 function planOptionLabel(plan) {
-  const base = `${plan.title} · ${plan.exam_date || '考试日期待定'}`
+  const base = `${plan.title} · ${plan.exam_date || '复习期限待定'}`
   if (routeFilters.value.view !== 'weekly_plan_delays') return base
   const course = courses.value.find((item) => item.id === plan.course_id)
   return `${base}${course ? ` · ${course.name}` : ''} · ${weeklyDelayedItemCount(plan)} 项延期`
@@ -577,6 +523,17 @@ function defaultExamDate() {
   const value = new Date()
   value.setDate(value.getDate() + 14)
   return toDateInputValue(value)
+}
+
+function setReviewDays(days) {
+  planForm.exam_date = shiftDateKey(chinaLocalDateKey(), days)
+  examDateEdited.value = true
+}
+
+function useSuggestedExamDate() {
+  if (!creatingPlan.value || examDateEdited.value) return
+  const sameCourse = !positiveRouteId(route.query.course_id) || positiveRouteId(route.query.course_id) === planForm.course_id
+  planForm.exam_date = (sameCourse && routeExamDate()) || knownExamDate.value || defaultExamDate()
 }
 
 function createIdempotencyKey() {
@@ -676,10 +633,12 @@ function syncFormFromPlan(plan) {
   if (!plan) return
   planConflict.value = null
   planBaseline.value = editBaseline(plan)
-  planForm.course_id = plan.course_id
-  planForm.exam_date = plan.exam_date || defaultExamDate()
-  planForm.daily_minutes = plan.daily_minutes || 60
-  planForm.title = plan.title || ''
+  if (!creatingPlan.value) {
+    planForm.course_id = plan.course_id
+    planForm.exam_date = plan.exam_date || defaultExamDate()
+    planForm.daily_minutes = plan.daily_minutes || 60
+    planForm.title = plan.title || ''
+  }
   persistedPlanItems.value = clonePlanItems(plan.items)
 }
 
@@ -802,7 +761,10 @@ async function loadData() {
   planForm.course_id = null
   calibration.value = normalizeCalibration({})
   try {
-    const listedCourses = await coursesApi.list()
+    const [listedCourses, calendar] = await Promise.all([
+      coursesApi.list(), academicCalendarApi.overview().catch(() => null),
+    ])
+    knownExams.value = calendar?.exams || []
     if (!Array.isArray(listedCourses)) throw new Error('课程数据格式无效')
     courses.value = listedCourses
     let targetPlan = null
@@ -824,6 +786,8 @@ async function loadData() {
       selectedPlanId.value = targetPlan.id
     } else if (routeFilters.value.courseId && courses.value.some((course) => course.id === routeFilters.value.courseId)) {
       planForm.course_id = routeFilters.value.courseId
+    } else if (routeFilters.value.courseId && positiveRouteId(route.query.material_id)) {
+      throw new Error('这份资料原来的课程已不存在，请回到资料页重新选择课程。')
     } else if (!planForm.course_id && courses.value.length) {
       planForm.course_id = courses.value[0].id
     }
@@ -855,10 +819,69 @@ async function loadData() {
     error.value = err.message
   } finally {
     loading.value = false
+    if (!currentPlan.value && !error.value && !planNavigationMismatch.value) creatingPlan.value = true
   }
 }
 
+function wantsPlanCreator() {
+  return route.query.action === 'create' || ['1', 'true'].includes(String(route.query.create || ''))
+}
+
+function routeExamDate() {
+  const value = String(route.query.exam_date || '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return ''
+  const date = new Date(`${value}T12:00:00`)
+  return !Number.isNaN(date.getTime()) && toDateInputValue(date) === value ? value : ''
+}
+
+function routeDailyMinutes() {
+  const minutes = Number(route.query.daily_minutes)
+  return Number.isInteger(minutes) && minutes >= 15 && minutes <= 1440 ? minutes : null
+}
+
+async function togglePlanCreator() {
+  creatingPlan.value = !creatingPlan.value
+  if (creatingPlan.value) {
+    planForm.title = ''
+    examDateEdited.value = false
+    planForm.exam_date = routeExamDate() || knownExamDate.value || defaultExamDate()
+    await router.replace({ path: '/study-plans', query: { action: 'create', ...(planForm.course_id ? { course_id: planForm.course_id } : {}) } })
+  } else {
+    syncFormFromPlan(currentPlan.value)
+    if (currentPlan.value) await router.replace({ path: '/study-plans', query: planLocation(currentPlan.value) })
+  }
+}
+
+function planLocation(plan) {
+  return { plan_id: plan.id, navigation_key: plan.navigation_key, ...(plan.course_id ? { course_id: plan.course_id } : {}), ...(routeFilters.value.view ? { view: routeFilters.value.view } : {}) }
+}
+
+function onCourseCreated(course) {
+  if (!courses.value.some(item => item.id === course.id)) courses.value.push(course)
+}
+
+function changeCourse(courseId) {
+  if (generating.value || planForm.course_id === courseId) return
+  planForm.course_id = courseId
+  onCourseChange()
+}
+
+async function browseCourse(courseId) {
+  if (courseId === planForm.course_id) return
+  await router.replace({ path: '/study-plans', query: { course_id: courseId } })
+}
+
+async function refreshPlanSources() {
+  await sourcePicker.value?.refreshSources()
+  generationError.value = ''
+  sourceRefreshRequired.value = false
+}
+
 function onCourseChange() {
+  examDateEdited.value = false
+  useSuggestedExamDate()
+  generationError.value = ''
+  sourceRefreshRequired.value = false
   planConflict.value = null
   error.value = ''
   plansError.value = ''
@@ -870,7 +893,7 @@ function onCourseChange() {
   loadCalibration(planForm.course_id)
 }
 
-function selectPlan(planId) {
+async function selectPlan(planId) {
   if (planNavigationMismatch.value) return
   currentPlan.value = plans.value.find((plan) => plan.id === planId) || null
   error.value = ''
@@ -880,6 +903,7 @@ function selectPlan(planId) {
   detailFocusItemId.value = ''
   syncFormFromPlan(currentPlan.value)
   loadCalibration(currentPlan.value?.course_id)
+  if (currentPlan.value) await router.replace({ path: '/study-plans', query: planLocation(currentPlan.value) })
 }
 
 async function clearExpiredPlanLocation() {
@@ -930,18 +954,34 @@ async function openPlanItemDetails(item) {
 }
 
 async function generatePlan() {
-  if (!planSourceOperationAllowed()) return
+  if (generating.value || loading.value || plansLoading.value || !planSourceOperationAllowed()) return
   if (!planForm.course_id || !planForm.exam_date) {
-    ElMessage.warning('请选择课程并填写考试日期')
+    ElMessage.warning('请选择课程和复习截止日期')
+    return
+  }
+  if (!sourcesReady.value) {
+    ElMessage.warning('请选择本次复习范围')
+    return
+  }
+  if (planForm.exam_date < chinaLocalDateKey()) {
+    ElMessage.warning('复习截止日期不能早于今天，请重新选择')
+    return
+  }
+  if (!Number.isInteger(planForm.daily_minutes) || planForm.daily_minutes < 15 || planForm.daily_minutes > 1440) {
+    ElMessage.warning('每天可用时间请填写 15 到 1440 分钟')
     return
   }
   generating.value = true
+  generationError.value = ''
+  sourceRefreshRequired.value = false
   try {
     const generated = await studyPlansApi.generate({
       course_id: planForm.course_id,
       exam_date: planForm.exam_date,
       daily_minutes: planForm.daily_minutes,
       title: planForm.title.trim() || null,
+      material_sources: sourceSelection.value.material_sources,
+      task_sources: sourceSelection.value.task_sources,
     })
     plans.value = [generated, ...plans.value]
     currentPlan.value = generated
@@ -950,13 +990,22 @@ async function generatePlan() {
     plansError.value = ''
     routePlanNotFound.value = false
     routePlanError.value = ''
+    creatingPlan.value = false
     syncFormFromPlan(generated)
-    ElMessage.success('复习计划已生成，可以继续编辑明细')
+    detailFocusItemId.value = ''
+    await router.replace({ path: '/study-plans', query: planLocation(generated) })
+    ElMessage.success('复习计划已生成并保存')
   } catch (err) {
+    generationError.value = err.message
+    sourceRefreshRequired.value = ['PLAN_SOURCE_CHANGED', 'PLAN_SOURCE_UNAVAILABLE', 'EDIT_CONFLICT'].includes(err.code)
     ElMessage.error(err.message)
   } finally {
     generating.value = false
   }
+}
+
+function disabledBeforeToday(value) {
+  return toDateInputValue(value) < chinaLocalDateKey()
 }
 
 function disabledAfterExam(value) {
@@ -1138,7 +1187,7 @@ async function viewLatestPlan() {
     }
     planConflict.value = { ...planConflict.value, latestFields: [
       { label: '计划名称', value: latest.title || '未命名计划' },
-      { label: '考试日期', value: latest.exam_date || '未填写' },
+      { label: '复习至', value: latest.exam_date || '未填写' },
       { label: '每日学习时间', value: latest.daily_minutes ? `${latest.daily_minutes} 分钟` : '未填写' },
       { label: '学习安排', value: (latest.items || []).map((item) => `${item.date || '未安排日期'} · ${item.title || '未命名学习项'} · ${item.status === 'completed' ? '已完成' : item.status === 'in_progress' ? '进行中' : '未开始'} · ${item.minutes ?? '未填写'} 分钟\n${item.content || '未填写内容'}`).join('\n\n') || '暂无学习项' },
     ] }
@@ -1181,9 +1230,14 @@ async function resetCalibration() {
   }
 }
 
+watch([knownExamDate, creatingPlan], useSuggestedExamDate)
+
 watch(
   () => [routeFilters.value.planId, routeFilters.value.courseId],
   ([planId, courseId], [previousPlanId, previousCourseId]) => {
+    // Opening the creator for the current course needs no page reload; preserve
+    // the user's input if they start typing while the URL is being updated.
+    if (!planId && wantsPlanCreator() && courseId === planForm.course_id) return
     if (planId !== previousPlanId || courseId !== previousCourseId) loadData()
   },
 )
@@ -1194,16 +1248,40 @@ watch(
   { flush: 'post' },
 )
 
+watch(
+  () => [route.query.action, route.query.create, route.query.exam_date, route.query.daily_minutes, route.query.material_id, route.query.material_key],
+  () => {
+    if (!wantsPlanCreator()) return
+    creatingPlan.value = true
+    examDateEdited.value = false
+    planForm.title = ''
+    planForm.exam_date = routeExamDate() || knownExamDate.value || defaultExamDate()
+    planForm.daily_minutes = routeDailyMinutes() || 60
+  },
+)
+
 onMounted(loadData)
 </script>
 
 <style scoped>
+.plan-date-presets { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; }
+.plan-date-presets button { min-height: 44px; padding: 6px 0; color: var(--ledger-link); background: transparent; border: 0; font: inherit; font-size: 12px; cursor: pointer; }
+.plan-date-hint { margin: 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.6; }
+.schedule-switch { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: -4px 0 22px; border-bottom: 1px solid var(--ledger-line); }
+.schedule-switch > * { display: flex; align-items: center; gap: 8px; padding: 12px 2px; color: var(--ledger-muted); font-size: 14px; text-decoration: none; }
+.schedule-switch > span { border-bottom: 2px solid var(--ledger-link); color: var(--ledger-link); font-weight: 600; }
+.schedule-switch small { font-weight: 400; font-size: 12px; color: var(--ledger-muted); }
+.schedule-switch a:focus-visible { outline: 2px solid var(--ledger-link); outline-offset: 3px; }
 .study-plans-page { max-width: 100%; min-width: 0; }
 .plan-source-expired { display: grid; gap: 8px; margin-bottom: 18px; padding: 16px; color: #7a4218; background: #fff8ed; border: 1px solid #efd0ab; border-left: 3px solid var(--ledger-amber); border-radius: 6px; }
 .plan-source-expired strong { font-size: 14px; line-height: 1.5; }
 .plan-source-expired p { margin: 0; color: #76583d; font-size: 13px; line-height: 1.6; }
 .plan-source-expired .el-button { justify-self: start; }
 .mb-18 { margin-bottom: 18px; }
+.hero-copy { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px 20px; }
+.hero-copy > p { grid-column: 1 / -1; }
+.plan-form :deep(.el-input__wrapper) { min-height: 42px; box-sizing: border-box; }
+.plan-form-sources { grid-column: 1 / -1; }
 .plan-config, .calibration-card, .plan-card { margin-bottom: 22px; }
 .plan-global-error { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 18px; }
 .plan-global-error .el-alert { min-width: 0; flex: 1 1 auto; }
@@ -1227,7 +1305,7 @@ onMounted(loadData)
 
 .planner-hero { align-items: stretch; gap: 22px; margin-bottom: 12px; }
 .hero-copy { min-width: 0; flex: 1 1 auto; }
-.hero-eyebrow, .section-eyebrow, .step-label {
+.step-label {
   margin: 0;
   color: var(--ledger-indigo);
   font-family: inherit;
@@ -1268,57 +1346,15 @@ onMounted(loadData)
 .planner-export-actions { justify-content: flex-end; margin-bottom: 22px; }
 .planner-export-actions .el-button { min-height: 44px; margin-left: 0; }
 
-.planning-sequence {
-  margin-bottom: 22px;
-  padding: 19px 20px 20px;
-  background: var(--ledger-paper);
-  border: 1px solid var(--ledger-line);
-  border-left: 3px solid var(--ledger-indigo);
-  border-radius: 4px;
-}
-.sequence-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 22px; }
-.sequence-heading h2 { margin: 5px 0 0; color: var(--ledger-ink); font-family: inherit; font-size: 18px; }
-.sequence-heading > p { max-width: 42ch; margin: 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; text-align: right; }
-.sequence-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin: 20px 0 0; padding: 0; list-style: none; }
-.sequence-step { display: grid; position: relative; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; min-width: 0; padding: 0 22px 0 0; }
-.sequence-step:not(:last-child) { margin-right: 22px; border-right: 1px solid var(--ledger-line); }
-.sequence-marker {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  color: var(--ledger-indigo);
-  background: #f1f7f3;
-  border: 1px solid #c8ddd1;
-  border-radius: 3px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-.sequence-step.is-ready .sequence-marker { color: #357862; background: #edf6f1; border-color: #a6c8b7; }
-.sequence-step.is-loading .sequence-marker { color: var(--ledger-amber-text); background: #fff7eb; border-color: #e7c995; }
-.sequence-step.is-empty .sequence-marker, .sequence-step.is-warning .sequence-marker { color: var(--ledger-coral); background: #fff2f2; border-color: #e2b2b2; }
-.sequence-body { min-width: 0; }
-.sequence-topline { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; min-height: 18px; color: var(--ledger-muted); font-size: 12px; letter-spacing: 0; line-height: 1.45; }
-.sequence-topline strong { min-width: 0; overflow-wrap: anywhere; color: var(--ledger-indigo); font-size: 12px; font-weight: 700; line-height: 1.4; white-space: normal; }
-.sequence-step.is-ready .sequence-topline strong { color: #357862; }
-.sequence-step.is-loading .sequence-topline strong { color: var(--ledger-amber-text); }
-.sequence-step.is-empty .sequence-topline strong, .sequence-step.is-warning .sequence-topline strong { color: var(--ledger-coral); }
-.sequence-step h3 { margin: 9px 0 0; color: var(--ledger-ink); font-size: 14px; line-height: 1.4; }
-.sequence-step p { min-height: 44px; margin: 6px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
-.sequence-detail { display: flex; flex-wrap: wrap; gap: 5px 12px; margin-top: 11px; color: var(--ledger-muted); font-size: 12px; line-height: 1.5; }
-.sequence-detail span { overflow-wrap: anywhere; }
 .config-heading, .calibration-heading { align-items: flex-start; gap: 18px; }
 .card-heading-copy { min-width: 0; }
 .card-heading-copy h2 { margin: 5px 0 0; }
 .card-heading-copy > p { margin: 7px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
 .config-heading > .el-tag { flex: 0 0 auto; margin-top: 1px; }
-.plan-form { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr) minmax(0, .9fr); gap: 16px 20px; align-items: end; }
 .plan-form :deep(.el-form-item) { min-width: 0; margin: 0; }
 .plan-form :deep(.el-form-item__content) { min-width: 0; }
-.plan-form-title { grid-column: 1 / span 2; }
-.plan-form-submit { grid-column: 3; }
+.plan-form-title { grid-column: 1 / -1; }
+.plan-form-submit { grid-column: 1 / -1; }
 .plan-form-submit :deep(.el-form-item__content) { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-height: 44px; }
 .plan-form-submit .el-button { min-height: 44px; }
 .submit-hint { color: var(--ledger-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -1431,10 +1467,6 @@ onMounted(loadData)
 @media (max-width: 720px) {
   .plan-global-error { flex-direction: column; }
   .plan-retry-button { width: 100%; }
-  .sequence-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
-  .sequence-heading > p { max-width: none; text-align: left; }
-  .sequence-list { display: block; }
-  .sequence-step:not(:last-child) { margin-right: 0; margin-bottom: 16px; padding-right: 0; padding-bottom: 16px; border-right: 0; border-bottom: 1px solid var(--ledger-line); }
 }
 
 @media (max-width: 900px) and (max-height: 480px) and (orientation: landscape) {
@@ -1452,11 +1484,8 @@ onMounted(loadData)
   .concise-plan-actions { width: 100%; min-width: 0; flex: 1 1 auto; }
   .concise-plan-actions > .el-select { width: 100% !important; flex: 1 1 100%; }
   .concise-plan-actions .el-button { width: 100%; }
-  .planning-sequence { padding: 16px 14px 17px; }
-  .sequence-step h3 { font-size: 13px; }
   .config-heading, .calibration-heading { flex-direction: column; gap: 13px; }
   .config-heading > .el-tag { align-self: flex-start; }
-  .plan-form { display: block; }
   .plan-form :deep(.el-form-item) { width: 100%; margin-bottom: 15px; }
   .plan-form :deep(.el-form-item:last-child) { margin-bottom: 0; }
   .plan-form :deep(.el-form-item__label) { width: 94px !important; }
@@ -1498,6 +1527,39 @@ onMounted(loadData)
 
 @media (max-width: 390px) {
   .planner-export-actions .el-button { font-size: 12px; }
-  .planning-sequence { padding-right: 12px; padding-left: 12px; }
+}
+
+.plan-form { display: flex; flex-direction: column; gap: 22px; }
+.plan-course-switch { margin-top: 10px; }
+.plan-export-details { margin-bottom: 14px; }
+.plan-export-details > summary { cursor: pointer; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; }
+.plan-export-details .planner-export-actions { margin: 10px 0 0; }
+.plan-generation-error { width: 100%; color: #a12f25; }
+.plan-generation-error p { margin: 0 0 8px; font-size: 13px; line-height: 1.65; }
+.plan-form-section { width: 100%; min-width: 0; }
+.plan-form-section h3 { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; font-size: 15px; color: var(--ledger-ink); }
+.plan-form-section h3 > span { display: grid; place-items: center; width: 23px; height: 23px; border-radius: 50%; background: #edf5ef; color: var(--ledger-indigo); font-size: 12px; }
+.plan-form-section .plan-form-course { max-width: 560px; margin-bottom: 14px; }
+.plan-time-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; max-width: 600px; }
+.duration-presets { display: flex; gap: 7px; margin-top: 10px; }
+.duration-presets button { min-height: 44px; padding: 4px 12px; font: inherit; font-size: 13px; color: var(--ledger-muted); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 5px; cursor: pointer; }
+.duration-presets button[aria-pressed="true"] { color: var(--ledger-indigo); background: #edf5ef; border-color: #a9cbb7; }
+.duration-presets button:disabled { cursor: default; }
+.capacity-note { max-width: 75ch; margin: 10px 0 0; }
+.plan-extra-options { width: 100%; border-top: 1px solid var(--ledger-line); padding-top: 12px; }
+.plan-extra-options summary, .plan-calibration-details > summary { cursor: pointer; min-height: 32px; color: var(--ledger-muted); font-size: 13px; line-height: 1.6; }
+.plan-extra-options summary span { margin-left: 12px; font-size: 12px; }
+.plan-extra-options .plan-form-title { max-width: 560px; margin-top: 10px; }
+.plan-calibration-details { margin-bottom: 16px; }
+.plan-import-link { flex-shrink: 0; color: var(--ledger-link); font-size: 13px; line-height: 1.7; }
+.plan-form-submit { width: 100%; }
+.plan-extra-options summary:focus-visible, .plan-calibration-details > summary:focus-visible, .duration-presets button:focus-visible, .plan-import-link:focus-visible { outline: 2px solid var(--ledger-indigo); outline-offset: 3px; }
+@media (max-width: 560px) {
+  .plan-form { display: flex; gap: 18px; }
+  .plan-time-fields { grid-template-columns: 1fr; gap: 14px; }
+  .plan-form :deep(.el-form-item__label) { width: auto !important; }
+  .plan-form :deep(.el-form-item) { margin-bottom: 0; }
+  .plan-form-section .plan-form-course { margin-bottom: 14px; }
+  .plan-extra-options summary span { display: block; margin-left: 0; }
 }
 </style>

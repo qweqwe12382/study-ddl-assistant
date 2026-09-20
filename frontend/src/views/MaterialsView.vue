@@ -3,12 +3,10 @@
     <div class="page-intro">
       <div>
         <h1>资料库</h1>
-        <p>保存课件和通知，确认截止时间后加入任务。</p>
+        <p>放入文件或文字，核对结果，需要时再安排学习。</p>
       </div>
       <div class="page-actions">
-        <el-button v-if="isDetailedView" class="material-manual-action" @click="openCreate">手动添加</el-button>
-        <el-button class="material-paste-action" @click="openPasteNotice">粘贴通知</el-button>
-        <el-button class="material-upload-action" type="primary" @click="openUpload">上传文件</el-button>
+        <el-button class="material-upload-action" type="primary" @click="openUpload">添加资料</el-button>
       </div>
     </div>
 
@@ -23,6 +21,14 @@
     </div>
     <div v-if="loading || materialsLoading" class="sr-only" role="status" aria-live="polite">正在加载资料列表…</div>
 
+    <section v-if="recentUploaded.length" class="material-upload-result" aria-label="刚添加的资料">
+      <div class="material-result-heading"><div><strong>已保存 {{ recentUploaded.length }} 份资料</strong><p>内容已保留，核对后即可继续学习。</p></div><el-button link @click="recentUploaded = []">收起</el-button></div>
+      <div v-for="material in recentUploaded" :key="material.navigation_key" class="material-result-row">
+        <span>{{ material.original_filename }}</span>
+        <div><el-button link @click="openDetail(material)">查看内容</el-button><el-button v-if="material.extracted_text" link type="primary" @click="openExtraction(material)">核对结果</el-button><el-button v-else link type="warning" @click="openEdit(material)">补充正文</el-button></div>
+      </div>
+    </section>
+
     <section class="material-search" role="search" aria-label="查找与筛选资料">
       <div class="material-inbox-search">
         <el-input v-model="keyword" placeholder="搜索文件名、摘要或正文" clearable aria-label="搜索资料文件名、摘要或正文" />
@@ -31,32 +37,38 @@
         </button>
         <p v-if="materialsSummaryReady" class="material-search-count" role="status">{{ filteredMaterials.length }} 份资料</p>
       </div>
-      <div v-show="isDetailedView || materialFiltersOpen" id="material-filter-options" class="material-filter-controls">
-        <label>
-          <span>课程</span>
-          <el-select v-model="courseFilter" clearable placeholder="全部课程" aria-label="按课程筛选资料">
-            <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-          </el-select>
-        </label>
-        <label>
-          <span>资料类型</span>
-          <el-select v-model="materialTypeFilter" clearable placeholder="全部类型" aria-label="按资料类型筛选">
-            <el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" />
-          </el-select>
-        </label>
-        <label>
-          <span>处理状态</span>
-          <el-select v-model="processingStatusFilter" clearable placeholder="全部状态" aria-label="按资料处理状态筛选">
-            <el-option label="已处理" value="processed" />
-            <el-option label="处理失败" value="failed" />
-            <el-option label="待处理" value="pending" />
-          </el-select>
-        </label>
-        <label>
-          <span>标签</span>
-          <el-input v-model="tagFilter" placeholder="输入标签" clearable aria-label="按标签筛选资料" />
-        </label>
-      </div>
+      <Transition name="reveal-panel">
+        <div v-show="isDetailedView || materialFiltersOpen" class="filter-reveal">
+          <div>
+            <div id="material-filter-options" class="material-filter-controls">
+              <label>
+                <span>课程</span>
+                <el-select v-model="courseFilter" clearable placeholder="全部课程" aria-label="按课程筛选资料">
+                  <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
+                </el-select>
+              </label>
+              <label>
+                <span>资料类型</span>
+                <el-select v-model="materialTypeFilter" clearable placeholder="全部类型" aria-label="按资料类型筛选">
+                  <el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" />
+                </el-select>
+              </label>
+              <label>
+                <span>处理状态</span>
+                <el-select v-model="processingStatusFilter" clearable placeholder="全部状态" aria-label="按资料处理状态筛选">
+                  <el-option label="已处理" value="processed" />
+                  <el-option label="处理失败" value="failed" />
+                  <el-option label="待处理" value="pending" />
+                </el-select>
+              </label>
+              <label>
+                <span>标签</span>
+                <el-input v-model="tagFilter" placeholder="输入标签" clearable aria-label="按标签筛选资料" />
+              </label>
+            </div>
+          </div>
+        </div>
+      </Transition>
       <div v-if="hasUserMaterialFilters" class="material-filter-summary">
         <p>{{ materialFilterSummary }}</p>
         <el-button link aria-label="清除资料搜索和筛选条件" @click="resetMaterialFilters">清除筛选</el-button>
@@ -78,63 +90,7 @@
       @show-all="showDetailedMaterials"
     />
 
-    <details v-if="isDetailedView" class="material-flow">
-      <summary class="material-flow-toggle"><span>资料如何变成任务</span><span>识别后，由你确认创建</span></summary>
-      <div class="material-flow-heading">
-        <div>
-          <h2 id="material-flow-heading">从资料到截止任务</h2>
-        </div>
-          <p v-if="isDetailedView" class="material-flow-heading-note">识别只提供候选，正式任务仍由你确认</p>
-      </div>
-      <ol class="material-flow-list">
-        <li class="material-flow-item">
-          <article class="material-flow-card material-flow-card--intake">
-            <div class="material-flow-label">
-              <span class="material-flow-index" aria-hidden="true">01</span>
-              <span>保存资料</span>
-            </div>
-            <h3 v-if="isDetailedView">先把资料保存好</h3>
-            <p v-if="isDetailedView" class="material-flow-action"><strong>你要做</strong> 上传文件，或手动补充文件名、正文和标签。</p>
-            <p class="material-flow-state" :class="`is-${materialIntakeState.tone}`" aria-live="polite">{{ materialIntakeState.label }}</p>
-            <p v-if="isDetailedView" class="material-flow-boundary"><strong>这里会发生什么</strong> 这一步只保存资料；处理失败时，需要你重试或补充正文。</p>
-          </article>
-        </li>
-        <li class="material-flow-item">
-          <article class="material-flow-card material-flow-card--recognition">
-            <div class="material-flow-label">
-              <span class="material-flow-index" aria-hidden="true">02</span>
-              <span>智能识别</span>
-            </div>
-            <h3 v-if="isDetailedView">从正文中找出截止任务候选</h3>
-            <p v-if="isDetailedView" class="material-flow-action"><strong>你要做</strong> 打开已处理资料，选择识别方式，查看日期、任务名和来源。</p>
-            <p class="material-flow-state" :class="`is-${extractionFlowState.tone}`" aria-live="polite">{{ extractionFlowState.label }}</p>
-            <div v-if="isDetailedView && extractionFlowStatuses.length" class="material-flow-statuses" role="list" aria-label="智能识别状态统计">
-              <span v-for="status in extractionFlowStatuses" :key="status.key" class="material-flow-status" :class="`is-${status.tone}`" role="listitem">
-                <span>{{ status.label }}</span><strong>{{ status.count }}</strong>
-              </span>
-            </div>
-            <p v-if="isDetailedView" class="material-flow-boundary"><strong>确认边界</strong> 识别结果只是候选，不会自动写入正式任务。</p>
-          </article>
-        </li>
-        <li class="material-flow-item">
-          <article class="material-flow-card material-flow-card--confirmation">
-            <div class="material-flow-label">
-              <span class="material-flow-index" aria-hidden="true">03</span>
-            <span>确认后创建任务</span>
-            </div>
-            <h3 v-if="isDetailedView">核对后，再加入任务清单</h3>
-            <p v-if="isDetailedView" class="material-flow-action"><strong>你要做</strong> 逐条核对日期、任务名称、预计用时和来源原文，再勾选候选。</p>
-            <p class="material-flow-state" :class="`is-${confirmationFlowState.tone}`" aria-live="polite">{{ confirmationFlowState.label }}</p>
-            <div v-if="isDetailedView && confirmationFlowStatuses.length" class="material-flow-statuses" role="list" aria-label="人工确认状态统计">
-              <span v-for="status in confirmationFlowStatuses" :key="status.key" class="material-flow-status" :class="`is-${status.tone}`" role="listitem">
-                <span>{{ status.label }}</span><strong>{{ status.count }}</strong>
-              </span>
-            </div>
-            <p v-if="isDetailedView" class="material-flow-boundary"><strong>确认边界</strong> 只有点击“确认并创建任务”，候选才会成为正式任务。</p>
-          </article>
-        </li>
-      </ol>
-    </details>
+    <MaterialFlowGuide v-if="isDetailedView" :materials="filteredMaterials" :ready="materialsSummaryReady" :busy="loading || materialsLoading" :error="error" :filtered="hasActiveMaterialFilter" />
 
     <el-card v-if="isDetailedView" class="table-card" shadow="never" v-loading="loading || materialsLoading" :aria-busy="loading || materialsLoading">
       <div class="table-toolbar">
@@ -182,90 +138,50 @@
       </div>
     </el-card>
 
-    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑资料' : '新增资料'" width="560px" destroy-on-close>
-      <el-form :model="form" label-width="92px" class="dialog-form">
-        <el-form-item label="文件名称" required>
-          <el-input v-model="form.original_filename" placeholder="例如：数据结构实验一.pdf" />
-        </el-form-item>
-        <el-form-item label="所属课程">
-          <el-select v-model="form.course_id" clearable placeholder="选择课程" style="width: 100%">
-            <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="文件格式">
-          <el-input v-model="form.file_type" placeholder="pdf / docx / txt / png" />
-        </el-form-item>
-        <el-form-item label="资料类型">
-          <el-select v-model="form.material_type" clearable placeholder="选择资料类型" style="width: 100%">
-            <el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="标签">
-          <el-input v-model="form.tagsText" placeholder="多个标签用逗号分隔" />
-        </el-form-item>
-        <el-form-item label="摘要">
-          <el-input v-model="form.summary" type="textarea" :rows="3" placeholder="填写资料摘要或备注" />
-        </el-form-item>
-        <el-form-item label="提取文本">
-          <el-input v-model="form.extracted_text" type="textarea" :rows="5" placeholder="解析失败时，可在这里手动补充正文" />
-        </el-form-item>
+    <el-dialog v-model="dialogVisible" :title="editingId ? '编辑资料' : '添加资料 · 手动填写'" width="560px" :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving" destroy-on-close>
+      <el-form :model="form" label-position="top" class="dialog-form">
+        <el-form-item label="资料名称" required><el-input v-model="form.original_filename" placeholder="例如：数据结构课堂笔记" :disabled="saving" /></el-form-item>
+        <el-form-item label="资料正文"><el-input v-model="form.extracted_text" type="textarea" :rows="7" placeholder="输入学习内容或通知正文，保存后可核对任务与安排复习" :disabled="saving" /></el-form-item>
+        <details class="material-optional-fields" :open="Boolean(editingId)">
+          <summary>课程、分类与其他信息（可选）</summary>
+          <el-form-item label="所属课程"><CourseSelect v-model="form.course_id" :courses="courses" clearable :disabled="saving" @created="addCreatedCourse" /></el-form-item>
+          <el-form-item label="文件格式"><el-input v-model="form.file_type" placeholder="pdf / docx / txt / png" :disabled="saving" /></el-form-item>
+          <el-form-item label="资料类型"><el-select v-model="form.material_type" clearable placeholder="选择资料类型" :disabled="saving" style="width: 100%"><el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" /></el-select></el-form-item>
+          <el-form-item label="标签"><el-input v-model="form.tagsText" placeholder="多个标签用逗号分隔" :disabled="saving" /></el-form-item>
+          <el-form-item label="摘要"><el-input v-model="form.summary" type="textarea" :rows="3" placeholder="填写资料摘要或备注" :disabled="saving" /></el-form-item>
+        </details>
       </el-form>
       <EditConflictCard :visible="Boolean(materialConflict) && dialogVisible" :title="materialConflictTitle" :message="materialConflictMessage" :latest-fields="materialConflict?.latestFields || []" @view-latest="viewLatestMaterial" @discard="discardMaterialDraft" />
-      <template #footer>
-        <div class="form-actions">
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="saving" @click="saveMaterial">保存</el-button>
-        </div>
-      </template>
+      <template #footer><div class="form-actions"><el-button :disabled="saving" @click="dialogVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveMaterial">{{ !editingId && form.extracted_text.trim() ? '保存并核对' : '保存' }}</el-button></div></template>
     </el-dialog>
 
-    <el-dialog v-model="uploadDialogVisible" title="上传课程资料" width="620px" destroy-on-close>
-      <el-form label-width="92px" class="dialog-form">
-        <el-form-item label="所属课程">
-          <el-select v-model="uploadCourseId" clearable placeholder="可选，稍后也可以编辑" style="width: 100%">
-            <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="资料类型">
-          <el-select v-model="uploadMaterialType" clearable placeholder="可选" style="width: 100%">
-            <el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" />
-          </el-select>
-        </el-form-item>
+    <el-dialog v-model="uploadDialogVisible" title="添加资料" width="620px" :close-on-click-modal="!uploading && !pastingNotice" :close-on-press-escape="!uploading && !pastingNotice" :show-close="!uploading && !pastingNotice" destroy-on-close>
+      <div class="material-intake-modes" role="group" aria-label="选择添加资料的方式">
+        <button type="button" :aria-pressed="!pasteNoticeVisible" :disabled="uploading || pastingNotice" @click="pasteNoticeVisible = false">上传文件</button>
+        <button type="button" :aria-pressed="pasteNoticeVisible" :disabled="uploading || pastingNotice" @click="openPasteNotice">粘贴文字</button>
+        <button type="button" :disabled="uploading || pastingNotice" @click="openCreate">手动填写</button>
+      </div>
+      <p v-if="route.query.intent === 'plan'" class="material-intake-help">放入已有复习提纲，核对内容后即可用它安排学习。</p>
+      <PasteNoticeDialog v-if="pasteNoticeVisible" embedded :visible="pasteNoticeVisible" :draft="pasteNoticeDraft" :submitting="pastingNotice" :error="pasteNoticeError" :duplicate="pasteNoticeDuplicate" @close="closePasteNotice" @show-existing="showExistingPastedNotice" @submit="submitPastedNotice" />
+      <el-form v-else label-position="top" class="dialog-form">
+        <p class="material-intake-help">选择文件即可继续。系统会整理内容，任务由你核对后加入。</p>
         <el-form-item label="文件" required>
-          <el-upload
-            v-model:file-list="uploadFileList"
-            drag
-            multiple
-            :auto-upload="false"
-            :limit="uploadPolicy.max_upload_files"
-            :before-upload="validateUploadFile"
-            :on-exceed="handleUploadExceed"
-            accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.gif,.bmp,.webp"
-          >
+          <el-upload v-model:file-list="uploadFileList" drag multiple :auto-upload="false" :limit="uploadPolicy.max_upload_files" :before-upload="validateUploadFile" :on-exceed="handleUploadExceed" :disabled="uploading" accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.gif,.bmp,.webp">
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">拖拽文件到这里，或 <em>点击选择</em></div>
             <template #tip><div class="el-upload__tip">支持 PDF、DOCX、TXT、MD 和常见图片，单个文件不超过 {{ uploadPolicy.max_upload_size_mb }} MB。</div></template>
           </el-upload>
         </el-form-item>
+        <details class="material-optional-fields">
+          <summary>补充课程与分类（可选）</summary>
+          <el-form-item label="所属课程"><CourseSelect v-model="uploadCourseId" :courses="courses" clearable :disabled="uploading" @created="addCreatedCourse" /></el-form-item>
+          <el-form-item label="资料类型"><el-select v-model="uploadMaterialType" clearable placeholder="保存后会自动识别" :disabled="uploading" style="width: 100%"><el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" /></el-select></el-form-item>
+        </details>
+        <el-alert v-if="uploadError" :title="uploadError" type="error" show-icon :closable="false" role="alert" />
       </el-form>
-      <template #footer>
-        <div class="form-actions">
-          <el-button @click="uploadDialogVisible = false">取消</el-button>
-          <el-button type="primary" :loading="uploading" @click="submitUpload">开始上传并解析</el-button>
-        </div>
-      </template>
+      <template #footer><div v-if="!pasteNoticeVisible" class="form-actions"><el-button :disabled="uploading" @click="uploadDialogVisible = false">取消</el-button><el-button type="primary" :loading="uploading" :disabled="!uploadFileList.length" @click="submitUpload">保存并核对</el-button></div></template>
     </el-dialog>
 
-    <PasteNoticeDialog
-      :visible="pasteNoticeVisible"
-      :draft="pasteNoticeDraft"
-      :submitting="pastingNotice"
-      :error="pasteNoticeError"
-      :duplicate="pasteNoticeDuplicate"
-      @close="closePasteNotice"
-      @show-existing="showExistingPastedNotice"
-      @submit="submitPastedNotice"
-    />
     <ConfirmedTasksDialog
       :visible="confirmedTasksVisible"
       :refs="extractionResult?.confirmed_task_refs || []"
@@ -299,69 +215,23 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="extractionDialogVisible" :title="extractionDialogTitle()" width="900px" destroy-on-close>
+    <el-dialog v-model="extractionDialogVisible" :title="extractionDialogTitle()" width="820px" :before-close="beforeCloseExtraction" :close-on-click-modal="!extractionLoading && !extractionSaving" :close-on-press-escape="!extractionLoading && !extractionSaving" :show-close="!extractionLoading && !extractionSaving" destroy-on-close>
       <el-alert v-if="extractionError" :title="extractionError" type="error" show-icon :closable="false" class="detail-alert" role="alert" />
-      <div v-if="!extractionResult && !materialConflict" v-loading="extractionLoading" class="provider-picker">
-        <el-alert
-          title="资料上传或重试后，默认会先用本地规则识别；当前没有可用结果，请选择本次识别方式。外部 AI 只在本次操作中调用，确认结果后才会创建正式任务。"
-          type="info"
-          show-icon
-          :closable="false"
-          class="detail-alert"
-        />
-        <el-radio-group v-model="extractionProvider" class="provider-options" aria-label="选择智能识别方式">
-          <el-radio
-            v-for="provider in extractionPolicy.providers"
-            :key="provider.id"
-            :value="provider.id"
-            :disabled="!provider.available"
-            border
-            class="provider-option"
-          >
-            <span class="provider-option-content">
-              <strong>{{ provider.label }}</strong>
-              <span>{{ provider.description }}</span>
-              <small v-if="provider.model">当前模型：{{ provider.model }}</small>
-              <small v-else-if="provider.id === 'openai-compatible' && !provider.available">未配置 LLM_API_KEY / LLM_MODEL</small>
-            </span>
-          </el-radio>
-        </el-radio-group>
-        <el-alert
-          v-if="selectedExtractionProvider?.sends_data_externally"
-          title="隐私提示：本次识别会将文件名和解析后的正文发送到已配置的外部 AI 服务。"
-          type="warning"
-          show-icon
-          :closable="false"
-          class="provider-warning"
-        />
+      <div v-if="(!extractionResult || extractionLoading) && !materialConflict" v-loading="extractionLoading" class="provider-picker">
+        <p class="material-intake-help" role="status">{{ extractionLoading ? '正在整理内容，请稍候…' : '资料已保存。可以重试整理，也可以先查看或补充正文。' }}</p>
+
       </div>
-      <template v-if="extractionResult">
-        <el-alert
-          v-if="!materialConflict"
-          :title="extractionResult.status === 'confirmed' ? `已创建 ${extractionResult.confirmed_task_ids?.length || 0} 条任务。你可以直接查看刚创建的任务。` : extractionResult.needs_review ? '结果包含待确认信息，请核对日期、任务名称和来源原文；确认后才会创建正式任务。' : '结果已通过基础校验，请确认后才会创建正式任务。'"
-          :type="extractionResult.status === 'confirmed' ? 'success' : extractionResult.needs_review ? 'warning' : 'success'"
-          show-icon
-          class="detail-alert"
-        />
-        <div class="extraction-meta">
-          <span>课程识别：<strong>{{ extractionResult.course_name || '未识别' }}</strong></span>
-          <span>识别方式：<strong>{{ providerDisplayName(extractionResult.provider) }}</strong></span>
-        </div>
-        <div class="extraction-editors">
-          <div class="extraction-editor-group">
-            <el-select v-model="extractionCourseId" clearable placeholder="确认所属课程" aria-label="确认智能识别结果所属课程" style="width: 220px">
-              <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-            </el-select>
+      <template v-if="extractionResult && !extractionLoading">
+        <el-alert v-if="!materialConflict" :title="extractionResult.status === 'confirmed' ? `资料已整理${extractionResult.confirmed_task_ids?.length ? `，已加入 ${extractionResult.confirmed_task_ids.length} 条任务` : ''}。需要时可继续安排复习。` : extractionTasks.length ? '资料已保存。核对下面的任务名称、截止时间与原文，再确认加入任务。' : '资料已保存，可直接完成整理，也可以继续安排复习。'" :type="extractionResult.status === 'confirmed' ? 'success' : extractionResult.needs_review ? 'warning' : 'info'" show-icon :closable="false" class="detail-alert" />
+        <ExtractionReviewContent :result="extractionResult" :tasks="extractionTasks" />
+        <div class="material-course-choice"><span>所属课程 <span class="muted">（安排复习时需要）</span></span><CourseSelect v-model="extractionCourseId" :courses="courses" :disabled="extractionSaving" @created="addCreatedCourse" /><p v-if="courseRequired && !extractionCourseId" class="material-course-error" role="alert">先选择或新建一门课程，再安排这份资料的复习。</p></div>
+        <details class="material-optional-fields">
+          <summary>分类、标签与识别依据</summary>
+          <div class="extraction-meta"><span>识别方式：<strong>{{ providerDisplayName(extractionResult.provider) }}</strong></span></div>
+          <div class="extraction-editors">
+            <div class="extraction-editor-group"><el-select v-model="extractionMaterialType" :disabled="extractionResult.status === 'confirmed'" clearable placeholder="资料类型" aria-label="确认智能识别结果资料类型" style="width: 180px"><el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" /></el-select></div>
+            <div class="extraction-editor-group"><el-input v-model="extractionTagsText" :disabled="extractionResult.status === 'confirmed'" placeholder="标签，用逗号分隔" aria-label="确认智能识别结果标签" style="width: 260px" /></div>
           </div>
-          <div class="extraction-editor-group">
-            <el-select v-model="extractionMaterialType" clearable placeholder="资料类型" aria-label="确认智能识别结果资料类型" style="width: 180px">
-              <el-option v-for="type in materialTypes" :key="type" :label="type" :value="type" />
-            </el-select>
-          </div>
-          <div class="extraction-editor-group">
-            <el-input v-model="extractionTagsText" placeholder="标签，用逗号分隔" aria-label="确认智能识别结果标签" style="width: 260px" />
-          </div>
-        </div>
         <section class="extraction-evidence-card" aria-label="字段来源说明">
           <button
             type="button"
@@ -390,68 +260,47 @@
             <div v-if="!extractionEvidenceCardItems.length" class="field-evidence-source">来源待确认</div>
           </div>
         </section>
-        <div class="table-wrap extraction-table-wrap extraction-desktop-table">
-          <el-table :data="extractionTasks" empty-text="暂未识别到任务" aria-label="智能识别任务结果">
-          <el-table-column label="确认" width="70">
-            <template #default="{ row }"><el-checkbox v-model="row.selected" :aria-label="`选择智能识别任务：${row.name || '未命名任务'}`" /></template>
-          </el-table-column>
-          <el-table-column label="任务名称" min-width="210">
-            <template #default="{ row }"><el-input v-model="row.name" size="small" :aria-label="`任务名称：${row.name || '未命名任务'}`" /></template>
-          </el-table-column>
-          <el-table-column label="类型" width="110">
-            <template #default="{ row }"><el-input v-model="row.task_type" size="small" :aria-label="`任务类型：${row.name || '未命名任务'}`" /></template>
-          </el-table-column>
-          <el-table-column label="截止时间" width="205">
-            <template #default="{ row }">
-              <el-date-picker v-model="row.due_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" size="small" placeholder="待补充" :aria-label="`截止时间：${row.name || '未命名任务'}`" />
-            </template>
-          </el-table-column>
-          <el-table-column label="预计用时" width="145">
-            <template #default="{ row }">
-              <el-input-number
-                v-model="row.estimated_minutes"
-                :min="15"
-                :max="10080"
-                :step="15"
-                size="small"
-                controls-position="right"
-                placeholder="可留空"
-                class="extraction-duration-input"
-                :aria-label="`预计用时：${row.name || '未命名任务'}`"
-              />
-            </template>
-          </el-table-column>
-          <el-table-column label="置信度" width="100">
-            <template #default="{ row }">{{ `${Math.round((row.confidence || 0) * 100)}%` }}</template>
-          </el-table-column>
-          <el-table-column label="来源 / 提示" min-width="230">
-            <template #default="{ row }">
-              <div class="row-meta">{{ row.source_quote || '无来源原文' }}</div>
-              <el-tag v-for="warning in row.warnings || []" :key="warning" size="small" type="warning" class="tag-gap extraction-warning-tag">{{ extractionWarningLabel(warning) }}</el-tag>
-            </template>
-          </el-table-column>
-          </el-table>
-        </div>
-        <ExtractionCandidatesEditor :tasks="extractionTasks" />
+        </details>
+        <details class="material-optional-fields"><summary>查看或修改资料正文</summary><pre class="text-preview">{{ extractionMaterial?.extracted_text || '暂无正文' }}</pre><el-button link type="primary" :disabled="extractionSaving" @click="editExtractionMaterial">修改资料正文</el-button></details>
+      </template>
+        <details v-if="extractionResult?.status !== 'confirmed' && !materialConflict" class="material-optional-fields"><summary>重新识别或更换识别方式</summary>
+        <el-radio-group v-model="extractionProvider" class="provider-options" aria-label="选择智能识别方式">
+          <el-radio
+            v-for="provider in extractionPolicy.providers"
+            :key="provider.id"
+            :value="provider.id"
+            :disabled="!provider.available"
+            border
+            class="provider-option"
+          >
+            <span class="provider-option-content">
+              <strong>{{ provider.label }}</strong>
+              <span>{{ provider.description }}</span>
+              <small v-if="!provider.available">暂不可用，可在设置中配置</small>
+            </span>
+          </el-radio>
+        </el-radio-group>
         <el-alert
-          v-if="!extractionTasks.length"
-          title="这份资料暂未识别出可确认的任务。可编辑资料补充正文或修正内容后，再重新识别。"
-          type="info"
+          v-if="selectedExtractionProvider?.sends_data_externally"
+          title="隐私提示：本次识别会将文件名和解析后的正文发送到已配置的外部 AI 服务。"
+          type="warning"
           show-icon
           :closable="false"
-          class="detail-alert"
+          class="provider-warning"
         />
-      </template>
+          <p class="material-intake-help">重新识别会替换当前待确认结果。任务仍需你确认后才会创建。</p>
+          <el-button v-if="extractionResult" :loading="extractionLoading" :disabled="!selectedExtractionProvider?.available || extractionLoading || extractionSaving" @click="runExtraction">用所选方式重新识别</el-button>
+        </details>
       <EditConflictCard :visible="Boolean(materialConflict) && extractionDialogVisible" :title="materialConflictTitle" :message="materialConflictMessage" :latest-fields="materialConflict?.latestFields || []" @view-latest="viewLatestMaterial" @discard="discardMaterialDraft" />
-      <template #footer>
-        <div class="form-actions">
-          <el-button @click="extractionDialogVisible = false">取消</el-button>
-          <el-button v-if="!extractionResult && !materialConflict" type="primary" :loading="extractionLoading" :disabled="!selectedExtractionProvider?.available || extractionLoading" @click="runExtraction">开始智能识别</el-button>
-          <el-button v-if="extractionResult && !extractionTasks.length" type="primary" plain @click="editExtractionMaterial">编辑资料并补充正文</el-button>
-          <el-button v-if="extractionResult && extractionTasks.length && extractionResult.status !== 'confirmed'" type="primary" :loading="extractionSaving" :disabled="extractionSaving || Boolean(materialConflict)" @click="confirmExtraction">确认并创建任务</el-button>
-          <el-button v-if="extractionResult?.status === 'confirmed'" type="primary" @click="openCreatedTasks">查看刚创建的任务</el-button>
-        </div>
-      </template>
+      <template #footer><div class="form-actions">
+        <el-button v-if="!extractionResult || extractionResult.status === 'confirmed' || extractionTasks.length" :disabled="extractionSaving || extractionLoading" :loading="extractionSaving && confirmedCourseDirty" @click="closeExtractionReview">{{ confirmedCourseDirty ? '保存课程并关闭' : extractionResult && extractionResult.status !== 'confirmed' ? '稍后核对' : '关闭' }}</el-button>
+        <el-button v-if="!extractionResult" :disabled="extractionLoading" @click="editExtractionMaterial">查看或补充正文</el-button>
+        <el-button v-if="!extractionResult && !materialConflict" type="primary" :loading="extractionLoading" :disabled="!selectedExtractionProvider?.available || extractionLoading" @click="runExtraction">重新整理内容</el-button>
+        <el-button v-if="extractionResult && extractionResult.status !== 'confirmed'" :type="extractionTasks.length ? 'default' : 'primary'" :loading="extractionSaving" :disabled="extractionSaving || extractionLoading || Boolean(materialConflict)" @click="finishMaterialOnly">{{ extractionTasks.length ? '仅整理资料' : '完成整理' }}</el-button>
+        <el-button v-if="extractionResult && extractionTasks.length && extractionResult.status !== 'confirmed'" type="primary" :loading="extractionSaving" :disabled="extractionSaving || extractionLoading || Boolean(materialConflict) || !selectedTaskCount" @click="confirmExtraction(false)">确认加入 {{ selectedTaskCount }} 条任务</el-button>
+        <el-button v-if="extractionResult?.confirmed_task_ids?.length" @click="openCreatedTasks">查看刚创建的任务</el-button>
+        <el-button v-if="extractionResult && (extractionResult.status === 'confirmed' || !extractionTasks.length)" :type="extractionResult.status === 'confirmed' ? 'primary' : 'default'" :loading="extractionSaving" :disabled="extractionSaving || extractionLoading || Boolean(materialConflict)" @click="planFromMaterial">安排复习</el-button>
+      </div></template>
     </el-dialog>
   </div>
 </template>
@@ -462,13 +311,10 @@ import { UploadFilled } from '@element-plus/icons-vue'
 import {
   ElAlert,
   ElCard,
-  ElCheckbox,
-  ElDatePicker,
   ElDialog,
   ElForm,
   ElFormItem,
   ElInput,
-  ElInputNumber,
   ElMessage,
   ElMessageBox,
   ElOption,
@@ -484,17 +330,19 @@ import { useRoute, useRouter } from 'vue-router'
 import { coursesApi, materialsApi } from '../api'
 import EditConflictCard from '../components/EditConflictCard.vue'
 import MaterialInboxFocus from '../components/MaterialInboxFocus.vue'
+import CourseSelect from '../components/CourseSelect.vue'
 import { useViewMode } from '../composables/useViewMode'
 import { navigationKey } from '../utils/materialSourceNavigation'
-import { extractionWarningLabel } from '../utils/extractionWarning'
+import { downloadFile } from '../utils/download'
 import { editBaseline, editRequestConfig, extractionPreviewBaseline, isEditConflict, isEntityGone, preconditionMessage } from '../utils/editPrecondition'
-import { buildPastedNotice, localReferenceDateTime } from '../utils/pasteNotice'
+import { buildPastedNotice, localReferenceDateTime, validLocalReferenceDateTime } from '../utils/pasteNotice'
 
 const PasteNoticeDialog = defineAsyncComponent(() => import('../components/PasteNoticeDialog.vue'))
 const ConfirmedTasksDialog = defineAsyncComponent(() => import('../components/ConfirmedTasksDialog.vue'))
-const ExtractionCandidatesEditor = defineAsyncComponent(() => import('../components/ExtractionCandidatesEditor.vue'))
+const ExtractionReviewContent = defineAsyncComponent(() => import('../components/ExtractionReviewContent.vue'))
+const MaterialFlowGuide = defineAsyncComponent(() => import('../components/MaterialFlowGuide.vue'))
 
-const materialTypes = ['课程大纲', '课堂讲义', '教材或阅读材料', '作业要求', '实验资料', '复习资料', '其他']
+const materialTypes = ['课程大纲', '课堂讲义', '教材或阅读材料', '作业要求', '实验资料', '复习资料', '复习安排', '课程通知', '其他']
 const extractionEvidenceSourceLabels = Object.freeze({
   filename: '来源：文件名',
   text: '来源：资料正文',
@@ -503,22 +351,6 @@ const extractionEvidenceSourceLabels = Object.freeze({
   unconfirmed: '来源待确认',
 })
 const extractionEvidenceSources = new Set(Object.keys(extractionEvidenceSourceLabels))
-const extractionFlowStatusMeta = Object.freeze({
-  not_started: { label: '未识别', tone: 'neutral' },
-  ready: { label: '待确认', tone: 'ready' },
-  needs_review: { label: '待确认', tone: 'review' },
-  confirmed: { label: '已确认', tone: 'confirmed' },
-  failed: { label: '识别失败', tone: 'failed' },
-  unknown: { label: '状态待确认', tone: 'unknown' },
-})
-const extractionFlowStatusOrder = Object.freeze(['not_started', 'ready', 'needs_review', 'confirmed', 'failed', 'unknown'])
-const processingFlowStatusMeta = Object.freeze({
-  pending: { label: '待处理', tone: 'neutral' },
-  processing: { label: '处理中', tone: 'ready' },
-  processed: { label: '已处理', tone: 'confirmed' },
-  failed: { label: '处理失败', tone: 'failed' },
-  unknown: { label: '状态待确认', tone: 'unknown' },
-})
 const loading = ref(false)
 const materialsLoading = ref(false)
 const materialsLoaded = ref(false)
@@ -556,6 +388,9 @@ const uploadFileList = ref([])
 const uploadCourseId = ref(null)
 const uploadMaterialType = ref('')
 const uploading = ref(false)
+const uploadError = ref('')
+const recentUploaded = ref([])
+const materialPlanContext = ref({})
 const pasteNoticeVisible = ref(false)
 const pastingNotice = ref(false)
 const pasteNoticeError = ref('')
@@ -568,6 +403,7 @@ const extractionMaterial = ref(null)
 const extractionBaseline = ref(null)
 const extractionResult = ref(null)
 const extractionTasks = ref([])
+const selectedTaskCount = computed(() => extractionTasks.value.filter((task) => task.selected).length)
 const extractionLoading = ref(false)
 const extractionSaving = ref(false)
 const extractionError = ref('')
@@ -586,6 +422,8 @@ const extractionPolicy = ref({
   ],
 })
 const extractionCourseId = ref(null)
+const confirmedCourseDirty = computed(() => extractionResult.value?.status === 'confirmed' && extractionCourseId.value !== extractionMaterial.value?.course_id)
+const courseRequired = ref(false)
 const extractionMaterialType = ref('')
 const extractionTagsText = ref('')
 const extractionEvidenceExpanded = ref(false)
@@ -688,7 +526,6 @@ const inboxMaterials = computed(() => filteredMaterials.value.map((material) => 
   course_name: courseName(material.course_id),
   source_focused: material.id === routeFilters.value.materialId && (!routeFilters.value.navigationKeyProvided || Boolean(routeFilters.value.navigationKey) && navigationKey(material.navigation_key) === routeFilters.value.navigationKey),
 })))
-const flowMaterials = computed(() => filteredMaterials.value)
 const activeMaterialFilterCount = computed(() => [
   courseFilter.value,
   materialTypeFilter.value,
@@ -712,96 +549,6 @@ const hasActiveMaterialFilter = computed(() => Boolean(
   || routeFilters.value.materialId
   || routeFilters.value.view,
 ))
-
-function flowStatusKey(value, statusMeta) {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(statusMeta, value) ? value : 'unknown'
-}
-
-function summarizeFlowStatuses(rows, field, statusMeta, statusOrder) {
-  const counts = Object.fromEntries(statusOrder.map((status) => [status, 0]))
-  rows.forEach((row) => {
-    const status = flowStatusKey(row?.[field], statusMeta)
-    counts[status] += 1
-  })
-  return statusOrder
-    .filter((status) => counts[status] > 0)
-    .map((status) => ({ key: status, count: counts[status], ...statusMeta[status] }))
-}
-
-function flowStatusCount(statuses, key) {
-  return statuses.find((status) => status.key === key)?.count || 0
-}
-
-const processingFlowStatusOrder = Object.freeze(['pending', 'processing', 'processed', 'failed', 'unknown'])
-const processingFlowStatuses = computed(() => {
-  if (!materialsSummaryReady.value) return []
-  return summarizeFlowStatuses(flowMaterials.value, 'processing_status', processingFlowStatusMeta, processingFlowStatusOrder)
-})
-const extractionFlowStatuses = computed(() => {
-  if (!materialsSummaryReady.value) return []
-  return summarizeFlowStatuses(flowMaterials.value, 'extraction_status', extractionFlowStatusMeta, extractionFlowStatusOrder)
-})
-const confirmationFlowStatuses = computed(() => extractionFlowStatuses.value.filter((status) => ['ready', 'needs_review', 'confirmed', 'unknown'].includes(status.key)))
-
-const materialIntakeState = computed(() => {
-  if (!materialsSummaryReady.value) {
-    return { label: error.value ? '资料列表暂不可用' : loading.value || materialsLoading.value ? '正在读取资料列表…' : '等待资料列表', tone: 'unknown' }
-  }
-  if (!flowMaterials.value.length) {
-    return { label: hasActiveMaterialFilter.value ? '当前筛选没有匹配资料' : '还没有资料', tone: 'neutral' }
-  }
-  const failed = flowStatusCount(processingFlowStatuses.value, 'failed')
-  const pending = flowStatusCount(processingFlowStatuses.value, 'pending')
-    + flowStatusCount(processingFlowStatuses.value, 'processing')
-  const unknown = flowStatusCount(processingFlowStatuses.value, 'unknown')
-  if (failed) return { label: `当前列表 ${flowMaterials.value.length} 份资料 · ${failed} 份处理失败`, tone: 'failed' }
-  if (pending) return { label: `当前列表 ${flowMaterials.value.length} 份资料 · ${pending} 份待处理`, tone: 'review' }
-  if (unknown) return { label: `当前列表 ${flowMaterials.value.length} 份资料 · ${unknown} 份状态待确认`, tone: 'unknown' }
-  return { label: `当前列表 ${flowMaterials.value.length} 份资料`, tone: 'ready' }
-})
-
-const extractionFlowState = computed(() => {
-  if (!materialsSummaryReady.value) {
-    return { label: error.value ? '资料列表暂不可用' : loading.value || materialsLoading.value ? '正在读取资料列表…' : '等待资料列表', tone: 'unknown' }
-  }
-  if (!flowMaterials.value.length) {
-    return { label: hasActiveMaterialFilter.value ? '当前筛选没有可识别资料' : '还没有可识别资料', tone: 'neutral' }
-  }
-  const needsReview = flowStatusCount(extractionFlowStatuses.value, 'needs_review')
-  const ready = flowStatusCount(extractionFlowStatuses.value, 'ready')
-  const notStarted = flowStatusCount(extractionFlowStatuses.value, 'not_started')
-  const failed = flowStatusCount(extractionFlowStatuses.value, 'failed')
-  const confirmed = flowStatusCount(extractionFlowStatuses.value, 'confirmed')
-  const unknown = flowStatusCount(extractionFlowStatuses.value, 'unknown')
-  if (needsReview) return { label: `${needsReview} 份结果待确认`, tone: 'review' }
-  if (ready) return { label: `${ready} 份结果待确认`, tone: 'ready' }
-  if (notStarted) return { label: `${notStarted} 份资料尚未识别`, tone: 'neutral' }
-  if (failed) return { label: `${failed} 份资料识别失败`, tone: 'failed' }
-  if (confirmed) return { label: `${confirmed} 份识别结果已确认`, tone: 'confirmed' }
-  if (unknown) return { label: `${unknown} 份识别状态待确认`, tone: 'unknown' }
-  return { label: '识别状态待确认', tone: 'unknown' }
-})
-
-const confirmationFlowState = computed(() => {
-  if (!materialsSummaryReady.value) {
-    return { label: error.value ? '资料列表暂不可用' : loading.value || materialsLoading.value ? '正在读取资料列表…' : '等待资料列表', tone: 'unknown' }
-  }
-  if (!flowMaterials.value.length) {
-    return { label: hasActiveMaterialFilter.value ? '当前筛选没有待确认资料' : '还没有待确认结果', tone: 'neutral' }
-  }
-  const ready = flowStatusCount(extractionFlowStatuses.value, 'ready')
-  const needsReview = flowStatusCount(extractionFlowStatuses.value, 'needs_review')
-  const confirmed = flowStatusCount(extractionFlowStatuses.value, 'confirmed')
-  const failed = flowStatusCount(extractionFlowStatuses.value, 'failed')
-  const notStarted = flowStatusCount(extractionFlowStatuses.value, 'not_started')
-  const unknown = flowStatusCount(extractionFlowStatuses.value, 'unknown')
-  if (ready + needsReview) return { label: `待人工确认 ${ready + needsReview} 份候选`, tone: 'review' }
-  if (failed) return { label: `${failed} 份识别失败，暂不能确认`, tone: 'failed' }
-  if (notStarted) return { label: `${notStarted} 份资料尚未产生识别结果`, tone: 'neutral' }
-  if (unknown) return { label: `${unknown} 份状态待确认`, tone: 'unknown' }
-  if (confirmed) return { label: `${confirmed} 份结果已确认`, tone: 'confirmed' }
-  return { label: '确认状态尚未确定', tone: 'unknown' }
-})
 
 const tableEmptyText = computed(() => {
   if (loading.value || materialsLoading.value) return '正在读取资料列表…'
@@ -840,27 +587,47 @@ function courseName(courseId) {
 
 function openCreate() {
   materialConflict.value = null
+  uploadDialogVisible.value = false
   resetForm()
   dialogVisible.value = true
 }
 
 function openUpload() {
-  uploadFileList.value = []
-  uploadCourseId.value = null
-  uploadMaterialType.value = ''
+  pasteNoticeVisible.value = false
+  uploadError.value = ''
+  captureMaterialPlanContext()
+  const routeCourseId = positiveRouteId(route.query.course_id)
+  if (routeCourseId) uploadCourseId.value = routeCourseId
+  if (route.query.intent === 'plan') uploadMaterialType.value = '复习安排'
   uploadDialogVisible.value = true
 }
 
+function captureMaterialPlanContext() {
+  const context = {}
+  const examDate = route.query.exam_date
+  const dailyMinutes = Number(route.query.daily_minutes)
+  if (typeof examDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(examDate) && validLocalReferenceDateTime(`${examDate}T00:00:00`)) context.exam_date = examDate
+  if (typeof route.query.daily_minutes === 'string' && Number.isInteger(dailyMinutes) && dailyMinutes >= 15 && dailyMinutes <= 1440) context.daily_minutes = String(dailyMinutes)
+  materialPlanContext.value = context
+}
+
+function addCreatedCourse(course) {
+  if (course?.id && !courses.value.some((item) => item.id === course.id)) courses.value = [...courses.value, course]
+}
+
 function openPasteNotice() {
+  captureMaterialPlanContext()
   pasteNoticeError.value = ''
   pasteNoticeDuplicate.value = false
   if (!pasteNoticeDraft.sourceTime) pasteNoticeDraft.sourceTime = localReferenceDateTime()
   pasteNoticeVisible.value = true
+  uploadDialogVisible.value = true
 }
 
 function closePasteNotice() {
   if (pastingNotice.value) return
   pasteNoticeVisible.value = false
+  uploadDialogVisible.value = false
 }
 
 function clearPastedNoticeDraft() {
@@ -883,13 +650,14 @@ async function submitPastedNotice() {
   pastingNotice.value = true
   try {
     const file = new File([notice.content], notice.filename, { type: 'text/plain;charset=utf-8' })
-    const uploaded = await materialsApi.upload([file], null, '课程通知', notice.sourceTime)
+    const uploaded = await materialsApi.upload([file], uploadCourseId.value || positiveRouteId(route.query.course_id), route.query.intent === 'plan' ? '复习安排' : null, notice.sourceTime)
     const savedMaterial = Array.isArray(uploaded) ? uploaded[0] : null
     if (!editBaseline(savedMaterial)) throw new Error('通知已保存，但未能读取可确认的资料版本。请在资料库中重新打开。')
     materials.value = [savedMaterial, ...materials.value.filter((material) => material.id !== savedMaterial.id)]
     materialsLoaded.value = true
     clearPastedNoticeDraft()
     pasteNoticeVisible.value = false
+    uploadDialogVisible.value = false
     await openExtraction(savedMaterial)
   } catch (err) {
     if (err?.status === 409 && err?.code === 'DUPLICATE_FILE') {
@@ -911,6 +679,7 @@ async function showExistingPastedNotice() {
     keyword.value = ''
     setViewMode('detailed')
     pasteNoticeVisible.value = false
+    uploadDialogVisible.value = false
     await router.push({ path: '/materials' })
     ElMessage.info('已打开全部资料；重复通知的原文件名可能不同，请在资料清单中查找。')
   } catch (err) {
@@ -988,16 +757,16 @@ function hasSavedExtractionResult(material) {
 
 function extractionActionLabel(material) {
   if (hasSavedExtractionResult(material)) {
-    if (['ready', 'needs_review'].includes(material.extraction_status)) return '查看并确认截止任务'
-    if (material.extraction_status === 'confirmed') return '查看已确认任务'
-    return '查看截止任务识别结果'
+    if (['ready', 'needs_review'].includes(material.extraction_status)) return '查看并确认识别结果'
+    if (material.extraction_status === 'confirmed') return '查看已整理资料'
+    return '查看资料识别结果'
   }
-  return '识别截止任务'
+  return '识别资料内容'
 }
 
 function extractionDialogTitle() {
   if (extractionResult.value) {
-    return extractionResult.value.status === 'confirmed' ? '已确认的截止任务结果' : '查看并确认截止任务'
+    return extractionResult.value.status === 'confirmed' ? '已整理的资料' : '查看并确认识别结果'
   }
   return extractionActionLabel(extractionMaterial.value)
 }
@@ -1055,8 +824,9 @@ function openEdit(material) {
   dialogVisible.value = true
 }
 
-function editExtractionMaterial() {
+async function editExtractionMaterial() {
   if (!extractionMaterial.value) return
+  if (!await saveExtractionCourse()) return
   extractionDialogVisible.value = false
   openEdit(extractionMaterial.value)
 }
@@ -1112,6 +882,7 @@ async function loadMaterials() {
 }
 
 async function saveMaterial() {
+  if (saving.value) return
   if (!form.original_filename.trim()) {
     ElMessage.warning('请填写文件名称')
     return
@@ -1129,20 +900,23 @@ async function saveMaterial() {
     if (!editingId.value || form.extracted_text.trim() !== form.originalExtractedText.trim()) {
       payload.extracted_text = form.extracted_text.trim() || null
     }
+    let savedMaterial
+    const wasCreating = !editingId.value
     if (editingId.value) {
       const config = editRequestConfig(editingBaseline.value)
       if (!config) {
         ElMessage.warning(preconditionMessage())
         return
       }
-      await materialsApi.update(editingId.value, payload, config)
+      savedMaterial = await materialsApi.update(editingId.value, payload, config)
       ElMessage.success('资料已更新')
     } else {
-      await materialsApi.create(payload)
+      savedMaterial = await materialsApi.create(payload)
       ElMessage.success('资料已添加')
     }
     dialogVisible.value = false
     await loadData()
+    if (wasCreating && savedMaterial?.extracted_text) await openExtraction(savedMaterial)
   } catch (err) {
     if (isEditConflict(err) || isEntityGone(err, 'MATERIAL_NOT_FOUND')) {
       materialConflict.value = { baseline: editingBaseline.value, state: isEntityGone(err, 'MATERIAL_NOT_FOUND') ? 'missing' : 'changed' }
@@ -1155,20 +929,29 @@ async function saveMaterial() {
 }
 
 async function submitUpload() {
+  if (uploading.value) return
   const files = uploadFileList.value.map((item) => item.raw).filter(Boolean)
   if (!files.length) {
     ElMessage.warning('请先选择文件')
     return
   }
+  if (files.some((file) => !validateUploadFile(file))) return
+  uploadError.value = ''
   uploading.value = true
   try {
     const uploaded = await materialsApi.upload(files, uploadCourseId.value, uploadMaterialType.value)
     const failed = uploaded.filter((material) => material.processing_status === 'failed').length
     ElMessage[failed ? 'warning' : 'success'](failed ? `${uploaded.length} 个文件已保存，其中 ${failed} 个解析失败，可重试` : `已上传并处理 ${uploaded.length} 个文件`)
     uploadDialogVisible.value = false
+    uploadFileList.value = []
+    recentUploaded.value = uploaded
     await loadData()
+    if (uploaded.length === 1) {
+      if (uploaded[0].extracted_text) await openExtraction(uploaded[0])
+      else openDetail(uploaded[0])
+    }
   } catch (err) {
-    ElMessage.error(err.message)
+    uploadError.value = err?.message || '保存失败，已保留所选文件，请重试。'
   } finally {
     uploading.value = false
   }
@@ -1216,13 +999,17 @@ async function openExtraction(material) {
   extractionTasks.value = []
   extractionError.value = ''
   extractionEvidenceExpanded.value = false
-  extractionProvider.value = extractionPolicy.value.default_provider || 'local-rules'
+  extractionProvider.value = 'local-rules'
   extractionCourseId.value = material.course_id || null
+  courseRequired.value = false
   extractionMaterialType.value = material.material_type || ''
   extractionTagsText.value = (material.tags || []).join(', ')
   try {
     if (material.extraction_result && !['not_started', 'failed'].includes(material.extraction_status)) {
+      extractionLoading.value = true
       applyExtractionResult(await materialsApi.extraction(material.id), material)
+    } else {
+      await runExtraction()
     }
   } catch (err) {
     if (isEntityGone(err, 'MATERIAL_NOT_FOUND')) {
@@ -1230,6 +1017,8 @@ async function openExtraction(material) {
       return
     }
     extractionError.value = err.message || '读取识别结果失败，请重试'
+  } finally {
+    extractionLoading.value = false
   }
 }
 
@@ -1393,6 +1182,7 @@ function applyExtractionResult(result, material = extractionMaterial.value) {
     extractionBaseline.value = null
     return false
   }
+  if (!extractionCourseId.value && result.status !== 'confirmed' && result.course_name) extractionCourseId.value = courses.value.find((course) => course.name === result.course_name)?.id || null
   extractionResult.value = result
   extractionTasks.value = result.tasks.map((task) => ({ ...task, due_at: toLocalDateTimeInput(task.due_at) }))
   extractionMaterialType.value = result.material_type || material?.material_type || ''
@@ -1412,6 +1202,7 @@ function applyExtractionResult(result, material = extractionMaterial.value) {
 }
 
 async function runExtraction() {
+  if (extractionLoading.value || extractionSaving.value || extractionResult.value?.status === 'confirmed') return
   const provider = selectedExtractionProvider.value
   if (!extractionMaterial.value || !provider?.available) {
     ElMessage.warning('所选智能识别方式当前不可用')
@@ -1451,14 +1242,23 @@ async function runExtraction() {
   }
 }
 
-async function confirmExtraction() {
-  const selectedTasks = extractionTasks.value.filter((task) => task.selected)
-  if (!extractionMaterial.value || !selectedTasks.length) {
+async function confirmExtraction(materialOnly = false) {
+  if (extractionSaving.value || materialConflict.value) return false
+  const selectedTasks = materialOnly ? [] : extractionTasks.value.filter((task) => task.selected)
+  if (!extractionMaterial.value || (!materialOnly && !selectedTasks.length && extractionTasks.value.length)) {
     ElMessage.warning('请至少勾选一条任务')
     return
   }
   const tasksPayload = []
   for (const task of selectedTasks) {
+    if (!task.name?.trim()) {
+      ElMessage.warning('请补充所选任务的名称')
+      return false
+    }
+    if (task.due_at && Number.isNaN(new Date(task.due_at).getTime())) {
+      ElMessage.warning(`请核对“${task.name}”的截止时间`)
+      return false
+    }
     const rawEstimate = task.estimated_minutes
     if (rawEstimate === '' || rawEstimate === null || rawEstimate === undefined) {
       if (task.remaining_minutes !== null && task.remaining_minutes !== undefined) {
@@ -1487,20 +1287,25 @@ async function confirmExtraction() {
   extractionSaving.value = true
   try {
     const result = await materialsApi.confirmExtraction(extractionMaterial.value.id, {
-      tasks: tasksPayload,
+      material_only: materialOnly,
+      tasks: tasksPayload.map((task) => ({ ...task, due_at: task.due_at || null, course_id: extractionCourseId.value || task.course_id })),
       course_id: extractionCourseId.value,
       material_type: extractionMaterialType.value || null,
       tags: extractionTagsText.value.split(',').map((tag) => tag.trim()).filter(Boolean),
     }, config)
     Object.assign(extractionMaterial.value, {
+      revision: result.material_revision,
+      course_id: extractionCourseId.value,
       extraction_status: result.status,
       extraction_result: result,
       material_type: result.material_type || extractionMaterialType.value || extractionMaterial.value.material_type,
       tags: result.tags || extractionMaterial.value.tags,
     })
     extractionResult.value = { ...extractionResult.value, ...result }
-    ElMessage.success(`已确认并创建 ${result.confirmed_task_ids.length} 条任务`)
+    extractionTasks.value = result.tasks.map((task) => ({ ...task, due_at: toLocalDateTimeInput(task.due_at) }))
+    ElMessage.success(result.confirmed_task_ids.length ? `资料已保存，并创建 ${result.confirmed_task_ids.length} 条任务` : '资料已整理，可以安排复习')
     await loadData()
+    return true
   } catch (err) {
     if (isEditConflict(err) || isEntityGone(err, 'MATERIAL_NOT_FOUND')) {
       materialConflict.value = { baseline: extractionBaseline.value, state: isEntityGone(err, 'MATERIAL_NOT_FOUND') ? 'missing' : 'changed' }
@@ -1512,7 +1317,64 @@ async function confirmExtraction() {
   }
 }
 
+async function finishMaterialOnly() {
+  const hadTasks = extractionTasks.value.length > 0
+  if (await confirmExtraction(true)) extractionDialogVisible.value = hadTasks
+}
+
+async function saveExtractionCourse() {
+  if (!confirmedCourseDirty.value) return true
+  if (extractionSaving.value || materialConflict.value) return false
+  const baseline = editBaseline(extractionMaterial.value)
+  const config = editRequestConfig(baseline)
+  if (!config) {
+    ElMessage.warning(preconditionMessage())
+    return false
+  }
+  extractionSaving.value = true
+  try {
+    const updated = await materialsApi.update(extractionMaterial.value.id, { course_id: extractionCourseId.value }, config)
+    Object.assign(extractionMaterial.value, updated)
+    await loadMaterials()
+    return true
+  } catch (err) {
+    if (isEditConflict(err) || isEntityGone(err, 'MATERIAL_NOT_FOUND')) {
+      materialConflict.value = { baseline, state: isEntityGone(err, 'MATERIAL_NOT_FOUND') ? 'missing' : 'changed' }
+    } else extractionError.value = err?.message || '课程保存失败，请重试。'
+    return false
+  } finally {
+    extractionSaving.value = false
+  }
+}
+
+async function closeExtractionReview() {
+  if (await saveExtractionCourse()) extractionDialogVisible.value = false
+}
+
+async function beforeCloseExtraction(done) {
+  if (extractionLoading.value || extractionSaving.value) return
+  if (await saveExtractionCourse()) done()
+}
+
+async function planFromMaterial() {
+  if (!extractionMaterial.value || extractionSaving.value || materialConflict.value) return
+  captureMaterialPlanContext()
+  if (!extractionCourseId.value) {
+    courseRequired.value = true
+    await nextTick()
+    document.querySelector('.material-course-choice')?.scrollIntoView({ behavior: 'auto', block: 'center' })
+    document.querySelector('.material-course-choice .el-select__wrapper')?.focus()
+    return
+  }
+  if (extractionResult.value?.status !== 'confirmed') {
+    if (!await confirmExtraction(true)) return
+  } else if (!await saveExtractionCourse()) return
+  extractionDialogVisible.value = false
+  await router.push({ path: '/study-plans', query: { ...materialPlanContext.value, action: 'create', course_id: extractionCourseId.value, material_id: extractionMaterial.value.id, material_key: extractionMaterial.value.navigation_key } })
+}
+
 async function openCreatedTasks() {
+  if (!await saveExtractionCourse()) return
   confirmedTasksVisible.value = true
 }
 
@@ -1529,7 +1391,7 @@ async function openTaskListFromConfirmation() {
 }
 
 function downloadMaterial(material) {
-  window.open(materialsApi.fileUrl(material.id), '_blank', 'noopener,noreferrer')
+  downloadFile(materialsApi.fileUrl(material.id), material.original_filename)
 }
 
 async function removeMaterial(material) {
@@ -1622,6 +1484,23 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.material-intake-modes { display: flex; gap: 4px; padding: 4px; margin-bottom: 20px; border-radius: 9px; background: var(--ledger-canvas, #f7f8fb); }
+.material-intake-modes button { flex: 1; min-height: 44px; padding: 8px; border: 0; border-radius: 7px; color: var(--ledger-muted, #667085); background: transparent; cursor: pointer; font: inherit; font-size: 14px; }
+.material-intake-modes button[aria-pressed="true"] { color: var(--ledger-ink, #20392f); background: var(--ledger-paper, #fff); box-shadow: 0 1px 3px #20392f14; font-weight: 650; }
+.material-intake-modes button:focus-visible, .material-optional-fields summary:focus-visible { outline: 3px solid var(--ledger-indigo, #327864); outline-offset: 2px; }
+.material-intake-modes button:disabled { cursor: wait; opacity: .55; }
+.material-intake-help { margin: 0 0 16px; font-size: 13px; color: var(--ledger-muted, #667085); line-height: 1.7; }
+.material-optional-fields { margin: 14px 0; min-width: 0; border-top: 1px solid var(--ledger-line, #d9e0ea); }
+.material-optional-fields > summary { min-height: 44px; padding: 13px 0; cursor: pointer; color: var(--ledger-muted, #667085); font-size: 13px; }
+.material-course-choice { display: grid; gap: 9px; margin: 18px 0; font-size: 13px; }
+.material-course-error { margin: 0; color: #a94536; line-height: 1.6; }
+.material-upload-result { margin: 0 0 22px; padding: 18px; border: 1px solid var(--ledger-line, #d9e0ea); border-radius: 12px; }
+.material-result-heading, .material-result-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.material-result-heading p { margin: 6px 0; color: var(--ledger-muted, #667085); font-size: 13px; line-height: 1.6; }
+.material-result-row { margin-top: 10px; border-top: 1px solid var(--ledger-line, #d9e0ea); padding-top: 10px; font-size: 13px; }
+.material-result-row > span { min-width: 0; overflow-wrap: anywhere; }
+.material-result-row > div { display: flex; flex-shrink: 0; }
+@media (max-width: 560px) { .material-result-row { align-items: flex-start; flex-direction: column; } }
 .mb-18 { margin-bottom: 18px; }
 .tag-gap { margin: 2px 4px 2px 0; }
 .extraction-warning-tag { max-width: 100%; height: auto; line-height: 1.45; vertical-align: top; white-space: normal; }
@@ -1784,8 +1663,7 @@ onMounted(() => {
   font-size: 11px;
 }
 
-.material-filter-toggle:focus-visible,
-.material-flow-toggle:focus-visible {
+.material-filter-toggle:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--materials-indigo) 38%, transparent);
   outline-offset: 3px;
 }
@@ -1832,205 +1710,6 @@ onMounted(() => {
   max-width: 100%;
   overflow-wrap: anywhere;
   white-space: normal;
-}
-
-.material-flow {
-  min-width: 0;
-  margin-bottom: 18px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--materials-line);
-}
-
-.material-flow-toggle {
-  min-height: 40px;
-  color: var(--materials-ink);
-  cursor: pointer;
-  font-size: 13px;
-  line-height: 40px;
-}
-
-.material-flow-toggle span + span {
-  margin-left: 20px;
-  color: var(--materials-muted);
-  font-size: 12px;
-}
-
-.material-flow-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 18px;
-  min-width: 0;
-  margin: 14px 0 11px;
-}
-
-.material-flow-eyebrow,
-.material-toolbar-kicker {
-  margin: 0 0 4px;
-  color: var(--materials-muted);
-  font-family: Bahnschrift, "Arial Narrow", "Microsoft YaHei", sans-serif;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-}
-
-.material-flow-heading h2 {
-  margin: 0;
-  color: var(--materials-ink);
-  font-size: 16px;
-  letter-spacing: .01em;
-}
-
-.material-flow-heading-note {
-  max-width: 360px;
-  margin: 0;
-  color: var(--materials-muted);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: right;
-}
-
-.material-flow-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.material-flow-item {
-  position: relative;
-  min-width: 0;
-}
-
-.material-flow-item:not(:last-child)::after {
-  content: none;
-}
-
-.material-flow-card {
-  box-sizing: border-box;
-  height: 100%;
-  min-width: 0;
-  padding: 8px 14px 8px 0;
-  color: var(--materials-ink);
-  border-right: 1px solid var(--materials-line);
-}
-
-.material-flow-item:last-child .material-flow-card { border-right: 0; }
-
-.material-flow-label {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 9px;
-  min-width: 0;
-  color: var(--materials-ink);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .03em;
-}
-
-.material-flow-index {
-  display: inline-grid;
-  flex: 0 0 auto;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  color: var(--materials-indigo);
-  background: #edf5f0;
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-  letter-spacing: .08em;
-}
-
-.material-flow-card h3 {
-  margin: 14px 0 7px;
-  color: var(--materials-ink);
-  font-size: 15px;
-  line-height: 1.35;
-}
-
-.material-flow-action,
-.material-flow-boundary {
-  overflow-wrap: anywhere;
-}
-
-.material-flow-action {
-  min-height: 40px;
-  margin: 0;
-  color: var(--materials-muted);
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.material-flow-action strong,
-.material-flow-boundary strong {
-  margin-right: 4px;
-  color: var(--materials-ink);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.material-flow-state {
-  display: flex;
-  align-items: baseline;
-  min-width: 0;
-  min-height: 18px;
-  margin: 12px 0 0;
-  color: var(--materials-ink);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.material-flow-state.is-ready { color: var(--materials-indigo); }
-.material-flow-state.is-review { color: var(--materials-amber-text); }
-.material-flow-state.is-failed { color: var(--materials-coral); }
-.material-flow-state.is-unknown { color: var(--materials-muted); }
-
-.material-flow-statuses {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  margin-top: 8px;
-}
-
-.material-flow-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 3px 7px;
-  color: var(--materials-ink);
-  border: 1px solid rgba(30, 42, 68, .22);
-  border-radius: 4px;
-  font-size: 12px;
-  line-height: 1.35;
-}
-
-.material-flow-status strong { font-variant-numeric: tabular-nums; }
-.material-flow-status.is-ready { color: var(--materials-indigo); border-color: color-mix(in srgb, var(--ledger-indigo) 38%, transparent); }
-.material-flow-status.is-review { color: var(--materials-amber-text); border-color: rgba(201, 130, 46, .46); }
-.material-flow-status.is-confirmed { color: var(--materials-ink); border-color: rgba(30, 42, 68, .32); }
-.material-flow-status.is-failed { color: var(--materials-coral); border-color: rgba(201, 76, 76, .42); }
-.material-flow-status.is-unknown { color: var(--materials-muted); border-color: rgba(102, 112, 133, .38); }
-
-.material-flow-boundary {
-  min-height: 37px;
-  margin: 12px 0 0;
-  padding-top: 10px;
-  color: var(--materials-muted);
-  border-top: 1px solid var(--materials-line);
-  font-size: 13px;
-  line-height: 1.55;
 }
 
 .material-toolbar-heading {
@@ -2129,35 +1808,6 @@ onMounted(() => {
 
   .material-load-error :deep(.el-button),
   .material-deep-link :deep(.el-button) { width: 100%; }
-
-  .material-flow-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .material-flow-heading-note {
-    max-width: none;
-    text-align: left;
-  }
-
-  .material-flow-list {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .material-flow-item:not(:last-child)::after {
-    display: none;
-  }
-
-  .material-flow-card {
-    padding: 12px 0;
-    border-right: 0;
-    border-bottom: 1px solid var(--materials-line);
-  }
-
-  .material-flow-item:last-child .material-flow-card { border-bottom: 0; }
-  .material-flow-toggle { line-height: 1.6; padding: 8px 0; }
-  .material-flow-toggle span + span { display: block; margin: 2px 0 0 16px; }
 
   .material-filters {
     align-items: stretch;

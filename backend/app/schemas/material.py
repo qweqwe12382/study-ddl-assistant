@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.timestamps import UtcDateTime
+
 
 ProcessingStatus = Literal["pending", "processing", "processed", "failed"]
 
@@ -46,16 +48,16 @@ class MaterialRead(BaseModel):
     extracted_text: str | None
     summary: str | None
     tags: list[str]
-    source_time: datetime | None
+    source_time: UtcDateTime | None
     processing_status: ProcessingStatus
     processing_error: str | None
     extraction_status: str
     extraction_result: dict | None
     extraction_provider: str | None
     extraction_error: str | None
-    extracted_at: datetime | None
-    created_at: datetime
-    updated_at: datetime
+    extracted_at: UtcDateTime | None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class MaterialSearchRead(MaterialRead):

@@ -3,7 +3,7 @@
     <header class="focus-header">
       <div>
         <h1>专注计时</h1>
-        <p class="focus-lead">选一个任务，专心做一会儿。结束后确认记录用时。</p>
+        <p class="focus-lead">一次一件事，留点时间给专注。</p>
       </div>
       <router-link class="focus-back" to="/tasks">返回截止任务</router-link>
     </header>
@@ -21,15 +21,16 @@
 
     <section v-else-if="pendingTasks.length === 0" class="focus-board is-empty">
       <h3>现在没有待办任务</h3>
-      <p>先到截止任务页确认或创建任务，再回来开始专注。</p>
-      <router-link class="focus-action primary" to="/tasks">去任务页</router-link>
+      <p>记下要做的事，直接开始 25 分钟专注。</p>
+      <QuickTaskAdd submit-label="添加并开始" @created="startCreatedTask" />
     </section>
 
     <section v-else class="focus-board" :class="{ 'is-running': phase === 'running', 'is-finished': phase === 'finished' }">
       <div class="focus-main">
         <label class="focus-field">
           <span>这次要专注什么？</span>
-          <select v-model="selectedId" :disabled="sessionLocked" data-testid="focus-task-select">
+          <select v-model="selectedId" :disabled="sessionLocked" data-testid="focus-task-select" @change="errorMessage = ''">
+            <option v-if="selectedId === null" :value="null" disabled>请选择要专注的任务</option>
             <option v-for="task in pendingTasks" :key="task.id" :value="task.id">
               {{ task.name }}
             </option>
@@ -67,7 +68,7 @@
 
         <p class="focus-clock" role="timer" aria-label="专注剩余时间">{{ clock }}</p>
         <div class="focus-track" aria-hidden="true">
-          <span class="focus-fill" :style="{ width: progressPercent + '%' }"></span>
+          <span class="focus-fill" :style="{ transform: `scaleX(${progressPercent / 100})` }"></span>
         </div>
         <p class="focus-meta">{{ phaseLabel }} · 目标 {{ durationMinutes }} 分钟</p>
 
@@ -92,9 +93,10 @@
 
       <aside class="focus-record" aria-live="polite">
         <template v-if="phase !== 'finished'">
-          <h3>结束后记录用时</h3>
-          <p>满 15 分钟即可记录，也可以同时完成任务。</p>
-          <small>暂停不计时。记录或放弃前，任务和时长保持锁定；离开或刷新会丢失未保存计时。</small>
+          <el-icon class="focus-record-icon" aria-hidden="true"><Timer /></el-icon>
+          <h3>{{ phase === 'running' ? '这段时间，留给眼前的事' : '准备好就开始吧' }}</h3>
+          <p>满 15 分钟后，可确认记录用时。</p>
+          <details class="focus-record-help"><summary>计时与保存说明</summary><small>暂停不计时。记录或放弃前，任务和时长保持锁定；离开或刷新会丢失未保存计时。</small></details>
         </template>
         <template v-else-if="!canRecord">
           <h3>这次不足 15 分钟</h3>
@@ -120,9 +122,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { onBeforeRouteLeave } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { Timer } from '@element-plus/icons-vue'
 
 import http from '../api/http'
 import { tasksApi } from '../api'
@@ -138,6 +141,13 @@ import {
   sessionMinutes,
 } from '../utils/focusTimer'
 import { editRequestConfig } from '../utils/editPrecondition'
+import QuickTaskAdd from '../components/QuickTaskAdd.vue'
+import { orderedPendingTasks, resolveFocusTask } from '../utils/dailyWorkflow'
+
+const route = useRoute()
+const router = useRouter()
+let incomingFocusPending = true
+let taskRequestId = 0
 
 const loading = ref(true)
 const loadFailed = ref(false)
@@ -156,7 +166,7 @@ let startedAtMs = 0
 let accumulatedSeconds = 0
 
 const sessionLocked = computed(() => phase.value !== 'idle' || recording.value)
-const pendingTasks = computed(() => tasks.value.filter((task) => !['completed', 'canceled'].includes(task.status)))
+const pendingTasks = computed(() => orderedPendingTasks(tasks.value))
 const selectedTask = computed(() => pendingTasks.value.find((task) => task.id === selectedId.value) || null)
 const clock = computed(() => formatClock(Math.max(0, durationMinutes.value * 60 - elapsedSeconds.value)))
 const progressPercent = computed(() => {
@@ -277,20 +287,46 @@ async function record(asComplete) {
 }
 
 async function loadTasks() {
+  const request = ++taskRequestId
   loading.value = true
   loadFailed.value = false
   errorMessage.value = ''
   try {
-    tasks.value = await tasksApi.list()
+    const listed = await tasksApi.list()
+    if (request !== taskRequestId) return
+    tasks.value = listed
+    if (incomingFocusPending) {
+      incomingFocusPending = false
+      const incoming = resolveFocusTask(listed, route.query)
+      if (incoming.requested) {
+        selectedId.value = incoming.task?.id ?? null
+        if (!incoming.task) errorMessage.value = '原任务已完成、移除或变更，请重新选择要专注的任务。'
+        if (incoming.start) {
+          const query = { ...route.query }
+          delete query.start
+          await router.replace({ path: route.path, query })
+          startTimer()
+        }
+        return
+      }
+    }
     if (!pendingTasks.value.some((task) => task.id === selectedId.value)) {
       selectedId.value = pendingTasks.value[0]?.id ?? null
     }
   } catch (error) {
+    if (request !== taskRequestId) return
     loadFailed.value = true
     errorMessage.value = error?.message || '无法读取任务，请确认服务已启动'
   } finally {
-    loading.value = false
+    if (request === taskRequestId) loading.value = false
   }
+}
+
+async function startCreatedTask(task) {
+  await loadTasks()
+  if (loadFailed.value) return
+  selectedId.value = pendingTasks.value.find(item => item.id === task?.id && item.navigation_key === task?.navigation_key)?.id ?? null
+  startTimer()
 }
 
 function protectUnsavedSession(event) {
@@ -299,7 +335,7 @@ function protectUnsavedSession(event) {
   event.returnValue = ''
 }
 
-onBeforeRouteLeave(async () => {
+async function canLeaveFocus() {
   // Expired sessions and completed sign-outs must always reach the public pages.
   if (!authSession.user) {
     ElMessageBox.close()
@@ -321,6 +357,17 @@ onBeforeRouteLeave(async () => {
   } catch {
     return false
   }
+}
+
+onBeforeRouteLeave(canLeaveFocus)
+onBeforeRouteUpdate((to, from) => {
+  if (to.query.task_id === from.query.task_id && to.query.navigation_key === from.query.navigation_key) return true
+  return canLeaveFocus()
+})
+watch(() => [route.query.task_id, route.query.navigation_key], () => {
+  resetTimer()
+  incomingFocusPending = true
+  loadTasks()
 })
 
 onMounted(() => {
@@ -335,10 +382,14 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.focus-record-icon { display: grid; place-items: center; width: 48px; height: 48px; margin: 0 0 22px; color: var(--ledger-primary); border-radius: 50%; background: #eaf2ed; font-size: 25px; }
+.focus-record-help { margin-top: 16px; }
+.focus-record-help summary { min-height: 44px; padding: 12px 0; color: var(--ledger-link); font-size: 12px; cursor: pointer; }
+.focus-record-help small { margin-top: 0; }
 .focus-page { max-width: 980px; margin: 0 auto; padding: 4px 0 32px; }
 .focus-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; margin-bottom: 20px; }
 .focus-kicker { margin: 0 0 6px; color: var(--ledger-indigo); font-size: 12px; font-weight: 750; }
-.focus-header h1 { margin: 0; color: var(--ledger-ink); font-family: inherit; font-size: clamp(24px, 2.3vw, 28px); font-weight: 650; letter-spacing: 0; }
+.focus-header h1 { margin: 0; color: var(--ledger-ink); font-family: var(--font-display); font-size: clamp(26px, 2.5vw, 32px); font-weight: 750; letter-spacing: -.025em; }
 .focus-lead { margin: 9px 0 0; max-width: 560px; color: var(--ledger-muted); font-size: 14px; line-height: 1.75; }
 .focus-back { flex: 0 0 auto; min-height: 44px; display: inline-flex; align-items: center; padding: 0 15px; border: 1px solid var(--ledger-line); border-radius: 10px; background: #fff; font-size: 13px; font-weight: 700; }
 .focus-back:hover { color: var(--ledger-indigo); border-color: var(--ledger-indigo); }
@@ -360,11 +411,11 @@ onUnmounted(() => {
 .custom-minutes.active { color: #fff; border-style: solid; border-color: var(--ledger-indigo); background: var(--ledger-indigo); }
 .custom-minutes input { width: 58px; border: 0; background: transparent; color: inherit; font-size: 12.5px; font-weight: 700; text-align: center; }
 .custom-minutes input:disabled { opacity: .55; }
-.focus-clock { margin: 30px 0 14px; color: var(--ledger-ink); font-size: 72px; font-weight: 600; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
+.focus-clock { margin: 30px 0 14px; color: var(--ledger-ink); font-family: var(--font-ui); font-size: clamp(68px, 7vw, 92px); font-weight: 650; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .is-running .focus-clock { color: var(--ledger-indigo); animation: focus-state-settle .32s ease-out; }
 .is-finished .focus-record { border-color: #c8ddd1; animation: focus-state-settle .32s ease-out; }
 .focus-track { height: 5px; overflow: hidden; border-radius: 99px; background: #e5ede8; }
-.focus-fill { display: block; height: 100%; border-radius: 99px; background: var(--ledger-indigo); transition: width 1s linear; }
+.focus-fill { display: block; width: 100%; height: 100%; border-radius: 99px; background: var(--ledger-indigo); transform-origin: left; transition: transform 1s linear; }
 .focus-meta { margin: 10px 0 0; color: var(--ledger-muted); font-size: 12px; font-weight: 600; }
 .control-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
 .focus-action { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border: 1px solid var(--ledger-line); border-radius: 10px; background: #fff; color: var(--ledger-ink); font-size: 13px; font-weight: 750; cursor: pointer; }

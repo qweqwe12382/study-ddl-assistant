@@ -2,8 +2,8 @@
   <section class="material-inbox-focus" aria-labelledby="material-inbox-focus-title" :aria-busy="viewState === 'loading'">
     <header class="inbox-header">
       <div class="inbox-heading">
-        <h2 id="material-inbox-focus-title">待整理的资料</h2>
-        <p class="inbox-description">识别结果只是候选；核对后，才会创建正式截止任务。</p>
+        <h2 id="material-inbox-focus-title">我的资料</h2>
+        <p class="inbox-description">需要核对的排在前面，已保存的随时可看。</p>
       </div>
       <span class="inbox-state-label" :class="`is-${viewState}`">{{ stateLabel }}</span>
     </header>
@@ -45,8 +45,7 @@
 
           <div class="inbox-item-side">
             <div class="status-list" :aria-label="`${displayFilename(material)} 的资料状态`">
-              <span class="status-chip" :class="`is-${processingTone(material.processing_status)}`">处理：{{ processingLabel(material.processing_status) }}</span>
-              <span class="status-chip" :class="`is-${extractionTone(material.extraction_status)}`">识别：{{ extractionLabel(material.extraction_status) }}</span>
+              <span class="status-chip" :class="`is-${stageTone(material)}`">{{ stageLabel(material) }}</span>
             </div>
             <div class="item-actions" role="group" :aria-label="`${displayFilename(material)} 的操作`">
               <button
@@ -66,7 +65,7 @@
                 :aria-label="`查看资料详情：${displayFilename(material)}`"
                 @click="emit('detail-material', material)"
               >
-                查看详情
+                查看内容
               </button>
             </div>
           </div>
@@ -75,12 +74,12 @@
 
       <div v-else class="empty-inbox" role="status" aria-live="polite">
         <strong>{{ filteredEmpty ? '当前条件下没有需要处理的资料' : '添加第一份课程资料' }}</strong>
-        <p>{{ filteredEmpty ? '可进入完整管理调整搜索或定位条件；页面不会把其他资料混入当前结果。' : '上传后会先完成资料处理，再把需要核对的截止任务候选放到这里。' }}</p>
-        <button v-if="!filteredEmpty" type="button" class="inbox-button is-primary" @click="emit('upload-material')">上传资料</button>
+        <p>{{ filteredEmpty ? '调整筛选，或进入完整管理查看。' : '放入课件、截图或文字，保存后直接核对内容。' }}</p>
+        <button v-if="!filteredEmpty" type="button" class="inbox-button is-primary" @click="emit('upload-material')">添加资料</button>
       </div>
 
       <p v-if="hiddenCount" class="remaining-note" role="status">
-        还有 {{ hiddenCount }} 份资料未在此处展开，可进入完整管理查看全部资料与操作记录。
+        另有 {{ hiddenCount }} 份，可在完整管理查看。
       </p>
     </template>
 
@@ -171,7 +170,7 @@ const hiddenCount = computed(() => Math.max(prioritizedMaterials.value.length - 
 const stateLabel = computed(() => ({
   pending: '等待资料',
   loading: '正在读取',
-  ready: '待处理列表',
+  ready: '已保存的资料',
   error: '暂时不可用',
   invalid: '状态待确认',
 }[viewState.value]))
@@ -183,8 +182,8 @@ const stateTitle = computed(() => ({
 }[viewState.value]))
 const stateDescription = computed(() => ({
   pending: '正在等待资料状态，当前不会展示上一次的资料项目。',
-  loading: '正在同步资料状态，当前不会用猜测数量或旧资料代替。',
-  error: '当前不会展示旧资料或不准确的数量；你仍可上传资料，或进入完整管理后重试。',
+  loading: '正在同步最新资料…',
+  error: '请重试。也可以继续上传资料。',
   invalid: '收到的资料状态不完整，当前不会展示可能不准确的资料项目。',
 }[viewState.value]))
 
@@ -227,18 +226,31 @@ function extractionTone(status) {
   return ({ needs_review: 'review', ready: 'ready', confirmed: 'complete', failed: 'failed', not_started: 'pending' })[status] || 'unknown'
 }
 
+function stageLabel(material) {
+  if (material.processing_status === 'failed') return '正文未读出，可重试或补充'
+  if (material.processing_status !== 'processed') return processingLabel(material.processing_status)
+  if (material.extraction_status === 'confirmed') return '已整理'
+  if (['ready', 'needs_review'].includes(material.extraction_status)) return '待核对'
+  if (material.extraction_status === 'failed') return '已保存，可重新整理'
+  return extractionLabel(material.extraction_status) === '未识别' ? '已保存，待整理' : '资料状态待确认'
+}
+
+function stageTone(material) {
+  return material.processing_status === 'processed' ? extractionTone(material.extraction_status) : processingTone(material.processing_status)
+}
+
 function hasText(material) {
   return typeof material?.extracted_text === 'string' && material.extracted_text.trim().length > 0
 }
 
 function primaryAction(material) {
-  if (material?.processing_status === 'failed') return { kind: 'retry', label: '重试解析' }
+  if (material?.processing_status === 'failed') return { kind: 'retry', label: '重新读取内容' }
   if (material?.processing_status === 'processed' && hasText(material) && ['ready', 'needs_review'].includes(material?.extraction_status)) {
-    return { kind: 'extract', label: '核对并创建任务' }
+    return { kind: 'extract', label: '核对结果' }
   }
-   if (material?.extraction_status === 'confirmed') return { kind: 'extract', label: '查看已确认任务' }
+  if (material?.extraction_status === 'confirmed') return { kind: 'extract', label: '查看与安排' }
   if (material?.processing_status === 'processed' && hasText(material)) {
-     return { kind: 'extract', label: material?.extraction_status === 'failed' ? '重新识别截止任务' : '识别截止任务' }
+    return { kind: 'extract', label: material?.extraction_status === 'failed' ? '重新整理内容' : '核对内容' }
   }
   if (['pending', 'processing'].includes(material?.processing_status)) return { kind: 'detail', label: '查看处理进度' }
   return { kind: 'detail', label: '查看资料详情' }

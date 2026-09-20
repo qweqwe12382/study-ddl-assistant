@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.schemas.task import TaskRead
+from app.schemas.timestamps import UtcDateTime
 
 
 SuggestionStatus = Literal["pending", "accepted", "executed", "failed", "dismissed", "expired"]
@@ -33,7 +33,7 @@ class ActionReceiptRead(BaseModel):
     before_payload: dict[str, Any]
     after_payload: dict[str, Any]
     message: str
-    executed_at: datetime
+    executed_at: UtcDateTime
 
 
 class AgentSuggestionRead(BaseModel):
@@ -53,20 +53,20 @@ class AgentSuggestionRead(BaseModel):
     proposed_payload: dict[str, Any]
     risk_level: str
     confidence: float
-    expires_at: datetime
+    expires_at: UtcDateTime
     fingerprint: str
     run_id: int | None
-    created_at: datetime
-    updated_at: datetime
-    accepted_at: datetime | None
-    executed_at: datetime | None
-    dismissed_at: datetime | None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+    accepted_at: UtcDateTime | None
+    executed_at: UtcDateTime | None
+    dismissed_at: UtcDateTime | None
     dismissal_reason: str | None
     receipt: ActionReceiptRead | None = None
 
 
 class AgentBriefingRead(BaseModel):
-    generated_at: datetime
+    generated_at: UtcDateTime
     pending_count: int
     suggestions: list[AgentSuggestionRead]
     inbox: "AgentInboxRead"
@@ -130,7 +130,7 @@ class AgentDecisionSourceRefRead(BaseModel):
 class AgentDecisionCalculationBasisRead(BaseModel):
     """Fixed explanation metadata; no stored suggestion payload is exposed."""
 
-    evaluated_at: datetime
+    evaluated_at: UtcDateTime
     ordering_rule: Literal["risk_then_kind_then_source"]
     source_state: Literal["failed", "needs_review", "ready", "pending", "current_capacity"]
 
@@ -155,7 +155,7 @@ class TodayActionRead(BaseModel):
     task_name: str
     course_id: int | None
     course_name: str | None
-    due_at: datetime | None
+    due_at: UtcDateTime | None
     estimated_minutes: int | None
     remaining_minutes: int | None
     counted_minutes: int | None
@@ -233,7 +233,7 @@ class CalibrationRead(BaseModel):
     ratio_bounds: dict[str, float]
     median_ratio: float | None
     difficulty_average: float | None
-    reset_at: datetime | None
+    reset_at: UtcDateTime | None
     explanation: str
 
 
@@ -250,8 +250,8 @@ class LearningTrendSignalRead(BaseModel):
         "completion_pace",
     ]
     status: TrendStatus
-    window_start: datetime
-    window_end: datetime
+    window_start: UtcDateTime
+    window_end: UtcDateTime
     timezone: Literal["Asia/Shanghai"]
     minimum_sample_count: int = Field(ge=1)
     sample_count: int = Field(ge=0)
@@ -270,8 +270,8 @@ class LearningTrendCalibrationRead(BaseModel):
 
     course_id: int
     status: TrendStatus
-    window_start: datetime
-    window_end: datetime
+    window_start: UtcDateTime
+    window_end: UtcDateTime
     timezone: Literal["Asia/Shanghai"]
     minimum_sample_count: int = Field(ge=1)
     sample_count: int = Field(ge=0)
@@ -289,8 +289,8 @@ class LearningTrendAdjustmentCandidateRead(BaseModel):
     target_type: Literal["learning_trend"]
     target_id: Literal["longest_idle_gap", "load_concentration", "completion_pace"]
     status: TrendStatus
-    window_start: datetime
-    window_end: datetime
+    window_start: UtcDateTime
+    window_end: UtcDateTime
     timezone: Literal["Asia/Shanghai"]
     title: str = Field(max_length=120)
     explanation: str = Field(max_length=300)
@@ -303,9 +303,9 @@ class LearningTrendsRead(BaseModel):
     """Read-only, single-user learning rhythm evidence, never a plan mutation."""
 
     status: TrendStatus
-    window_start: datetime
-    window_end: datetime
-    evaluated_at: datetime
+    window_start: UtcDateTime
+    window_end: UtcDateTime
+    evaluated_at: UtcDateTime
     timezone: Literal["Asia/Shanghai"]
     minimum_sample_count: int = Field(ge=1)
     sample_count: int = Field(ge=0)
@@ -370,7 +370,7 @@ class AgentActivityItemRead(BaseModel):
     kind: ActivityKind
     event: ActivityEvent
     status: ActivityStatus
-    occurred_at: datetime
+    occurred_at: UtcDateTime
     title: str = Field(max_length=200)
     description: str = Field(max_length=500)
     source: AgentActivitySourceRead
@@ -382,7 +382,7 @@ class AgentActivityItemRead(BaseModel):
 class AgentActivityRead(BaseModel):
     items: list[AgentActivityItemRead] = Field(default_factory=list, max_length=50)
     limit: int = Field(ge=1, le=50)
-    generated_at: datetime
+    generated_at: UtcDateTime
     calculation_basis: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -391,8 +391,8 @@ class LearningRhythmHistoryWindowRead(BaseModel):
 
     snapshot_id: int
     window_key: str
-    window_start: datetime
-    window_end: datetime
+    window_start: UtcDateTime
+    window_end: UtcDateTime
     snapshot_status: Literal["closed"]
     ruleset_version: str
     evidence_digest: str
@@ -420,7 +420,7 @@ class LearningRhythmHistoryRead(BaseModel):
 
     status: LearningRhythmHistoryStatus
     timezone: Literal["Asia/Shanghai"]
-    evaluated_at: datetime
+    evaluated_at: UtcDateTime
     minimum_comparable_window_count: int = Field(ge=2)
     closed_snapshot_count: int = Field(ge=0)
     available_windows: list[LearningRhythmHistoryWindowRead] = Field(default_factory=list, max_length=12)
@@ -527,9 +527,9 @@ class WeeklyActionRead(BaseModel):
 
 
 class WeeklyReviewRead(BaseModel):
-    window_start: datetime
-    window_end: datetime
-    evaluated_at: datetime
+    window_start: UtcDateTime
+    window_end: UtcDateTime
+    evaluated_at: UtcDateTime
     timezone: Literal["Asia/Shanghai"]
     calculation_basis: dict[str, Any]
     completed_tasks: WeeklyMetricRead
@@ -556,8 +556,8 @@ class AgentReminderPreferenceRead(BaseModel):
     minimum_risk_level: ReminderRisk
     digest_frequency: ReminderDigestFrequency
     high_risk_policy: Literal["always_presented"] = "always_presented"
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class AgentReminderPreferenceUpdate(BaseModel):
@@ -582,16 +582,16 @@ class WeeklyReviewSnapshotRead(BaseModel):
 
     id: int
     window_key: str
-    window_start: datetime
-    window_end: datetime
-    evaluated_at: datetime
+    window_start: UtcDateTime
+    window_end: UtcDateTime
+    evaluated_at: UtcDateTime
     snapshot_status: Literal["current", "closed"]
     ruleset_version: str
     evidence_digest: str
     review: WeeklyReviewRead
     rhythm_summary_version: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class WeeklyReviewHistoryRead(BaseModel):
@@ -628,9 +628,9 @@ class AgentReminderRead(BaseModel):
     source_refs: list[AgentSourceRefRead]
     calculation_basis: dict[str, Any]
     fingerprint: str
-    created_at: datetime
-    updated_at: datetime
-    dismissed_at: datetime | None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+    dismissed_at: UtcDateTime | None
     dismissal_reason: str | None
 
 

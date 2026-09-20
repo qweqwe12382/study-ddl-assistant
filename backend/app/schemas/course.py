@@ -1,6 +1,7 @@
-from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.timestamps import UtcDateTime
 
 
 class CourseBase(BaseModel):
@@ -29,5 +30,5 @@ class CourseRead(CourseBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime

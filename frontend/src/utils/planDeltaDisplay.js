@@ -67,7 +67,7 @@ export function planItemLines(value, itemId) {
   return lines.length ? lines : ['计划项内容待确认']
 }
 
-function planStateLines(value) {
+export function planStateLines(value) {
   if (value === null || value === undefined || value === '') return []
   if (typeof value === 'string' || typeof value === 'number') return [String(value)]
   if (Array.isArray(value)) return value.flatMap((item) => planItemLines(item))

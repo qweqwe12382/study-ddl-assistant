@@ -449,8 +449,8 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
         raise HTTPException(status_code=404, detail={"code": error.code, "message": error.message}) from error
 
     candidates = payload.tasks if payload.tasks is not None else stored.tasks
-    selected = [candidate for candidate in candidates if candidate.selected]
-    if not selected:
+    selected = [] if payload.material_only else [candidate for candidate in candidates if candidate.selected]
+    if not selected and stored.tasks and not payload.material_only:
         raise HTTPException(status_code=400, detail={"code": "NO_TASKS_SELECTED", "message": "请至少确认一条任务"})
     if payload.course_id is not None:
         require_entity(db, Course, payload.course_id, code="COURSE_NOT_FOUND", message="关联课程不存在")
@@ -499,6 +499,7 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
     # produce the same M8.4 plan-difference audit as manual task creation.
     for task in created:
         create_plan_delta_candidates(db, task, "task_created")
+    material.course_id = default_course_id
     material.extraction_status = "confirmed"
     material.material_type = payload.material_type if payload.material_type is not None else stored.material_type or material.material_type
     if payload.tags is not None:

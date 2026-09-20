@@ -84,63 +84,9 @@ def test_m7_health_check_reports_database_failure(client):
     assert response.json()["error"]["code"] == "DATABASE_UNAVAILABLE"
 
 
-def test_m8_llm_settings_mask_api_key(client):
-    from app.config import settings
-
-    previous_key = settings.llm_api_key
-    object.__setattr__(settings, "llm_api_key", "sk-test-secret-1234")
-    try:
-        response = client.get("/api/settings/llm")
-    finally:
-        object.__setattr__(settings, "llm_api_key", previous_key)
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["api_key_configured"] is True
-    assert payload["api_key_hint"] == "sk-t…1234"
-    assert "api_key" not in payload
-
-
-def test_m8_llm_settings_can_be_saved_without_returning_secret(client, monkeypatch, tmp_path):
-    import app.config as config
-
-    previous = {
-        "llm_base_url": config.settings.llm_base_url,
-        "llm_api_key": config.settings.llm_api_key,
-        "llm_model": config.settings.llm_model,
-        "llm_timeout_seconds": config.settings.llm_timeout_seconds,
-        "llm_max_retries": config.settings.llm_max_retries,
-    }
-    monkeypatch.setattr(config, "PROJECT_ROOT", tmp_path)
-    try:
-        response = client.put(
-            "/api/settings/llm",
-            json={
-                "base_url": "https://api.example.test/v1",
-                "api_key": "sk-local-secret-5678",
-                "model": "gpt-test",
-                "timeout_seconds": 45,
-                "max_retries": 1,
-            },
-        )
-
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["base_url"] == "https://api.example.test/v1"
-        assert payload["model"] == "gpt-test"
-        assert payload["api_key_configured"] is True
-        assert payload["api_key_hint"] == "sk-l…5678"
-        assert "api_key" not in payload
-        env_text = (tmp_path / ".env").read_text(encoding="utf-8")
-        assert "LLM_API_KEY='sk-local-secret-5678'" in env_text
-        assert "LLM_MODEL='gpt-test'" in env_text
-
-        cleared = client.put("/api/settings/llm", json={"clear_api_key": True})
-        assert cleared.status_code == 200
-        assert cleared.json()["api_key_configured"] is False
-    finally:
-        for field, value in previous.items():
-            object.__setattr__(config.settings, field, value)
+def test_llm_settings_endpoint_removed(client):
+    assert client.get("/api/settings/llm").status_code == 404
+    assert client.put("/api/settings/llm", json={"model": "unused"}).status_code == 404
 
 
 def test_m7_reset_clears_business_data_and_uploaded_files(client, isolated_upload_dir):

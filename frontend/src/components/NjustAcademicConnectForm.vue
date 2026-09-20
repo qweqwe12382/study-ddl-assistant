@@ -44,12 +44,13 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElButton, ElCheckbox, ElDatePicker, ElForm, ElFormItem, ElInput, ElInputNumber, ElMessage } from 'element-plus'
 
 import { academicCalendarApi } from '../api'
 
 const emit = defineEmits(['cancel', 'previewed'])
+const props = defineProps({ semesterStart: { type: String, default: '' } })
 const form = reactive(defaultForm())
 const loading = ref(false)
 const captchaLoading = ref(false)
@@ -65,10 +66,13 @@ function defaultForm() {
   return {
     username: '', password: '', captcha: '',
     term: autumn ? `${year}-${year + 1}-1` : `${year - 1}-${year}-2`,
-    semester_start: autumn ? `${year}-09-01` : `${year}-02-20`,
+    semester_start: props.semesterStart || '',
     semester_weeks: 18, acknowledge_insecure_transport: false,
   }
 }
+watch(() => props.semesterStart, value => {
+  if (value && !form.semester_start) form.semester_start = value
+})
 
 function discardCaptchaSession(discard = false) {
   const sessionId = captchaSessionId.value

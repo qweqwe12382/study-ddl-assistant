@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="320" viewBox="0 0 680 320" fill="none">
+  <!-- Original page-edge drawing for the study workspace. -->
+  <g stroke="#A7C2AC" stroke-width="1.1">
+    <path d="M47 339C163 269 209 164 323 165S491 260 601 172 671 1 720-43"/>
+    <path d="M68 353C182 282 229 176 337 177S504 272 615 184 686 14 734-30"/>
+    <path d="M89 367C201 295 248 188 351 189S518 284 629 196 700 27 748-17"/>
+    <path d="M110 381C220 308 268 200 365 201S532 296 643 208 714 40 762-4"/>
+    <path d="M-1 310C119 236 164 138 294 139S462 234 571 146 641-25 690-69"/>
+    <path d="M20 324C138 249 184 150 308 151S476 246 585 158 655-12 704-56"/>
+  </g>
+  <path d="M-28 280C90 213 148 118 280 121S441 212 552 128 620-40 671-84" stroke="#C4AA78" stroke-width="1.25"/>
+  <circle cx="280" cy="121" r="3.5" fill="#C4AA78"/>
+  <circle cx="552" cy="128" r="3" fill="#A7C2AC"/>
+</svg>

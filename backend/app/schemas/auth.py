@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.timestamps import UtcDateTime
 
 
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -55,4 +56,4 @@ class UserRead(BaseModel):
     email: str
     display_name: str
     is_admin: bool
-    created_at: datetime
+    created_at: UtcDateTime

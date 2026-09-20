@@ -1,4 +1,4 @@
-import http from './http'
+import http, { apiBaseUrl } from './http'
 
 export const healthApi = {
   check: () => http.get('/health'),
@@ -58,7 +58,7 @@ export const materialsApi = {
   extract: (id, provider = 'local-rules', config = {}) => http.post(`/materials/${id}/extract`, { provider }, { ...config, timeout: 120000 }),
   extraction: (id) => http.get(`/materials/${id}/extraction`),
   confirmExtraction: (id, payload, config) => http.post(`/materials/${id}/extraction/confirm`, payload, config),
-  fileUrl: (id) => `${(import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')}/materials/${id}/file`,
+  fileUrl: (id) => `${apiBaseUrl}/materials/${id}/file`,
   update: (id, payload, config) => http.patch(`/materials/${id}`, payload, config),
   remove: (id, config) => http.delete(`/materials/${id}`, config),
 }
@@ -123,6 +123,7 @@ export const studyPreferencesApi = {
 }
 
 export const studyPlansApi = {
+  sources: (courseId) => http.get('/study-plans/sources', { params: { course_id: courseId } }),
   list: (courseId = null, includeArchived = false) => {
     const params = {}
     if (courseId) params.course_id = courseId
@@ -135,8 +136,6 @@ export const studyPlansApi = {
   archive: (id, config) => http.post(`/study-plans/${id}/archive`, undefined, config),
 }
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api').replace(/\/$/, '')
-
 export const exportsApi = {
   tasksCsvUrl: () => `${apiBaseUrl}/exports/tasks.csv`,
   tasksCalendarUrl: () => `${apiBaseUrl}/exports/tasks.ics`,
@@ -146,9 +145,4 @@ export const exportsApi = {
 
 export const resetApi = {
   all: () => http.post('/dev/reset'),
-}
-
-export const settingsApi = {
-  getLlm: () => http.get('/settings/llm'),
-  updateLlm: (payload) => http.put('/settings/llm', payload),
 }

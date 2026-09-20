@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.time import deadline_to_utc
 
+from app.schemas.timestamps import UtcDateTime
+
 
 class ExtractionTaskCandidate(BaseModel):
     """A task proposal shown to the user before it becomes a real Task."""
@@ -106,6 +108,8 @@ class ExtractionResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     needs_review: bool = False
     batch_id: str | None = None
+    content_kind: Literal["study_material", "review_outline", "task_notice", "mixed"] = "study_material"
+    learning_points: list[str] = Field(default_factory=list, max_length=6)
     field_evidence: ExtractionFieldEvidenceSet = Field(default_factory=ExtractionFieldEvidenceSet)
 
 
@@ -124,12 +128,13 @@ class ExtractionRead(ExtractionResult):
     status: str
     provider: str | None = None
     error: str | None = None
-    extracted_at: datetime | None = None
+    extracted_at: UtcDateTime | None = None
     confirmed_task_ids: list[int] = Field(default_factory=list)
     confirmed_task_refs: list[ConfirmedExtractionTaskRef] = Field(default_factory=list)
 
 
 class ExtractionConfirm(BaseModel):
+    material_only: bool = False
     tasks: list[ExtractionTaskCandidate] | None = None
     course_id: int | None = None
     material_type: str | None = Field(default=None, max_length=50)

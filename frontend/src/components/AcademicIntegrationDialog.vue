@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="导入教务日程" width="760px" top="4vh" destroy-on-close class="academic-integration-dialog">
+  <el-dialog v-model="visible" title="导入课表与考试" width="760px" top="4vh" destroy-on-close class="academic-integration-dialog">
     <div class="integration-contract" :class="{ 'is-njust': sourceMode === 'njust' }">
       <span class="contract-mark" aria-hidden="true">{{ sourceMode === 'njust' ? '本机' : '只读' }}</span>
       <div>
@@ -19,7 +19,7 @@
       <div class="source-switch" aria-label="选择接入方式">
         <button type="button" :class="{ 'is-active': sourceMode === 'njust' }" :aria-pressed="sourceMode === 'njust'" @click="setSourceMode('njust')">
           <span class="source-badge">NJUST</span>
-          <span><strong>南京理工大学</strong><small>本机直连 · 课表与考试</small></span>
+          <span><strong>南京理工大学</strong><small>使用教务账号读取课表与考试</small></span>
         </button>
         <button type="button" :class="{ 'is-active': sourceMode === 'ical' }" :aria-pressed="sourceMode === 'ical'" @click="setSourceMode('ical')">
           <span class="source-badge is-file">ICS</span>
@@ -29,22 +29,28 @@
 
       <NjustAcademicConnectForm
         v-if="sourceMode === 'njust'"
+        :semester-start="semesterStart"
         @cancel="visible = false"
         @previewed="handleNjustPreview"
       />
 
       <el-form v-else label-position="top" @submit.prevent="previewCalendar">
         <div class="integration-form-grid">
-          <el-form-item label="来源名称（重复导入时保持一致）" required>
-            <el-input v-model="form.source_name" maxlength="120" placeholder="例如：学校教务系统" />
-          </el-form-item>
           <el-form-item label="学期第一周开始日期" required>
             <el-date-picker v-model="form.semester_start" type="date" value-format="YYYY-MM-DD" format="YYYY-MM-DD" style="width: 100%" />
+          </el-form-item>
+        </div>
+        <details class="import-options">
+          <summary>导入选项 <span>{{ form.source_name }} · {{ form.semester_weeks }} 周</span></summary>
+          <div class="integration-form-grid">
+          <el-form-item label="来源名称（重复导入时保持一致）" required>
+            <el-input v-model="form.source_name" maxlength="120" placeholder="例如：学校教务系统" />
           </el-form-item>
           <el-form-item label="学期周数" required>
             <el-input-number v-model="form.semester_weeks" :min="1" :max="30" style="width: 100%" />
           </el-form-item>
         </div>
+        </details>
         <label class="calendar-file-field" :class="{ 'has-file': fileName }">
           <input ref="fileInput" type="file" accept=".ics,text/calendar" @change="readCalendarFile">
           <span class="file-mark" aria-hidden="true">ICS</span>
@@ -57,7 +63,7 @@
         <p v-if="formError" class="field-error" role="alert">{{ formError }}</p>
         <div class="integration-actions">
           <el-button @click="visible = false">取消</el-button>
-          <el-button type="primary" native-type="submit" :loading="loading">读取并查看</el-button>
+          <el-button type="primary" native-type="submit" :loading="loading" :disabled="!calendarText || !form.semester_start">预览课表与考试</el-button>
         </div>
       </el-form>
     </div>
@@ -81,6 +87,7 @@
           <button type="button" @click="selectedKeys = []">清空</button>
         </div>
       </div>
+      <p class="semester-preview">学期开始于 {{ sourceMode === 'njust' ? njustSemesterStart : form.semester_start }}，确认导入后用于自动定位本周。</p>
       <div class="preview-list" aria-label="待同步日程">
         <label v-for="item in preview.items" :key="item.item_key" class="preview-item">
           <el-checkbox :model-value="selectedKeys.includes(item.item_key)" :aria-label="`选择 ${item.course_name}`" @change="toggleItem(item.item_key, $event)" />
@@ -132,7 +139,7 @@ import { academicCalendarApi } from '../api'
 
 const NjustAcademicConnectForm = defineAsyncComponent(() => import('./NjustAcademicConnectForm.vue'))
 
-const props = defineProps({ modelValue: { type: Boolean, default: false } })
+const props = defineProps({ modelValue: { type: Boolean, default: false }, semesterStart: { type: String, default: '' } })
 const emit = defineEmits(['update:modelValue', 'synced'])
 const visible = computed({ get: () => props.modelValue, set: (value) => emit('update:modelValue', value) })
 const sourceMode = ref('njust')
@@ -149,12 +156,7 @@ const selectedKeys = ref([])
 const result = ref({ created: 0, updated: 0, unchanged: 0, skipped: 0, conflicts: [] })
 const selectedItems = computed(() => preview.value.items.filter((item) => selectedKeys.value.includes(item.item_key)))
 
-function defaultSemesterStart() {
-  const now = new Date()
-  const year = now.getFullYear()
-  return now.getMonth() + 1 >= 7 ? `${year}-09-01` : `${year}-02-20`
-}
-function defaultForm() { return { source_name: '学校教务处', semester_start: defaultSemesterStart(), semester_weeks: 18 } }
+function defaultForm() { return { source_name: '学校教务处', semester_start: props.semesterStart || '', semester_weeks: 18 } }
 function setSourceMode(mode) {
   if (sourceMode.value === mode) return
   sourceMode.value = mode
@@ -202,6 +204,7 @@ async function readCalendarFile(event) {
   }
 }
 async function previewCalendar() {
+  if (loading.value) return
   if (!form.source_name.trim() || !form.semester_start || !calendarText.value) {
     formError.value = '请填写来源、学期开始日期并选择 .ics 文件'
     return
@@ -236,6 +239,7 @@ function itemSummary(item) {
   return `周${weekday} ${item.start_time.slice(0, 5)}–${item.end_time.slice(0, 5)} · ${pattern} ${item.start_week}–${item.end_week} 周 · ${item.location || '地点待补充'}${teacher}`
 }
 async function syncCalendar() {
+  if (loading.value || !selectedItems.value.length) return
   loading.value = true
   try {
     result.value = await academicCalendarApi.syncIntegration({
@@ -255,9 +259,16 @@ async function syncCalendar() {
 watch(() => props.modelValue, (value) => {
   if (value && stage.value === 'result') resetDialog()
 })
+watch(() => props.semesterStart, value => {
+  if (value && !form.semester_start && stage.value === 'configure') form.semester_start = value
+})
 </script>
 
 <style scoped>
+.import-options { margin: 0 0 14px; }
+.import-options summary { padding: 10px 0; cursor: pointer; font-size: 13px; }
+.import-options summary span { color: var(--ledger-muted); margin-left: 8px; }
+.semester-preview { font-size: 13px; color: var(--ledger-muted); line-height: 1.6; }
 .integration-contract { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; padding: 11px 13px; color: #334158; background: #f1f5f4; border: 1px solid #cadbd6; border-radius: 5px; }
 .integration-contract.is-njust { background: #f2f6ff; border-color: #cdd8ef; }
 .contract-mark { flex: 0 0 auto; padding: 5px 7px; color: #136d62; background: #d8f3ec; border-radius: 3px; font: 700 10px Bahnschrift, "Microsoft YaHei", sans-serif; letter-spacing: .06em; }

@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.time import as_utc, deadline_to_utc
 
+from app.schemas.timestamps import UtcDateTime
+
 
 WeekPattern = Literal["all", "odd", "even"]
 ExamType = Literal["quiz", "midterm", "final", "other"]
@@ -59,8 +61,8 @@ class ClassSessionRead(ClassSessionBase):
     course_name: str
     course_color: str | None = None
     teacher: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class ExamBase(BaseModel):
@@ -115,8 +117,8 @@ class ExamRead(ExamBase):
     revision: int = Field(ge=1)
     course_name: str
     course_color: str | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
     @field_validator("starts_at", "ends_at")
     @classmethod

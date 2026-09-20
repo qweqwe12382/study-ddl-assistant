@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="132" viewBox="0 0 460 132" fill="none">
+  <!-- Original geometric stationery motif; intentionally contains no information. -->
+  <g stroke="#96B6A2" stroke-width="1">
+    <path d="M8 101h108c46 0 40-72 83-72h229"/>
+    <path d="M8 109h113c46 0 40-72 83-72h224"/>
+    <path d="M8 117h118c46 0 40-72 83-72h219"/>
+    <path d="M277 13h123v100H277z"/>
+    <path d="M285 5h123v100"/>
+    <path d="M293-3h123v100"/>
+  </g>
+  <g fill="#96B6A2">
+    <circle cx="236" cy="75" r="1.2"/><circle cx="236" cy="87" r="1.2"/><circle cx="236" cy="99" r="1.2"/>
+    <circle cx="248" cy="75" r="1.2"/><circle cx="248" cy="87" r="1.2"/><circle cx="248" cy="99" r="1.2"/>
+    <circle cx="260" cy="75" r="1.2"/><circle cx="260" cy="87" r="1.2"/><circle cx="260" cy="99" r="1.2"/>
+  </g>
+  <path d="M53 93h54c46 0 40-72 83-72h160" stroke="#B79B63" stroke-width="1.1"/>
+  <circle cx="53" cy="93" r="3" fill="#B79B63"/>
+  <circle cx="350" cy="21" r="3" fill="#B79B63"/>
+</svg>

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.timestamps import UtcDateTime
 
 TimeSlot = Literal["morning", "afternoon", "evening"]
 
@@ -69,5 +71,5 @@ class StudyPreferenceRead(BaseModel):
     preferred_time_slots: list[TimeSlot]
     course_weights: dict[str, float]
     semester_start_date: date | None = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime

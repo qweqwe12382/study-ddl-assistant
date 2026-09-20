@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+from app.schemas.timestamps import UtcDateTime
 
 
 class CapacityTaskRead(BaseModel):
@@ -13,7 +14,7 @@ class CapacityTaskRead(BaseModel):
     navigation_key: str | None = None
     name: str
     course_id: int | None
-    due_at: datetime
+    due_at: UtcDateTime
     estimated_minutes: int | None
     remaining_minutes: int | None
     counted_minutes: int | None
@@ -36,8 +37,8 @@ class DailyRiskGroupRead(BaseModel):
 
 
 class CapacityCalculationBasisRead(BaseModel):
-    evaluated_at: datetime
-    window_end: datetime
+    evaluated_at: UtcDateTime
+    window_end: UtcDateTime
     task_filter: str
     workload_formula: str
     weekly_available_minutes: int = Field(ge=300)

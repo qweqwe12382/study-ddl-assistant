@@ -3,22 +3,27 @@
     <div class="page-intro calendar-intro">
       <div>
         <h1>课表与考试</h1>
-        <p>查看每周课程，记好考试时间和地点。</p>
+        <p>导入或填写固定的上课、考试时间，复习时段在计划里安排。</p>
       </div>
       <div class="page-actions">
-        <el-button class="integration-entry" @click="integrationDialogVisible = true">导入教务日程</el-button>
-        <el-button :disabled="!courses.length" @click="openClassDialog()">添加上课时间</el-button>
-        <el-button type="primary" :disabled="!courses.length" @click="openExamDialog()">添加考试</el-button>
+        <el-button @click="openClassDialog()">添加上课时间</el-button>
+        <el-button @click="openExamDialog()">添加考试</el-button>
+        <el-button type="primary" class="integration-entry" @click="integrationDialogVisible = true">导入课表与考试</el-button>
       </div>
     </div>
 
-    <div v-if="!courses.length && !loading" class="course-gate" role="status">
+    <nav class="schedule-switch" aria-label="日程与学习安排">
+      <span aria-current="page">课表与考试 <small>固定时间</small></span>
+      <router-link to="/study-plans">复习计划 <small>每天学什么</small></router-link>
+    </nav>
+
+    <div v-if="!courses.length && !loading && !error" class="course-gate" role="status">
       <div class="course-gate-mark" aria-hidden="true">课</div>
       <div>
-        <strong>先建立课程，再安排上课与考试</strong>
-        <p>可以先在设置中添加课程，也可以导入教务日程，预览后再保存。</p>
+        <strong>把课表放进来，就能查看一周安排</strong>
+        <p>导入时自动建立课程；手动添加时，直接填写课程名称即可。</p>
       </div>
-      <router-link to="/settings?focus=courses">先添加课程</router-link>
+      <el-button type="primary" @click="integrationDialogVisible = true">导入课表与考试</el-button>
     </div>
 
     <div v-if="error" class="calendar-error" role="alert">
@@ -190,6 +195,7 @@
               </dl>
             </div>
             <div class="exam-actions">
+              <router-link v-if="!isPastExam(exam)" :to="{ path: '/study-plans', query: { action: 'create', course_id: exam.course_id, exam_date: chinaParts(new Date(exam.starts_at)).dateKey } }">安排复习</router-link>
               <button type="button" @click="openExamDialog(exam)">编辑</button>
               <button type="button" class="danger-action" @click="removeExam(exam)">删除</button>
             </div>
@@ -203,101 +209,20 @@
       </section>
     </template>
 
-    <el-dialog v-model="classDialogVisible" :title="editingClass ? '编辑上课时间' : '添加上课时间'" width="560px" destroy-on-close>
-      <el-form label-position="top" class="dialog-form" @submit.prevent="saveClassSession">
-        <div class="form-grid two-columns">
-          <el-form-item label="课程" required>
-            <el-select v-model="classForm.course_id" placeholder="选择课程" style="width: 100%">
-              <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="星期" required>
-            <el-select v-model="classForm.weekday" style="width: 100%">
-              <el-option v-for="day in weekdays" :key="day.value" :label="day.label" :value="day.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="上课时间" required>
-            <el-input v-model="classForm.start_time" type="time" />
-          </el-form-item>
-          <el-form-item label="下课时间" required>
-            <el-input v-model="classForm.end_time" type="time" />
-          </el-form-item>
-          <el-form-item label="开始周" required>
-            <el-input-number v-model="classForm.start_week" :min="1" :max="30" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="结束周" required>
-            <el-input-number v-model="classForm.end_week" :min="1" :max="30" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="周次规则" required>
-            <el-select v-model="classForm.week_pattern" style="width: 100%">
-              <el-option label="每周" value="all" />
-              <el-option label="仅单周" value="odd" />
-              <el-option label="仅双周" value="even" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="教室或地点">
-            <el-input v-model="classForm.location" maxlength="120" placeholder="例如：博学楼 B203" />
-          </el-form-item>
-        </div>
-        <el-form-item label="备注">
-          <el-input v-model="classForm.note" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="实验课、线上会议号等可选信息" />
-        </el-form-item>
-        <div class="dialog-actions">
-          <el-button v-if="editingClass" type="danger" plain :loading="deleting" @click="removeClassSession(editingClass)">删除这节课</el-button>
-          <span class="dialog-actions-spacer"></span>
-          <el-button @click="classDialogVisible = false">取消</el-button>
-          <el-button type="primary" native-type="submit" :loading="saving">{{ editingClass ? '保存修改' : '加入课表' }}</el-button>
-        </div>
-      </el-form>
-    </el-dialog>
-
-    <el-dialog v-model="examDialogVisible" :title="editingExam ? '编辑考试' : '添加考试'" width="560px" destroy-on-close>
-      <el-form label-position="top" class="dialog-form" @submit.prevent="saveExam">
-        <div class="form-grid two-columns">
-          <el-form-item label="课程" required>
-            <el-select v-model="examForm.course_id" placeholder="选择课程" style="width: 100%">
-              <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="考试类型" required>
-            <el-select v-model="examForm.exam_type" style="width: 100%">
-              <el-option label="随堂测验" value="quiz" />
-              <el-option label="期中考试" value="midterm" />
-              <el-option label="期末考试" value="final" />
-              <el-option label="其他考试" value="other" />
-            </el-select>
-          </el-form-item>
-        </div>
-        <el-form-item label="考试名称" required>
-          <el-input v-model="examForm.title" maxlength="160" placeholder="例如：数据结构期末考试" />
-        </el-form-item>
-        <div class="form-grid two-columns">
-          <el-form-item label="开始时间" required>
-            <el-date-picker v-model="examForm.starts_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" format="YYYY-MM-DD HH:mm" placeholder="选择日期和时间" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="结束时间">
-            <el-date-picker v-model="examForm.ends_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" format="YYYY-MM-DD HH:mm" placeholder="可选" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="考场">
-            <el-input v-model="examForm.location" maxlength="120" placeholder="例如：第一教学楼 101" />
-          </el-form-item>
-          <el-form-item label="座位号">
-            <el-input v-model="examForm.seat_number" maxlength="50" placeholder="例如：A-18" />
-          </el-form-item>
-        </div>
-        <el-form-item label="备注">
-          <el-input v-model="examForm.note" type="textarea" :rows="2" maxlength="500" show-word-limit placeholder="携带物品、考试范围等可选信息" />
-        </el-form-item>
-        <div class="dialog-actions">
-          <span class="dialog-actions-spacer"></span>
-          <el-button @click="examDialogVisible = false">取消</el-button>
-          <el-button type="primary" native-type="submit" :loading="saving">{{ editingExam ? '保存修改' : '加入考试安排' }}</el-button>
-        </div>
-      </el-form>
-    </el-dialog>
+    <AcademicEntryForms
+      v-if="classDialogVisible || examDialogVisible"
+      v-model:class-dialog-visible="classDialogVisible"
+      v-model:exam-dialog-visible="examDialogVisible"
+      :class-form="classForm" :exam-form="examForm"
+      :editing-class="editingClass" :editing-exam="editingExam"
+      :courses="courses" :weekdays="weekdays" :saving="saving" :deleting="deleting"
+      :suggested-exam-title="suggestedExamTitle"
+      @add-course="addCourse" @save-class="saveClassSession" @save-exam="saveExam" @remove-class="removeClassSession"
+    />
 
     <AcademicIntegrationDialog
       v-if="integrationDialogVisible"
+      :semester-start="semesterStartDate"
       v-model="integrationDialogVisible"
       @synced="handleIntegrationSynced"
     />
@@ -306,19 +231,13 @@
 
 <script setup>
 import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
   ElButton,
   ElCheckbox,
-  ElDatePicker,
-  ElDialog,
-  ElForm,
-  ElFormItem,
-  ElInput,
   ElInputNumber,
   ElMessage,
   ElMessageBox,
-  ElOption,
-  ElSelect,
 } from 'element-plus'
 
 import { academicCalendarApi, coursesApi, studyPreferencesApi } from '../api'
@@ -326,7 +245,10 @@ import { editBaseline, editRequestConfig } from '../utils/editPrecondition'
 import { formatDateTime } from '../utils/format'
 import { computeCurrentWeek } from '../utils/semesterWeek'
 
+const AcademicEntryForms = defineAsyncComponent(() => import('../components/AcademicEntryForms.vue'))
 const AcademicIntegrationDialog = defineAsyncComponent(() => import('../components/AcademicIntegrationDialog.vue'))
+const route = useRoute()
+const router = useRouter()
 
 const weekdays = [
   { value: 1, short: '一', label: '星期一' },
@@ -366,6 +288,13 @@ const semesterCurrentWeek = computed(() => computeCurrentWeek(semesterStartDate.
 
 const classForm = reactive(emptyClassForm())
 const examForm = reactive(emptyExamForm())
+const suggestedExamTitle = computed(() => {
+  const course = courses.value.find(item => item.id === examForm.course_id)
+  return course ? `${course.name}${examTypeLabel(examForm.exam_type)}` : ''
+})
+function addCourse(course) {
+  if (!courses.value.some(item => item.id === course.id)) courses.value.push(course)
+}
 const activeDay = computed(() => weekdays.find((day) => day.value === activeWeekday.value))
 const nearestExam = computed(() => exams.value.find((exam) => !isPastExam(exam)) || null)
 const todaySessions = computed(() => sessionsFor(todayWeekday).filter((item) => item.end_time.slice(0, 5) >= currentTime()))
@@ -384,7 +313,7 @@ const todayLabel = computed(() => examDateParts(new Date().toISOString()))
 
 function emptyClassForm(weekday = todayWeekday) {
   return {
-    course_id: courses.value?.[0]?.id || null,
+    course_id: courses.value.length === 1 ? courses.value[0].id : null,
     weekday,
     start_time: '08:00',
     end_time: '09:40',
@@ -398,7 +327,7 @@ function emptyClassForm(weekday = todayWeekday) {
 
 function emptyExamForm() {
   return {
-    course_id: courses.value?.[0]?.id || null,
+    course_id: courses.value.length === 1 ? courses.value[0].id : null,
     title: '',
     exam_type: 'final',
     starts_at: '',
@@ -410,7 +339,7 @@ function emptyExamForm() {
 }
 
 function assignForm(target, source) {
-  Object.keys(target).forEach((key) => { target[key] = source[key] ?? '' })
+  Object.keys(target).forEach((key) => { target[key] = source[key] ?? (key === 'course_id' ? null : '') })
 }
 
 function sessionsFor(weekday) {
@@ -536,7 +465,6 @@ function changeWeek(delta) {
 }
 
 function openClassDialog(item = null, weekday = activeWeekday.value) {
-  if (!courses.value.length) return
   editingClass.value = item ? { ...item } : null
   assignForm(classForm, item ? {
     ...item,
@@ -547,7 +475,6 @@ function openClassDialog(item = null, weekday = activeWeekday.value) {
 }
 
 function openExamDialog(item = null) {
-  if (!courses.value.length) return
   editingExam.value = item ? { ...item } : null
   assignForm(examForm, item ? {
     ...item,
@@ -558,6 +485,7 @@ function openExamDialog(item = null) {
 }
 
 async function saveClassSession() {
+  if (saving.value) return
   if (!classForm.course_id || !classForm.start_time || !classForm.end_time) {
     ElMessage.warning('请填写课程、星期和上下课时间')
     return
@@ -595,8 +523,9 @@ async function saveClassSession() {
 }
 
 async function saveExam() {
-  if (!examForm.course_id || !examForm.title.trim() || !examForm.starts_at) {
-    ElMessage.warning('请填写课程、考试名称和开始时间')
+  if (saving.value) return
+  if (!examForm.course_id || !examForm.starts_at) {
+    ElMessage.warning('请选择或新建课程，再填写开始时间')
     return
   }
   if (examForm.ends_at && examForm.ends_at <= examForm.starts_at) {
@@ -605,7 +534,7 @@ async function saveExam() {
   }
   const payload = {
     ...examForm,
-    title: examForm.title.trim(),
+    title: examForm.title.trim() || suggestedExamTitle.value,
     ends_at: examForm.ends_at || null,
     location: normalizeOptional(examForm.location),
     seat_number: normalizeOptional(examForm.seat_number),
@@ -671,6 +600,15 @@ async function removeExam(item) {
 
 async function handleIntegrationSynced(syncInfo = {}) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(syncInfo.semester_start || '')) {
+    try {
+      if (semesterStartDate.value !== syncInfo.semester_start) {
+        await studyPreferencesApi.update({ semester_start_date: syncInfo.semester_start })
+        semesterStartDate.value = syncInfo.semester_start
+        semesterStartDraft.value = syncInfo.semester_start
+      }
+    } catch {
+      ElMessage.warning('课表已导入，但开学日未保存。请在课表上补充开学日以自动定位本周。')
+    }
     const [year, month, day] = syncInfo.semester_start.split('-').map(Number)
     const semesterStart = Date.UTC(year, month - 1, day)
     const today = chinaParts(new Date())
@@ -689,6 +627,13 @@ watch(selectedWeek, (value) => {
   loadPage()
 })
 watch(includePastExams, loadPage)
+watch(() => route.query.action, async action => {
+  if (action !== 'import') return
+  integrationDialogVisible.value = true
+  const query = { ...route.query }
+  delete query.action
+  await router.replace({ path: route.path, query })
+}, { immediate: true })
 
 async function loadSemesterStart() {
   try {
@@ -726,6 +671,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.schedule-switch { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: -4px 0 22px; border-bottom: 1px solid var(--ledger-line); }
+.schedule-switch > * { display: flex; align-items: center; gap: 8px; padding: 12px 2px; color: var(--ledger-muted); font-size: 14px; text-decoration: none; }
+.schedule-switch > span { border-bottom: 2px solid var(--ledger-link); color: var(--ledger-link); font-weight: 600; }
+.schedule-switch small { font-weight: 400; font-size: 12px; color: var(--ledger-muted); }
 .academic-calendar-page { --calendar-blue: var(--ledger-link); --calendar-mint: #dceee3; --calendar-yellow: #ffc857; color: var(--ledger-ink); }
 .calendar-kicker, .section-eyebrow, .ticket-time, .today-stamp, .exam-date-block, .week-switcher { font-family: inherit; font-variant-numeric: tabular-nums; }
 .calendar-intro h1 { font-family: inherit; font-size: clamp(24px, 2.3vw, 30px); font-weight: 700; letter-spacing: 0; }
@@ -812,9 +761,6 @@ onMounted(() => {
 .exam-empty > span { color: var(--ledger-muted); font-family: inherit; font-size: 11px; letter-spacing: 0; }
 .exam-empty strong { margin-top: 10px; font-size: 16px; }
 .exam-empty p { margin: 7px 0 18px; color: var(--ledger-muted); font-size: 13px; }
-.form-grid.two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; }
-.dialog-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
-.dialog-actions-spacer { flex: 1; }
 
 @media (max-width: 1100px) {
   .desktop-week-board { display: none; }
@@ -856,10 +802,6 @@ onMounted(() => {
   .exam-main dl { display: grid; grid-template-columns: 1fr; gap: 7px; }
   .exam-main dl div { min-width: 0; }
   .exam-actions { grid-column: 1 / -1; justify-content: flex-end; }
-  .form-grid.two-columns { grid-template-columns: minmax(0, 1fr); }
-  .dialog-actions { align-items: stretch; flex-wrap: wrap; }
-  .dialog-actions-spacer { display: none; }
-  .dialog-actions .el-button { flex: 1 1 auto; margin-left: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

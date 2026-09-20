@@ -1,7 +1,9 @@
-from datetime import date, datetime
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.timestamps import UtcDateTime
 
 
 StudyPlanStatus = Literal["draft", "active", "completed", "archived"]
@@ -54,6 +56,10 @@ class StudyPlanUnscheduledItem(BaseModel):
     message: str = Field(min_length=1, max_length=500)
 
 
+class PlanSelectedSource(PlanSourceIdentity):
+    revision: int = Field(ge=1)
+
+
 class StudyPlanGenerate(BaseModel):
     course_id: int
     exam_date: date
@@ -63,6 +69,10 @@ class StudyPlanGenerate(BaseModel):
         description="本计划每天可用于复习的分钟上限；不自动与其他计划或每周容量偏好共享",
     )
     title: str | None = Field(default=None, max_length=200)
+    # Omitted fields retain legacy API behavior. The UI always sends both
+    # lists so an empty selection can never expand to the entire course.
+    material_sources: list[PlanSelectedSource] | None = Field(default=None, max_length=100)
+    task_sources: list[PlanSelectedSource] | None = Field(default=None, max_length=100)
 
 
 class StudyPlanUpdate(BaseModel):
@@ -92,8 +102,8 @@ class StudyPlanRead(BaseModel):
     )
     plan_content: str | None
     status: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
     items: list[StudyPlanItem] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     unscheduled_items: list[StudyPlanUnscheduledItem] = Field(default_factory=list)

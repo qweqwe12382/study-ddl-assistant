@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.time import as_utc, deadline_to_utc
 
+from app.schemas.timestamps import UtcDateTime
+
 
 TaskStatus = Literal["not_started", "in_progress", "completed", "overdue", "canceled"]
 
@@ -81,9 +83,9 @@ class TaskRead(TaskBase):
     extraction_candidate_id: str | None = None
     actual_minutes: int | None = Field(default=None, ge=15, le=10080)
     difficulty: int | None = Field(default=None, ge=1, le=5)
-    completed_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    completed_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
     @field_validator("due_at")
     @classmethod

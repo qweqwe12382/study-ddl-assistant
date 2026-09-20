@@ -2,14 +2,18 @@
   <a class="skip-link" href="#main-content" @click="focusMain">跳到主要内容</a>
   <div class="sr-only" aria-live="polite" aria-atomic="true">{{ viewModeAnnouncement }}</div>
   <el-container class="app-shell">
-    <el-aside width="208px" class="app-sidebar">
+    <el-aside width="220px" class="app-sidebar">
       <router-link to="/app" class="brand" aria-label="学伴管家，返回学习总览">
-        <span class="brand-mark" aria-hidden="true"><el-icon><Reading /></el-icon></span>
+        <BrandMark />
         <div>
           <div class="brand-title">学伴管家</div>
           <div class="brand-subtitle">把学习安排好</div>
         </div>
       </router-link>
+
+      <button type="button" class="workspace-search" aria-haspopup="dialog" :aria-expanded="commandMenuOpen" aria-keyshortcuts="Control+k Meta+k" @click="openCommandMenu">
+        <el-icon aria-hidden="true"><Search /></el-icon><span>快捷入口</span><kbd>Ctrl K</kbd>
+      </button>
 
       <nav class="app-menu" aria-label="学习功能导航">
         <section v-for="group in navigationGroups" :key="group.label" class="nav-group" :aria-label="group.label">
@@ -31,11 +35,12 @@
         <div class="header-identity">
           <div class="desktop-context"><span>学习空间</span><span aria-hidden="true">/</span><strong>{{ currentPageLabel }}</strong></div>
           <span class="mobile-brand" aria-label="学伴管家">
-            <span class="mobile-brand-mark" aria-hidden="true"><el-icon><Reading /></el-icon></span>
+            <BrandMark class="compact-brand-mark" />
             <span>学伴管家</span>
           </span>
+          <button type="button" class="mobile-command-trigger" aria-label="搜索页面和快捷操作" aria-haspopup="dialog" @click="openCommandMenu"><el-icon aria-hidden="true"><Search /></el-icon></button>
         </div>
-          <div v-if="hasViewModes" class="view-mode-switch" role="group" aria-label="页面内容视图">
+          <div v-if="hasViewModes" class="view-mode-switch" :class="{ 'is-detailed': isDetailedView }" role="group" aria-label="页面内容视图">
             <button
               type="button"
               :class="{ 'is-active': isConciseView }"
@@ -140,17 +145,43 @@
       <el-button @click="mobileMenuOpen = false">关闭</el-button>
     </template>
   </el-dialog>
+
+  <WorkspaceCommandMenu v-if="commandMenuMounted" v-model:open="commandMenuOpen" :navigation="navigationGroups.flatMap(group => group.items)" @closed="restoreCommandFocus" />
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElDialog } from 'element-plus'
-import { Aim, ArrowDown, Calendar, Clock, Collection, Grid, House, List, Reading, Setting, Timer } from '@element-plus/icons-vue'
+import { Aim, ArrowDown, Calendar, Clock, Collection, Grid, House, List, Search, Setting, Timer } from '@element-plus/icons-vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { healthApi } from '../api'
 import { authSession, logout } from '../auth/session'
 import { useViewMode } from '../composables/useViewMode'
+import { isCommandShortcut } from '../utils/workspaceCommands'
+import BrandMark from './BrandMark.vue'
+
+const WorkspaceCommandMenu = defineAsyncComponent(() => import('./WorkspaceCommandMenu.vue'))
+const commandMenuMounted = ref(false)
+const commandMenuOpen = ref(false)
+let commandTrigger = null
+
+function openCommandMenu() {
+  commandTrigger = document.activeElement
+  commandMenuMounted.value = true
+  commandMenuOpen.value = true
+}
+function restoreCommandFocus(navigating) {
+  if (!navigating && commandTrigger?.isConnected) commandTrigger.focus({ preventScroll: true })
+}
+function handleWorkspaceKey(event) {
+  if (!isCommandShortcut(event)) return
+  if (commandMenuOpen.value) { event.preventDefault(); commandMenuOpen.value = false; return }
+  // Never cover an in-progress confirmation or form with a second dialog.
+  if ([...document.querySelectorAll('[role="dialog"]')].some(dialog => dialog.getClientRects().length)) return
+  event.preventDefault()
+  openCommandMenu()
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -242,6 +273,7 @@ watch(() => route.path, async () => {
 })
 
 onMounted(() => {
+  window.addEventListener('keydown', handleWorkspaceKey)
   checkConnection()
   syncMobileNavHeight()
   if ('ResizeObserver' in window && mobileNav.value) {
@@ -254,6 +286,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleWorkspaceKey)
   mobileNavResizeObserver?.disconnect()
   if (mobileNavResizeHandler) window.removeEventListener('resize', mobileNavResizeHandler)
   document.documentElement.style.removeProperty('--mobile-nav-height')
@@ -261,6 +294,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.compact-brand-mark { width: 30px; height: 30px; border-radius: 6px; }
+.workspace-search { display: flex; align-items: center; gap: 9px; min-height: 42px; margin: -10px 20px 22px; padding: 8px 10px; border: 1px solid var(--ledger-line); border-radius: 8px; color: var(--ledger-muted); background: var(--ledger-canvas); text-align: left; cursor: pointer; }
+.workspace-search span { flex: 1; font-size: 12px; }
+.workspace-search kbd { font: inherit; font-size: 10px; color: var(--ledger-muted); }
+.workspace-search:hover { border-color: #9ebfac; color: var(--ledger-link); }
+.mobile-command-trigger { display: none; }
+@media (max-width: 900px) { .header-identity { display: flex; align-items: center; gap: 12px; } .mobile-command-trigger { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; padding: 0; color: var(--ledger-link); border: 0; border-radius: 8px; background: transparent; font-size: 19px; cursor: pointer; } }
 .account-button { min-height: 44px; max-width: 230px; display: inline-flex; align-items: center; gap: 9px; padding: 5px 9px 5px 6px; border: 1px solid var(--ledger-line); border-radius: 10px; background: #fff; color: var(--ledger-ink); cursor: pointer; text-align: left; }
 .account-button:hover { border-color: #b4cfc1; background: var(--ledger-canvas); }
 .account-button:focus-visible { outline: 3px solid rgba(50, 120, 100, .35); outline-offset: 2px; }

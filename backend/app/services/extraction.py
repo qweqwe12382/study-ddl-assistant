@@ -9,6 +9,7 @@ from uuid import uuid4
 from app.models.material import Material
 from app.schemas.extraction import ExtractionResult, ExtractionTaskCandidate
 from app.services.llm_provider import ProviderError, get_provider, parse_deadline_text
+from app.services.material_intent import describe_material, is_learning_activity
 from app.time import as_local, deadline_to_utc, utc_now
 
 
@@ -98,6 +99,8 @@ def _normalize_result(raw: dict[str, Any], material: Material, *, provider_name:
         task["candidate_id"] = str(task.get("candidate_id") or f"candidate-{index + 1}")
         raw_source_quote = str(task.get("source_quote") or "")
         task["source_quote"] = raw_source_quote if raw_source_quote.strip() else None
+        if task["source_quote"] and task["source_quote"] in source_text and is_learning_activity(task["source_quote"]):
+            continue
         if task["source_quote"] and task["source_quote"] not in source_text:
             task.setdefault("warnings", []).append("SOURCE_QUOTE_NOT_FOUND")
         due_at, date_warnings = _parse_due_at(task, task["source_quote"] or name, material.source_time)
@@ -117,11 +120,14 @@ def _normalize_result(raw: dict[str, Any], material: Material, *, provider_name:
 
     result_warnings.extend(warning for task in normalized_tasks for warning in task["warnings"])
     result_warnings = list(dict.fromkeys(result_warnings))
+    description = describe_material(source_text, material.original_filename, normalized_tasks)
     try:
         result = ExtractionResult.model_validate(
             {
                 "course_name": raw.get("course_name"),
-                "material_type": raw.get("material_type"),
+                "material_type": raw.get("material_type") or description["material_type"],
+                "content_kind": description["content_kind"],
+                "learning_points": description["learning_points"],
                 "tags": raw_tags,
                 "tasks": normalized_tasks,
                 "warnings": result_warnings,

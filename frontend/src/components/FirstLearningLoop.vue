@@ -16,7 +16,7 @@
         <p class="loop-summary">{{ status.started ? '做完后标记完成，就能留下第一条学习记录。用时和难度可以稍后补充。' : '写下作业或复习内容就能开始。课程、日期和预计用时，都可以稍后补充。' }}</p>
         <div class="loop-actions">
           <button type="button" class="loop-primary" @click="$emit('navigate', status.started ? 'complete' : 'task')">{{ status.started ? '去做第一项任务' : '记下第一项任务' }}</button>
-          <button v-if="!status.started" type="button" class="loop-secondary" @click="startFromMaterial">{{ materialSourceAvailable ? '核对已有资料' : '粘贴课程通知' }}</button>
+          <button v-if="!status.started" type="button" class="loop-secondary" @click="startFromMaterial">{{ materialSourceAvailable ? '核对已有资料' : '从资料开始' }}</button>
         </div>
         <ol class="loop-steps" aria-label="开始学习的两个步骤">
           <li :class="{ 'is-complete': status.started }"><span aria-hidden="true">{{ status.started ? '✓' : '1' }}</span>记下一项任务</li>
@@ -58,7 +58,7 @@ function setHidden(value) {
 }
 function startFromMaterial() {
   if (props.materialSourceAvailable) emit('open-material-source')
-  else emit('navigate', 'notice')
+  else emit('navigate', 'material')
 }
 </script>
 

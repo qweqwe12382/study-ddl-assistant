@@ -30,6 +30,10 @@ def _short_text(value: str | None, *, limit: int = 100) -> str | None:
 
 
 def _material_points(material: Material) -> list[str]:
+    excerpts = (material.extraction_result or {}).get("learning_points", [])
+    verified = [value for value in excerpts if isinstance(value, str) and value in (material.extracted_text or "")]
+    if verified:
+        return [_short_text(value) for value in verified[:3]]
     points: list[str] = []
     for tag in material.tags or []:
         value = _short_text(tag, limit=50)
@@ -64,7 +68,7 @@ def _material_focus(material: Material) -> dict[str, Any]:
     return {
         "kind": "material",
         "label": material.original_filename,
-        "detail": points[0],
+        "detail": "；".join(points)[:240],
         "knowledge_points": points,
         "material_id": material.id,
         "navigation_key": material.navigation_key,
@@ -432,6 +436,7 @@ def encode_plan_content(
     material_count: int = 0,
     task_count: int = 0,
     unscheduled_items: list[StudyPlanUnscheduledItem] | None = None,
+    source_selection: dict | None = None,
 ) -> str:
     for item in items:
         if not valid_navigation_key(item.navigation_key):
@@ -446,7 +451,7 @@ def encode_plan_content(
         "task_count": task_count,
         # A baseline is evidence, not a heuristic: a later plan-delta may only
         # touch an item still byte-equivalent to this generated version.
-        "agent": {"baseline_items": baseline_items, "manual_item_ids": [], "adjustment_log": []},
+        "agent": {"baseline_items": baseline_items, "manual_item_ids": [], "adjustment_log": [], "source_selection": source_selection},
     }
     return json.dumps(payload, ensure_ascii=False)
 
@@ -493,6 +498,7 @@ def decode_plan_agent_metadata(content: str | None) -> dict[str, Any]:
             "baseline_items": baseline if isinstance(baseline, dict) else {},
             "manual_item_ids": [str(value) for value in manual if isinstance(value, str)],
             "adjustment_log": log if isinstance(log, list) else [],
+            "source_selection": agent.get("source_selection"),
         }
     except (TypeError, ValueError, json.JSONDecodeError):
         return {"baseline_items": {}, "manual_item_ids": [], "adjustment_log": []}
@@ -515,6 +521,7 @@ def encode_plan_content_with_metadata(
             "baseline_items": metadata.get("baseline_items", {}),
             "manual_item_ids": sorted(set(str(value) for value in metadata.get("manual_item_ids", []))),
             "adjustment_log": list(metadata.get("adjustment_log", []))[-50:],
+            "source_selection": metadata.get("source_selection"),
         },
     }
     return json.dumps(payload, ensure_ascii=False)

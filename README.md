@@ -84,7 +84,7 @@ Pop-Location
 | `/focus` | 专注计时和任务反馈 |
 | `/schedule` | 课表、考试、iCalendar/教务接入 |
 | `/study-plans` | 复习计划生成、编辑、归档和导出 |
-| `/settings` | 学习偏好、外部 AI 和本地测试数据管理 |
+| `/settings` | 课程、学习偏好、提醒和本地测试数据管理 |
 
 ### 资料、通知与任务
 
@@ -116,7 +116,7 @@ Pop-Location
 | `DEMO_MODE` | `false` | 是否加载脱敏演示数据 |
 | `CORS_ORIGINS` | 本地前端地址 | 允许的前端来源 |
 
-默认配置不需要外部 AI 密钥。设置页保存外部 AI 配置时只返回掩码信息；每次向外部 Provider 发送资料正文前仍需用户主动选择并确认。
+默认配置不需要外部 AI 密钥。外部 Provider 由服务端环境变量配置；每次向外部 Provider 发送资料正文前仍需用户主动选择并确认。
 
 ## 📡 API 概览
 
@@ -134,7 +134,7 @@ Pop-Location
 | `/api/dashboard`、`/api/agent/*` | 学习总览、建议、容量、复盘和回执 |
 | `/api/study-plans/*` | 复习计划与计划差异 |
 | `/api/exports/*` | CSV、Markdown 和 iCal 导出 |
-| `/api/settings/*`、`/api/study-preferences/*` | Provider 与学习偏好配置 |
+| `/api/study-preferences/*` | 学习偏好配置 |
 
 接口参数和响应结构以启动后的 [Swagger 文档](http://127.0.0.1:8000/docs) 为准。
 
@@ -163,7 +163,11 @@ Push-Location android
 Pop-Location
 ```
 
-最近一次本地回归（2026-09-12）：后端 `286 passed`；前端完整 `verify` 通过；构建仅有依赖包的既有 `@vueuse` PURE annotation 警告。自动化通过不等于真实学校登录、真实外部 AI 质量、日历客户端去重/提醒、Android 真机或公网部署已验收。
+最近一次本地回归（2026-09-20）：后端 `300 passed`；前端完整 `verify` 通过，包含 36 个 Vue 组件的静态检查、14 组行为契约、生产构建和包体预算；Android 单元测试任务、lint 与 Debug 打包通过，当前 11 个单元用例均通过。浏览器已检查全部 11 个页面的桌面与手机布局，详情见 [全面功能测试与优化](docs/quality/全面功能测试与优化-2026-09-20.md)。自动化通过不等于真实学校登录、真实外部 AI 质量、日历客户端去重/提醒、Android 真机或公网部署已验收。
+
+页面动效随后新增了 1 组生命周期与减少动态效果检查，目前前端共 15 组行为契约；动效说明见 [页面动效设计与验收](docs/design/page-motion-2026-09-20.md)。
+
+公开介绍页采用原创立体书页主视觉、可切换的三步流程与深绿改期展示；素材来源、字体许可、手机布局及资源验证见 [介绍页视觉升级与验收](docs/design/landing-art-direction-2026-09-20.md)。
 
 ## 🔐 数据与安全边界
 

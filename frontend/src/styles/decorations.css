@@ -1,0 +1,60 @@
+/* Decorative layers only: no layout space, pointer targets, or repeating motion. */
+.auth-page .auth-story,
+.app-main,
+.today-focus-stage { position: relative; isolation: isolate; }
+
+.auth-page .auth-story::before,
+.app-main::before,
+.today-focus-stage::before {
+  position: absolute;
+  z-index: -1;
+  display: block;
+  content: '';
+  pointer-events: none;
+  user-select: none;
+}
+
+.auth-page .auth-story { overflow: hidden; }
+.auth-page .auth-story::before {
+  inset: 0;
+  background: url('../assets/decor/study-paper-sage.webp') no-repeat 76% center / auto 100%;
+  opacity: .72;
+}
+
+/* Workspace ornament stays at the edge of the heading, outside working content. */
+.app-main::before {
+  top: 3px;
+  right: 24px;
+  width: 420px;
+  max-width: 48%;
+  height: 120px;
+  background: url('../assets/decor/study-path.svg') no-repeat right top / contain;
+  opacity: .21;
+}
+
+.today-focus-stage::before {
+  inset: 1px 1px 1px auto;
+  width: 62%;
+  border-radius: inherit;
+  background: url('../assets/decor/study-paper-sage.webp') no-repeat right bottom / cover;
+  opacity: .27;
+  mask-image: linear-gradient(to right, transparent, #000 60%);
+}
+
+@media (max-width: 900px) {
+  .app-main::before { right: 12px; width: 280px; max-width: 58%; height: 100px; opacity: .15; }
+}
+
+@media (max-width: 800px) {
+  .auth-page .auth-story::before { background-size: cover; background-position: right bottom; opacity: .55; }
+}
+
+@media (max-width: 760px) {
+  .today-focus-stage::before { width: 72%; opacity: .2; background-size: auto 100%; }
+}
+
+@media (forced-colors: active), print {
+  .auth-page .auth-story::before,
+  .app-main::before,
+  .today-focus-stage::before { display: none; }
+}

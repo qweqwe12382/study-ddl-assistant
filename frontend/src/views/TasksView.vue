@@ -3,7 +3,7 @@
     <div class="page-intro">
       <div>
         <h1>截止任务</h1>
-        <p>记下作业、实验和考试，按截止时间安排。</p>
+        <p>按截止安排，做完轻轻勾掉。</p>
       </div>
       <div class="page-actions task-page-actions">
         <router-link class="task-focus-entry task-radar-entry" to="/deadline-radar">DDL 应变台</router-link>
@@ -28,9 +28,9 @@
     <div aria-live="polite" aria-atomic="true">
       <Transition name="soft-swap">
         <div v-if="completedNotice" ref="completionNoticeElement" class="completion-notice" tabindex="-1">
-          <svg class="completion-check" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" /><path d="m9 16 5 5 9-10" /></svg>
+          <svg :key="`${completedNotice.name}:${completedNotice.task?.revision}`" class="completion-check" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" /><path d="m9 16 5 5 9-10" /></svg>
           <div><strong>{{ completedNotice.updated ? '完成反馈已更新' : '又完成了一件事' }}</strong><p>{{ completedNotice.name }}</p></div>
-          <button v-if="completedNotice.task" type="button" @click="openCompletionFeedback(completedNotice.task)">补充用时（可选）</button>
+          <button v-if="completedNotice.task" type="button" @click="openCompletionFeedback(completedNotice.task)">{{ completedNotice.task.actual_minutes != null || completedNotice.task.difficulty != null ? '查看或更新反馈' : '补充用时（可选）' }}</button>
           <button type="button" class="notice-dismiss" aria-label="收起完成提示" @click="completedNotice = null">×</button>
         </div>
       </Transition>
@@ -69,7 +69,8 @@
         </span>
       </div>
 
-      <div v-show="isDetailedView || filterOptionsOpen" id="task-filter-options" class="task-filter-index__fields">
+      <Transition name="reveal-panel">
+      <div v-if="isDetailedView || filterOptionsOpen" class="filter-reveal"><div id="task-filter-options" class="task-filter-index__fields">
         <label class="task-filter-field">
           <span>课程</span>
           <el-select v-model="courseFilter" clearable placeholder="全部课程" aria-label="按课程筛选任务">
@@ -86,7 +87,8 @@
             <el-option label="已取消" value="canceled" />
           </el-select>
         </label>
-      </div>
+      </div></div>
+      </Transition>
 
       <div v-if="hasActiveFilters" class="task-filter-index__footer">
         <p>当前筛选：{{ activeFilterSummary }}</p>
@@ -264,18 +266,18 @@
         </el-form-item>
         <el-form-item label="预计用时">
           <div class="duration-fields">
-            <el-input-number v-model="durationForm.estimated_hours" :min="0" :max="168" controls-position="right" placeholder="小时" />
+            <el-input-number v-model="durationForm.estimated_hours" aria-label="预计用时（小时）" :min="0" :max="168" controls-position="right" placeholder="小时" />
             <span>小时</span>
-            <el-input-number v-model="durationForm.estimated_remainder_minutes" :min="0" :max="59" controls-position="right" placeholder="分钟" />
+            <el-input-number v-model="durationForm.estimated_remainder_minutes" aria-label="预计用时（分钟）" :min="0" :max="59" controls-position="right" placeholder="分钟" />
             <span>分钟</span>
           </div>
           <div class="field-hint">不确定时可以留空；需要补充时，容量判断会明确提示。</div>
         </el-form-item>
         <el-form-item label="剩余用时">
           <div class="duration-fields">
-            <el-input-number v-model="durationForm.remaining_hours" :min="0" :max="168" controls-position="right" placeholder="小时" />
+            <el-input-number v-model="durationForm.remaining_hours" aria-label="剩余用时（小时）" :min="0" :max="168" controls-position="right" placeholder="小时" />
             <span>小时</span>
-            <el-input-number v-model="durationForm.remaining_remainder_minutes" :min="0" :max="59" controls-position="right" placeholder="分钟" />
+            <el-input-number v-model="durationForm.remaining_remainder_minutes" aria-label="剩余用时（分钟）" :min="0" :max="59" controls-position="right" placeholder="分钟" />
             <span>分钟</span>
           </div>
         </el-form-item>
@@ -700,7 +702,7 @@ async function openMaterialSource(task) {
     const response = await agentApi.resolveSourceRefs([sourceRef])
     const target = validatedMaterialTarget(response, materialId, context.navigation_key)
     if (!target) {
-      const resolved = plainObject(response) && Array.isArray(response.items) ? response.items[0] : null
+      const resolved = Array.isArray(response?.items) ? response.items[0] : null
       ElMessage.warning(resolved?.available === false ? (resolved.message || '该资料当前不可打开。') : '资料入口校验失败，已停止跳转。')
       return
     }
@@ -1706,7 +1708,7 @@ onMounted(() => {
 .completion-notice { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; padding: 16px 18px; color: #2c634f; border: 1px solid #cce1d5; border-radius: 12px; background: #f0f8f3; }
 .completion-check { flex: 0 0 32px; width: 32px; height: 32px; fill: #dcefe2; }
 .completion-check path { fill: none; stroke: #357862; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 24; }
-.soft-swap-enter-active .completion-check path { animation: completion-tick .3s ease both; }
+@media (prefers-reduced-motion: no-preference) { .completion-check path { animation: completion-tick .3s var(--motion-ease) both; } }
 .completion-notice > div { min-width: 0; flex: 1; }
 .completion-notice strong { font-size: 14px; }
 .completion-notice p { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 13px; }

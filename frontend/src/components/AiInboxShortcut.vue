@@ -1,14 +1,14 @@
 <template>
   <section class="inbox-shortcut" aria-labelledby="inbox-shortcut-title">
     <header class="inbox-heading">
-      <h2 id="inbox-shortcut-title">从课程通知开始</h2>
+      <h2 id="inbox-shortcut-title">课程通知，随手收好</h2>
       <span class="inbox-status" :class="`is-${viewState}`">{{ statusLabel }}</span>
     </header>
-    <p class="inbox-lede">帮你找出作业和截止时间，核对后再创建任务。</p>
+    <p class="inbox-lede">提取作业与截止，核对后保存。</p>
 
     <div class="inbox-actions">
-      <button type="button" class="inbox-action" @click="emit('paste-notice')">粘贴通知</button>
-      <button type="button" class="inbox-action" aria-label="上传文件或截图并开始识别" @click="emit('upload')">上传文件或截图</button>
+      <button type="button" class="inbox-action" @click="emit('paste-notice')"><el-icon aria-hidden="true"><Document /></el-icon>粘贴通知</button>
+      <button type="button" class="inbox-action" aria-label="上传文件或截图并开始识别" @click="emit('upload')"><el-icon aria-hidden="true"><Upload /></el-icon>上传资料</button>
     </div>
 
     <div v-if="viewState !== 'ready'" class="inbox-state" :class="`is-${viewState}`" role="status" aria-live="polite">
@@ -21,8 +21,7 @@
         <div class="is-review"><dt>待核对</dt><dd>{{ counts.review }}</dd></div>
         <div class="is-failed"><dt>处理失败</dt><dd>{{ counts.failed }}</dd></div>
       </dl>
-      <p v-if="countsKnown && totalCount === 0" class="inbox-empty" role="status">还没有待处理资料，可以添加一份试试。</p>
-      <p v-else-if="!countsKnown" class="inbox-empty" role="status">资料数量暂未同步，请进入收件箱查看。</p>
+      <p v-if="!countsKnown" class="inbox-empty" role="status">资料数量暂未同步，请进入收件箱查看。</p>
     </template>
     <button type="button" class="inbox-review-link" :aria-label="reviewActionLabel" @click="emit('open-inbox')">打开资料收件箱</button>
   </section>
@@ -30,6 +29,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { Document, Upload } from '@element-plus/icons-vue'
 
 const props = defineProps({
   state: {
@@ -55,7 +55,7 @@ const statusLabel = computed(() => {
   if (viewState.value === 'loading') return '正在同步'
   if (viewState.value === 'error') return '暂时不可用'
   if (!countsKnown.value) return '状态待同步'
-  return totalCount.value ? `${totalCount.value} 项待处理` : '已同步'
+  return totalCount.value ? `${totalCount.value} 项待处理` : '已整理好'
 })
 const stateTitle = computed(() => (viewState.value === 'loading' ? '正在读取资料状态' : '资料状态暂时无法读取'))
 const stateDetail = computed(() => (viewState.value === 'loading' ? '稍等片刻，资料状态同步后会显示在这里。' : '可以继续添加资料，或进入资料收件箱重试。'))
@@ -71,7 +71,7 @@ const reviewActionLabel = computed(() => (totalCount.value === null ? '打开资
 .inbox-status.is-error { color: #a24a42; }
 .inbox-lede { margin: 12px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
 .inbox-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
-.inbox-action { display: inline-flex; flex: 1 1 100px; align-items: center; justify-content: center; min-width: 0; min-height: 44px; padding: 10px; color: var(--ledger-link); background: var(--ledger-paper); border: 1px solid #ceded3; border-radius: 8px; font: inherit; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
+.inbox-action { display: inline-flex; flex: 1 1 100px; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 44px; padding: 10px; color: var(--ledger-link); background: var(--ledger-paper); border: 1px solid #ceded3; border-radius: 8px; font: inherit; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
 .inbox-action:hover { border-color: var(--ledger-indigo); }
 .inbox-state, .inbox-empty { margin: 18px 0 0; color: var(--ledger-muted); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .inbox-state { padding: 8px 0 8px 12px; border-left: 2px solid var(--ledger-amber); }

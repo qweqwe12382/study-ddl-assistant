@@ -16,7 +16,9 @@ import {
   ElTag,
 } from 'element-plus'
 import './element-plus.css'
+import './font-faces.css'
 import './styles.css'
+import './styles/decorations.css'
 
 import App from './App.vue'
 import router from './router'

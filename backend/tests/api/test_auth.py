@@ -162,7 +162,7 @@ def test_email_authentication_csrf_and_workspace_isolation(auth_client: TestClie
     assert second_user.status_code == 201
     assert second_user.json()["is_admin"] is False
     assert client.get("/api/courses").json() == []
-    assert client.get("/api/settings/llm").status_code == 403
+    assert client.get("/api/settings/llm").status_code == 404
     client.post("/api/courses", json={"name": "线性代数"}, headers=_csrf_headers(client))
     assert [course["name"] for course in client.get("/api/courses").json()] == ["线性代数"]
     second_upload = client.post(
@@ -183,7 +183,7 @@ def test_email_authentication_csrf_and_workspace_isolation(auth_client: TestClie
 
     client.post("/api/auth/login", json={"email": "lin@example.com", "password": "study2026"})
     assert [course["name"] for course in client.get("/api/courses").json()] == ["数据结构"]
-    assert client.get("/api/settings/llm").status_code == 200
+    assert client.get("/api/settings/llm").status_code == 404
 
 
 def test_duplicate_email_is_rejected(auth_client: TestClient):

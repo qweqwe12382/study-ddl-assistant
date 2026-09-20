@@ -3,14 +3,17 @@
     <div class="page-intro dashboard-intro">
       <div>
         <h1>今天</h1>
-        <p>看看要做什么，从最重要的一件开始。</p>
+        <p>{{ todayLabel }}</p>
       </div>
       <div class="dashboard-intro-actions">
         <span v-if="dashboard.study_streak_days >= 1" class="streak-chip" role="status" aria-label="连续学习天数">已连续学习 {{ dashboard.study_streak_days }} 天</span>
-        <button v-if="!firstLearningLoopPriority || isDetailedView" type="button" class="quick-task-button" @click="navigateFirstLearningLoop('task')"><span aria-hidden="true">＋</span>记一项任务</button>
+        <button v-if="isDetailedView" type="button" class="quick-task-button" @click="navigateFirstLearningLoop('task')"><el-icon aria-hidden="true"><Plus /></el-icon>记一项任务</button>
       </div>
     </div>
 
+    <QuickTaskAdd v-if="isConciseView" ref="homeQuickAdd" :courses="homeCourses" @created="refreshHomeTasks" />
+    <p v-if="homeMessage" class="home-task-message" role="status">{{ homeMessage }}</p>
+    <div v-if="homeError" class="home-task-error" role="alert">{{ homeError }} <button type="button" @click="retryHomeTasks">刷新任务</button></div>
     <div id="dashboard-first-learning-loop-priority" class="first-learning-loop-slot"></div>
 
     <TodayFocusStage
@@ -20,8 +23,9 @@
       :attention-items="focusAttentionItems"
       :summary-items="focusSummaryItems"
       :details-count="focusDetailsCount"
-      @retry="refreshAgent(false)"
+      @retry="retryToday"
       @act-focus="handleFocusAction"
+      @complete-focus="completeHomeFocus"
       @act-attention="handleFocusAttention"
       @open-details="openDetailedLedger"
       @create-task="navigateFirstLearningLoop('task')"
@@ -50,6 +54,7 @@
     <div id="dashboard-first-learning-loop-default" class="first-learning-loop-slot"></div>
     <Teleport defer :to="firstLearningLoopTarget">
       <FirstLearningLoop
+        v-if="isDetailedView || !homeTasks.length"
         :state="dashboardState"
         :concise="isConciseView"
         :progress="dashboard"
@@ -1081,7 +1086,7 @@ import {
   ElRadioButton,
   ElRadioGroup,
 } from 'element-plus'
-import { Clock, Collection, List, WarningFilled } from '@element-plus/icons-vue'
+import { Clock, Collection, List, Plus, WarningFilled } from '@element-plus/icons-vue'
 
 import { agentApi, dashboardApi } from '../api'
 import { useViewMode } from '../composables/useViewMode'
@@ -1101,11 +1106,27 @@ import FirstLearningLoop from '../components/FirstLearningLoop.vue'
 import LedgerDisclosure from '../components/LedgerDisclosure.vue'
 import TodayFocusStage from '../components/TodayFocusStage.vue'
 import { shouldPrioritizeFirstLearningLoop } from '../utils/firstLearningLoopPlacement'
-import { normalizePlanDeltaLines } from '../utils/planDeltaDisplay'
+import { normalizePlanDeltaLines, planStateLines } from '../utils/planDeltaDisplay'
+import QuickTaskAdd from '../components/QuickTaskAdd.vue'
+import { useHomeTasks } from '../composables/useHomeTasks'
+import { chooseHomeFocus, focusTaskTarget, isRoutineSetup } from '../utils/dailyWorkflow'
+
+const homeQuickAdd = ref(null)
+const { tasks: homeTasks, courses: homeCourses, state: homeState, message: homeMessage, error: homeError, completing: homeCompleting, load: loadHomeTasks, complete: completeHomeTask, retry: retryHomeTasks } = useHomeTasks()
+
+async function refreshHomeTasks() {
+  await Promise.allSettled([loadHomeTasks(), loadDashboard(), loadAgentBriefing()])
+}
+async function retryToday() { await Promise.allSettled([retryHomeTasks(), refreshAgent(false)]) }
+async function completeHomeFocus() {
+  if (focusStageSource.value?.kind !== 'task') return
+  if (await completeHomeTask(focusStageSource.value.item)) await Promise.allSettled([loadDashboard(), loadAgentBriefing()])
+}
 
 const loading = ref(true)
 const dashboardState = ref('loading')
 const router = useRouter()
+const todayLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
 const { isConciseView, isDetailedView, setViewMode } = useViewMode()
 const error = ref('')
 const dashboard = ref({
@@ -1260,6 +1281,7 @@ const detailedDataStatusMessage = computed(() => {
   return '完整记录尚未加载。'
 })
 const focusStageState = computed(() => {
+  if (isConciseView.value && homeState.value === 'ready' && homeTasks.value.some(task => !['completed', 'canceled'].includes(task.status))) return 'ready'
   if (agentBriefingState.value === 'loading') return 'loading'
   if (agentBriefingState.value === 'error') return 'error'
   if (agentBriefingState.value === 'invalid' || decisionQueueStatus.value === 'invalid') return 'invalid'
@@ -1276,19 +1298,21 @@ const aiInboxShortcutState = computed(() => {
   if (agentBriefingState.value === 'ready' && inbox.value.available) return 'ready'
   return 'error'
 })
-const focusStageSource = computed(() => {
-  const firstDecision = decisionQueue.value[0] || null
-  const firstAction = todayActions.value[0] || null
-  if (firstDecision && ['critical', 'high'].includes(firstDecision.priority)) {
-    return { kind: 'decision', item: firstDecision }
-  }
-  if (firstAction) return { kind: 'action', item: firstAction }
-  if (firstDecision) return { kind: 'decision', item: firstDecision }
-  return null
-})
+const focusStageSource = computed(() => chooseHomeFocus({ decisions: decisionQueue.value, actions: todayActions.value, tasks: homeState.value === 'ready' ? homeTasks.value : [], concise: isConciseView.value }))
 const focusStageItem = computed(() => {
   const source = focusStageSource.value
   if (!source) return null
+  if (source.kind === 'task') return {
+    title: source.item.name,
+    meta: `${source.item.course_name || homeCourses.value.find(course => course.id === source.item.course_id)?.name || '个人任务'} · ${source.item.due_at ? formatDateTime(source.item.due_at) + ' 截止' : '未定截止日期'}`,
+    detail: '先按截止时间，再按优先级排序。做完即可勾掉，无需填写预计时长。',
+    badge: isOverdue(source.item) ? '已逾期' : '待完成',
+    tone: isOverdue(source.item) ? 'coral' : 'neutral',
+    actionLabel: '开始专注 · 25 分钟',
+    actionDisabled: !focusTaskTarget(source.item) || homeCompleting.value,
+    canComplete: true,
+    completing: homeCompleting.value,
+  }
   return source.kind === 'decision' ? decisionFocusItem(source.item) : todayActionFocusItem(source.item)
 })
 const focusAttentionItems = computed(() => buildFocusAttentionItems(focusStageSource.value))
@@ -1309,6 +1333,10 @@ const firstLearningLoopTarget = computed(() => (
 ))
 const focusSummaryItems = computed(() => {
   const inboxTotal = inbox.value.ready_count + inbox.value.needs_review_count + inbox.value.failed_count
+  if (isConciseView.value) return [
+    { label: '待办任务', value: homeState.value === 'ready' ? `${homeTasks.value.filter(task => !['completed', 'canceled'].includes(task.status)).length} 项` : '—' },
+    { label: '待处理资料', value: inbox.value.available ? `${inboxTotal} 项` : '—' },
+  ]
   const capacityState = capacityLoading.value
     ? { value: '读取中', state: 'default' }
     : capacityError.value || !capacityLoaded.value
@@ -1491,6 +1519,11 @@ async function handleActionCandidate(action) {
 async function handleFocusAction() {
   const source = focusStageSource.value
   if (!source) return
+  if (source.kind === 'task') {
+    const target = focusTaskTarget(source.item)
+    if (target) await router.push(target)
+    return
+  }
   if (source.kind === 'decision') {
     await handleDecisionFocus(source.item)
     return
@@ -1524,6 +1557,11 @@ const firstLearningLoopRoutes = Object.freeze({
 })
 
 function navigateFirstLearningLoop(action) {
+  if (action === 'task' && isConciseView.value) {
+    homeQuickAdd.value?.focusInput()
+    document.getElementById('quick-task-name')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    return
+  }
   const target = firstLearningLoopRoutes[action] || firstLearningLoopRoutes.task
   return router.push(target)
 }
@@ -1877,12 +1915,14 @@ function buildFocusAttentionItems(selected) {
   }
 
   decisionQueue.value.forEach((decision, index) => {
+    if (isConciseView.value && isRoutineSetup(decision)) return
     if (decision === selectedItem) return
     if (['critical', 'high'].includes(decision.priority) || (selected?.kind === 'action' && index === 0)) {
       add(decisionAttentionItem(decision))
     }
   })
   todayActions.value.forEach((action) => {
+    if (isConciseView.value && (isRoutineSetup(action) || (selected?.kind === 'task' && Number(action.target_ids?.task_id) === selectedItem.id))) return
     if (action === selectedItem) return
     if (['critical', 'high'].includes(action.risk_level)) add(actionAttentionItem(action))
   })
@@ -1890,7 +1930,7 @@ function buildFocusAttentionItems(selected) {
     if (reminder.severity === 'high') add(reminderAttentionItem(reminder))
   })
 
-  if (capacityError.value || (capacityLoaded.value && capacityRisk.value.type !== 'success')) {
+  if ((isDetailedView.value && capacityError.value) || (capacityLoaded.value && (isDetailedView.value ? capacityRisk.value.type !== 'success' : capacityRisk.value.type === 'danger'))) {
     add({
       id: 'focus-capacity',
       sourceKind: 'details',
@@ -3473,7 +3513,7 @@ async function loadPlanDeltas() {
   try {
     planDeltas.value = normalizePlanDeltaList(await agentApi.planDeltas())
     return true
-  } catch (err) {
+  } catch {
     // The briefing remains usable while the optional dedicated endpoint is being deployed.
     planDeltas.value = planDeltas.value || []
     return false
@@ -3965,6 +4005,7 @@ watch(isDetailedView, (detailed, wasDetailed) => {
 })
 
 onMounted(async () => {
+  loadHomeTasks()
   loadDashboard()
   await refreshAgent(true)
   // A stored detailed-view preference is a direct entry to the detailed
@@ -3974,6 +4015,9 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.home-task-message { margin: 0 0 16px; color: var(--ledger-link); font-size: 14px; }
+.home-task-error { margin: 0 0 16px; color: #a12f25; font-size: 14px; }
+.home-task-error button { min-height: 44px; border: 0; background: transparent; color: var(--ledger-link); cursor: pointer; }
 .dashboard-intro { align-items: center; }
 .dashboard-intro-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
 .quick-task-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 16px; color: var(--ledger-link); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 8px; font: inherit; font-size: 14px; cursor: pointer; }

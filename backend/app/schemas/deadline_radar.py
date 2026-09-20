@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.agent import ActionReceiptRead
 from app.schemas.task import TaskRead
 
+from app.schemas.timestamps import UtcDateTime
+
 
 DeadlineChangeIntent = Literal["reschedule", "cancel"]
 DeadlineChangeDirection = Literal["earlier", "later", "new_deadline", "removed"]
@@ -40,14 +42,14 @@ class DeadlineRadarTaskRead(BaseModel):
     revision: int = Field(ge=1)
     name: str = Field(max_length=200)
     status: str
-    current_due_at: datetime | None = None
-    proposed_due_at: datetime | None = None
+    current_due_at: UtcDateTime | None = None
+    proposed_due_at: UtcDateTime | None = None
 
 
 class DeadlineRadarEvidenceRead(BaseModel):
     quote: str = Field(max_length=360)
     marker: str = Field(max_length=24)
-    detected_due_at: datetime | None = None
+    detected_due_at: UtcDateTime | None = None
     warnings: list[str] = Field(default_factory=list, max_length=10)
 
 
@@ -77,7 +79,7 @@ class DeadlineRadarImpactRead(BaseModel):
 
 
 class DeadlineRadarPreviewRead(BaseModel):
-    generated_at: datetime
+    generated_at: UtcDateTime
     intent: DeadlineChangeIntent
     task: DeadlineRadarTaskRead
     evidence: DeadlineRadarEvidenceRead

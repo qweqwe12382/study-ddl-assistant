@@ -8,7 +8,7 @@
         </p>
       </div>
       <dl v-if="plan" class="plan-facts" aria-label="计划信息">
-        <div v-if="plan.exam_date"><dt>考试</dt><dd>{{ formatDate(plan.exam_date) }}</dd></div>
+        <div v-if="plan.exam_date"><dt>复习至</dt><dd>{{ formatDate(plan.exam_date) }}</dd></div>
         <div v-if="plan.daily_minutes"><dt>每日上限</dt><dd>{{ plan.daily_minutes }} 分钟</dd></div>
       </dl>
     </header>
