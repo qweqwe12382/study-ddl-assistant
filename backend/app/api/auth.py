@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import secrets
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
@@ -69,12 +70,17 @@ def _clear_auth_cookies(response: Response) -> None:
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_auth_db)) -> User:
+    if payload.email == DEMO_ACCOUNT_EMAIL:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "EMAIL_RESERVED", "message": "这个邮箱用于演示模式，请使用自己的邮箱注册"},
+        )
     if db.scalar(select(User.id).where(User.email == payload.email)) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "EMAIL_EXISTS", "message": "这个邮箱已经注册，可以直接登录"},
         )
-    is_first_user = (db.scalar(select(func.count(User.id))) or 0) == 0
+    is_first_user = (db.scalar(select(func.count(User.id)).where(User.is_demo.is_(False))) or 0) == 0
     user = User(
         id=secrets.token_hex(16),
         email=payload.email,
@@ -136,6 +142,7 @@ def demo_login(response: Response, db: Session = Depends(get_auth_db)) -> User:
             password_hash=hash_password(DEMO_ACCOUNT_PASSWORD),
             workspace_key=secrets.token_hex(16),
             is_admin=False,
+            is_demo=True,
         )
         db.add(user)
         try:
@@ -148,6 +155,14 @@ def demo_login(response: Response, db: Session = Depends(get_auth_db)) -> User:
                     status_code=500,
                     detail={"code": "DEMO_ACCOUNT_FAILED", "message": "演示账号创建失败，请稍后重试"},
                 ) from None
+    if not user.is_demo or user.is_admin or not re.fullmatch(r"[0-9a-f]{32}", user.workspace_key):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "DEMO_ACCOUNT_CONFLICT",
+                "message": "演示邮箱已关联到无法验证的旧账号，请用原密码登录；演示入口不会接管该账号。",
+            },
+        )
     _seed_demo_workspace(user.workspace_key)
     session_token, csrf_token, _session = create_session(db, user)
     _set_auth_cookies(response, session_token, csrf_token)

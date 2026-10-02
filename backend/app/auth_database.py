@@ -53,12 +53,18 @@ def init_auth_db() -> None:
     AuthBase.metadata.create_all(bind=auth_engine)
     if settings.auth_database_url.startswith("sqlite"):
         columns = {column["name"] for column in inspect(auth_engine).get_columns("users")}
+        if "is_demo" not in columns:
+            with auth_engine.begin() as connection:
+                # Older same-email accounts have no trustworthy provenance.
+                # Preserve them as ordinary accounts instead of granting the
+                # passwordless demo entry access to their workspace.
+                connection.execute(text("ALTER TABLE users ADD COLUMN is_demo BOOLEAN NOT NULL DEFAULT 0"))
         if "is_admin" not in columns:
             with auth_engine.begin() as connection:
                 connection.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT 0"))
                 connection.execute(
                     text(
                         "UPDATE users SET is_admin = 1 WHERE id = ("
-                        "SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1)"
+                        "SELECT id FROM users WHERE is_demo = 0 ORDER BY created_at ASC, id ASC LIMIT 1)"
                     )
                 )

@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from contextlib import asynccontextmanager
+from datetime import datetime
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,6 +23,18 @@ from app.database import Base, get_db, get_system_db
 from app.config import settings
 from app.main import app
 from app.services.auth import get_current_user
+
+
+@pytest.fixture(params=["2026-09-10T15:30:00+00:00", "2026-09-10T16:30:00+00:00"],
+                ids=["before-shanghai-midnight", "after-shanghai-midnight"])
+def fixed_plan_day(monkeypatch, request):
+    """Keep exact day/capacity assertions independent of the host timezone."""
+    from app.api import study_plans as study_plans_api
+    from app.time import as_local
+
+    evaluated_at = datetime.fromisoformat(request.param)
+    monkeypatch.setattr(study_plans_api, "utc_now", lambda: evaluated_at)
+    return as_local(evaluated_at).date()
 
 
 @pytest.fixture

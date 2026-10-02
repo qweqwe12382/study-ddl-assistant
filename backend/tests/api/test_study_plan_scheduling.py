@@ -123,9 +123,9 @@ def test_plan_schedules_deadline_task_before_six_materials(client):
     assert not any("明晚提交报告" in warning and "未排入" in warning for warning in plan["warnings"])
 
 
-def test_plan_splits_minutes_once_and_reports_deadline_overflow(client):
+def test_plan_splits_minutes_once_and_reports_deadline_overflow(client, fixed_plan_day):
     course = client.post("/api/courses", json={"name": "容量守恒课程"}).json()
-    start_date = date.today()
+    start_date = fixed_plan_day
     due_date = start_date + timedelta(days=1)
     tasks = []
     for name in ("任务甲", "任务乙"):

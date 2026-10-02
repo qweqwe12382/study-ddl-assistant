@@ -20,6 +20,8 @@ class User(AuthBase):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     workspace_key: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Set only by the demo entry, never inferred from a public email/password.
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False

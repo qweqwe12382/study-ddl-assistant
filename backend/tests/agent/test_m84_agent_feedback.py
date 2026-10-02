@@ -128,17 +128,19 @@ def test_m84_plan_delta_revalidates_snapshot_and_preserves_manual_or_completed_i
     assert saved["items"][-1]["title"] == "人工修改后的安排"
 
 
-def test_m84_plan_delta_preserves_generation_time_unscheduled_snapshot(client):
+def test_m84_plan_delta_preserves_generation_time_unscheduled_snapshot(client, fixed_plan_day):
     course = client.post("/api/courses", json={"name": "未排快照课程"}).json()
     for index in range(4):
         assert client.post(
             "/api/materials",
             json={"course_id": course["id"], "original_filename": f"快照资料-{index + 1}.md"},
         ).status_code == 201
-    plan = client.post(
+    response = client.post(
         "/api/study-plans/generate",
-        json={"course_id": course["id"], "exam_date": date.today().isoformat(), "daily_minutes": 180},
-    ).json()
+        json={"course_id": course["id"], "exam_date": fixed_plan_day.isoformat(), "daily_minutes": 180},
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()
     original_unscheduled = plan["unscheduled_items"]
     assert len(original_unscheduled) == 1
 

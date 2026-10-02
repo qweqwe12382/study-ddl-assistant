@@ -1,9 +1,12 @@
-from datetime import date, timedelta
+from datetime import timedelta
 import json
 import re
 from typing import Any
 
 from sqlalchemy import select
+
+from app.api import study_plans as study_plans_api
+from app.time import as_local
 
 
 _NAVIGATION_KEY = re.compile(r"^[0-9a-f]{32}$")
@@ -67,7 +70,7 @@ def _generate_plan(client, course_id: int, *, days_ahead: int = 30) -> dict[str,
         "/api/study-plans/generate",
         json={
             "course_id": course_id,
-            "exam_date": (date.today() + timedelta(days=days_ahead)).isoformat(),
+            "exam_date": (as_local(study_plans_api.utc_now()).date() + timedelta(days=days_ahead)).isoformat(),
             "daily_minutes": 60,
         },
     )
@@ -344,7 +347,7 @@ def test_m829_named_collections_remain_resolvable_without_navigation_key(client)
     ]
 
 
-def test_m829_study_plan_export_does_not_resolve_legacy_numeric_source_ids(client):
+def test_m829_study_plan_export_does_not_resolve_legacy_numeric_source_ids(client, fixed_plan_day):
     course = _create_course(client, "M8.29 导出身份测试")
     material_a = _create_material(client, "M829-export-A.pdf", course_id=course["id"])
     plan_a = _generate_plan(client, course["id"])

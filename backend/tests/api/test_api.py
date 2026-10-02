@@ -1173,7 +1173,7 @@ def test_m6_rejects_plan_item_after_exam_date(client):
     assert response.json()["error"]["code"] == "PLAN_DATE_AFTER_EXAM"
 
 
-def test_m6_reports_topics_that_do_not_fit_available_minutes(client):
+def test_m6_reports_topics_that_do_not_fit_available_minutes(client, fixed_plan_day):
     course = client.post("/api/courses", json={"name": "操作系统"}).json()
     for index in range(4):
         client.post(
@@ -1189,7 +1189,7 @@ def test_m6_reports_topics_that_do_not_fit_available_minutes(client):
         "/api/study-plans/generate",
         json={
             "course_id": course["id"],
-            "exam_date": (date.today() + timedelta(days=1)).isoformat(),
+            "exam_date": (fixed_plan_day + timedelta(days=1)).isoformat(),
             "daily_minutes": 60,
         },
     )

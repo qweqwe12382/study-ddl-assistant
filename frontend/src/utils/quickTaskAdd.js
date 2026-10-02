@@ -1,7 +1,6 @@
 /** Pure helpers for the one-line quick task add bar. */
 
 const MAX_NAME_LENGTH = 200
-const DAY_MS = 24 * 60 * 60 * 1000
 
 export const QUICK_DUE_CHIPS = [
   { key: 'today', label: '今天' },
@@ -31,7 +30,10 @@ export function quickDueDate(chipKey, today = new Date()) {
     const weekday = base.getDay() === 0 ? 7 : base.getDay()
     offset = ((8 - weekday) % 7) || 7
   } else return null
-  const due = new Date(base.getTime() + offset * DAY_MS)
+  // Advance calendar days in the user's timezone. A local day can be 23 or
+  // 25 hours when daylight saving time changes.
+  const due = new Date(base)
+  due.setDate(due.getDate() + offset)
   const month = String(due.getMonth() + 1).padStart(2, '0')
   const day = String(due.getDate()).padStart(2, '0')
   return `${due.getFullYear()}-${month}-${day}`

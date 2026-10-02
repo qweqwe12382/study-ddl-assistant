@@ -36,6 +36,26 @@ _CANCEL_MARKER = re.compile(
     r"[^，。；;！？\r\n]{0,36}(?:取消|作废|撤销|无需|不用)",
     re.IGNORECASE,
 )
+_CHANGE_VERB = re.compile(r"提前|延期|延后|延长|顺延|调整|改")
+_NEGATED_CHANGE = re.compile(
+    r"(?:不|未|没有|并非|不要|禁止|无需|不必)(?:会|再|予以|进行|作出)?\s*"
+    r"(?:取消|作废|撤销|提前|延期|延后|延长|顺延|调整|改)"
+)
+_CONDITIONAL_CHANGE = re.compile(r"如果|假如|假设|若|如(?:遇|因|有|需|果)|一旦|除非|否则")
+_UNCERTAIN_CHANGE = re.compile(
+    r"可能|或许|(?<![模虚])拟|计划将|计划把|计划(?:取消|延期|延后|提前|调整)|"
+    r"考虑|建议|是否|与否|待定|待确认|待审批|待批准|尚待|尚未确定"
+)
+_DEADLINE_SUBJECT = re.compile(
+    r"(?:截止(?:日期|时间)?|(?:提交|上传|填写|登记|报名)(?:日期|时间)?|"
+    r"(?:作业|任务|报告)(?:提交|截止)?(?:日期|时间)?)\s*(?:已|将|现|统一)?\s*$"
+)
+_MULTIPLE_TARGETS = re.compile(
+    r"(?:作业|任务|报告|实验|测验|考试)[^，。；;！？\r\n]{0,20}(?:和|及|与|、)"
+    r"[^，。；;！？\r\n]{0,20}(?:作业|任务|报告|实验|测验|考试)"
+)
+
+
 class DeadlineRadarError(ValueError):
     def __init__(self, code: str, message: str, *, status_code: int = 422):
         super().__init__(message)
@@ -58,6 +78,37 @@ def notice_digest(value: str) -> str:
     return sha256(value.strip().encode("utf-8")).hexdigest()
 
 
+def _containing_text(text: str, position: int, *, sentence: bool = False) -> tuple[str, int]:
+    separators = r"[。；;！？\r\n]" if sentence else r"[，,。；;！？\r\n]"
+    left = 0
+    right = len(text)
+    for boundary in re.finditer(separators, text):
+        if boundary.start() < position:
+            left = boundary.end()
+        else:
+            right = boundary.start()
+            break
+    return text[left:right], left
+
+
+def _validate_change_statement(text: str, marker: re.Match[str]) -> None:
+    statement, start = _containing_text(text, marker.start(), sentence=True)
+    # Conditions can govern the action across a comma. Do not treat an
+    # unrelated later "如有疑问" contact instruction as a condition on it.
+    before_action = statement[:marker.end() - start]
+    if (_NEGATED_CHANGE.search(statement) or _CONDITIONAL_CHANGE.search(before_action)
+            or _UNCERTAIN_CHANGE.search(statement)):
+        raise DeadlineRadarError(
+            "DEADLINE_CHANGE_UNCERTAIN",
+            "通知含否定、条件或尚未确定的变更，请核对并保留已确定的一条通知后重试。",
+        )
+    if _MULTIPLE_TARGETS.search(statement):
+        raise DeadlineRadarError(
+            "DEADLINE_CHANGE_AMBIGUOUS",
+            "通知涉及多个任务，请只保留所选任务的明确变更后再预览。",
+        )
+
+
 def detect_deadline_change(notice_text: str, *, reference_time: datetime) -> DetectedDeadlineChange:
     text = notice_text.strip()
     cancel_matches = list(_CANCEL_MARKER.finditer(text))
@@ -73,9 +124,28 @@ def detect_deadline_change(notice_text: str, *, reference_time: datetime) -> Det
             "没有找到明确的提前、延期、改期或取消表达；本功能不会把普通日期自动覆盖到已有任务。",
         )
 
+    for marker in [*cancel_matches, *reschedule_matches]:
+        _validate_change_statement(text, marker)
+    if len(reschedule_matches) > 1:
+        raise DeadlineRadarError(
+            "DEADLINE_CHANGE_AMBIGUOUS",
+            "通知包含多处改期表达，请只保留所选任务的新截止时间。",
+        )
+    if len(cancel_matches) > 1:
+        # A bare "无需提交" can restate the same cancellation. A second
+        # named subject or independent statement must never select a target
+        # merely by taking the final regex match.
+        for marker in cancel_matches[1:]:
+            clause, _ = _containing_text(text, marker.start())
+            if not re.fullmatch(r"\s*(?:无需|不用|不再(?:需要|要求)?)\s*(?:提交|上传|填写|登记|签到|报名)\s*", clause):
+                raise DeadlineRadarError(
+                    "DEADLINE_CHANGE_AMBIGUOUS",
+                    "通知包含多项取消要求，请只保留所选任务的明确变更。",
+                )
+
     digest = notice_digest(text)
     if cancel_matches:
-        marker = cancel_matches[-1]
+        marker = cancel_matches[0]
         return DetectedDeadlineChange(
             intent="cancel",
             marker=marker.group(0)[:24],
@@ -85,8 +155,18 @@ def detect_deadline_change(notice_text: str, *, reference_time: datetime) -> Det
             notice_digest=digest,
         )
 
-    marker = reschedule_matches[-1]
-    source_after_marker = text[marker.start():]
+    marker = reschedule_matches[0]
+    clause, clause_start = _containing_text(text, marker.start())
+    verb = _CHANGE_VERB.search(marker.group(0))
+    subject = text[clause_start:marker.start() + verb.start()]
+    if not _DEADLINE_SUBJECT.search(subject):
+        raise DeadlineRadarError(
+            "DEADLINE_CHANGE_NOT_FOUND",
+            "没有找到明确针对任务截止或提交时间的变更，请补充所选任务的新截止时间。",
+        )
+    # Dates belonging to later clauses (e.g. an office hour) cannot supply
+    # the missing deadline of this change.
+    source_after_marker = clause[marker.start() - clause_start:]
     local_reference = as_local(reference_time).replace(tzinfo=None)
     detected, warnings = parse_deadline_text(source_after_marker, local_reference)
     if detected is None:

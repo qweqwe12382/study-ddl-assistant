@@ -98,7 +98,37 @@
           <h2 id="materials-heading" tabindex="-1">我的资料 <el-tag v-if="materialsSummaryReady" size="small" effect="plain">{{ materials.length }}</el-tag></h2>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="material-mobile-list" aria-labelledby="materials-heading">
+        <article
+          v-for="material in filteredMaterials"
+          :key="material.id"
+          class="material-mobile-item"
+          :class="materialRowClassName({ row: material })"
+          :aria-labelledby="`material-mobile-name-${material.id}`"
+          :aria-current="materialRowClassName({ row: material }) ? 'true' : undefined"
+        >
+          <h3 :id="`material-mobile-name-${material.id}`">{{ material.original_filename }}</h3>
+          <p class="material-mobile-file-meta"><span>{{ material.file_type || '未知格式' }}</span><span>{{ formatFileSize(material.file_size) }}</span></p>
+          <dl class="material-mobile-meta">
+            <div><dt>所属课程</dt><dd>{{ courseName(material.course_id) }}</dd></div>
+            <div><dt>资料类型</dt><dd>{{ material.material_type || '未分类' }}</dd></div>
+            <div><dt>处理状态</dt><dd><el-tag size="small" :type="statusType(material.processing_status)">{{ statusLabel(material.processing_status) }}</el-tag></dd></div>
+            <div><dt>识别状态</dt><dd><el-tag size="small" :type="extractionStatusType(material.extraction_status)">{{ extractionStatusLabel(material.extraction_status) }}</el-tag></dd></div>
+            <div class="material-mobile-tags"><dt>标签</dt><dd><el-tag v-for="tag in material.tags || []" :key="tag" size="small" effect="plain">{{ tag }}</el-tag><span v-if="!material.tags?.length">暂无</span></dd></div>
+          </dl>
+          <p v-for="snippet in material.match_snippets || []" :key="snippet" class="match-snippet">{{ snippet }}</p>
+          <div class="material-mobile-actions" role="group" :aria-label="`${material.original_filename} 的操作`">
+            <el-button v-if="material.processing_status === 'processed' && material.extracted_text" class="material-mobile-primary" type="primary" plain :aria-label="`${extractionActionLabel(material)}：${material.original_filename}`" @click="openExtraction(material)">{{ extractionActionLabel(material) }}</el-button>
+            <el-button v-if="material.processing_status === 'failed'" class="material-mobile-primary" type="warning" plain :loading="retryingMaterialIds.includes(material.id)" :disabled="retryingMaterialIds.includes(material.id)" :aria-label="`重试解析资料：${material.original_filename}`" @click="retryMaterial(material)">重试解析</el-button>
+            <el-button :aria-label="`查看资料详情：${material.original_filename}`" @click="openDetail(material)">查看详情</el-button>
+            <el-button v-if="material.stored_path" :aria-label="`下载原文件：${material.original_filename}`" @click="downloadMaterial(material)">下载原文件</el-button>
+            <el-button :aria-label="`编辑资料：${material.original_filename}`" @click="openEdit(material)">编辑</el-button>
+            <el-button type="danger" plain :aria-label="`删除资料：${material.original_filename}`" @click="removeMaterial(material)">删除</el-button>
+          </div>
+        </article>
+        <p v-if="!filteredMaterials.length" class="material-mobile-empty" role="status">{{ tableEmptyText }}</p>
+      </div>
+      <div class="table-wrap material-desktop-table">
         <el-table :data="filteredMaterials" :empty-text="tableEmptyText" :row-class-name="materialRowClassName" aria-labelledby="materials-heading">
           <el-table-column label="文件名称" min-width="220">
             <template #default="{ row }">
@@ -209,7 +239,7 @@
           <el-button v-if="!detailMaterial.extracted_text" type="primary" plain @click="openEditFromDetail(detailMaterial)">编辑并补充正文</el-button>
           <el-button v-if="detailMaterial.stored_path" @click="downloadMaterial(detailMaterial)">下载原文件</el-button>
           <el-button v-if="detailMaterial.processing_status === 'processed' && detailMaterial.extracted_text" type="success" :aria-label="`${extractionActionLabel(detailMaterial)}：${detailMaterial.original_filename}`" @click="openExtraction(detailMaterial)">{{ extractionActionLabel(detailMaterial) }}</el-button>
-          <el-button v-if="detailMaterial.processing_status === 'failed'" type="warning" @click="retryMaterial(detailMaterial)">重新解析</el-button>
+          <el-button v-if="detailMaterial.processing_status === 'failed'" type="warning" :loading="retryingMaterialIds.includes(detailMaterial.id)" :disabled="retryingMaterialIds.includes(detailMaterial.id)" @click="retryMaterial(detailMaterial)">重新解析</el-button>
         </div>
         <EditConflictCard :visible="Boolean(materialConflict) && detailDialogVisible" :title="materialConflictTitle" :message="materialConflictMessage" :latest-fields="materialConflict?.latestFields || []" @view-latest="viewLatestMaterial" @discard="discardMaterialDraft" />
       </template>
@@ -738,7 +768,8 @@ async function focusMaterialDeepLink() {
   await nextTick()
   await new Promise((resolve) => requestAnimationFrame(resolve))
   await new Promise((resolve) => setTimeout(resolve, 120))
-  const target = document.querySelector(isConciseView.value ? '.inbox-item.is-focused' : '.source-focused-row')
+  const candidates = document.querySelectorAll(isConciseView.value ? '.inbox-item.is-focused' : '.source-focused-row')
+  const target = Array.from(candidates).find((element) => element.getClientRects().length)
   if (!(target instanceof HTMLElement)) return
   target.setAttribute('tabindex', '-1')
   target.scrollIntoView({ behavior: 'auto', block: 'center' })
@@ -1527,7 +1558,8 @@ onMounted(() => {
 .detail-alert :deep(.el-alert__content) { min-width: 0; }
 .detail-alert :deep(.el-alert__title) { white-space: normal; overflow-wrap: anywhere; }
 .detail-label { margin-bottom: 8px; color: #667085; font-size: 13px; font-weight: 600; }
-.detail-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.detail-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.detail-actions :deep(.el-button + .el-button) { margin-left: 0; }
 .text-preview { max-height: 280px; overflow: auto; margin: 0; padding: 14px; color: #475467; background: #f8fafc; border: 1px solid #edf0f5; border-radius: 8px; font: 13px/1.7 "SFMono-Regular", Consolas, monospace; overflow-wrap: anywhere; white-space: pre-wrap; }
 .extraction-meta { display: flex; gap: 28px; margin-bottom: 16px; color: #667085; font-size: 13px; }
 .extraction-meta strong { color: #344054; }
@@ -1786,7 +1818,96 @@ onMounted(() => {
 
 .material-table-meta { font-size: 12px; }
 
+.material-mobile-list { display: none; }
+
+@media (max-width: 900px) {
+  .material-desktop-table { display: none; }
+  .material-mobile-list { display: block; }
+
+  .material-mobile-item {
+    min-width: 0;
+    padding: 22px 0;
+    border-top: 1px solid var(--materials-line);
+  }
+
+  .material-mobile-item:first-child { border-top: 0; padding-top: 4px; }
+  .material-mobile-item:last-child { padding-bottom: 4px; }
+
+  .material-mobile-item.source-focused-row {
+    background: #f1f7f3;
+    outline: 1px solid var(--materials-indigo);
+    outline-offset: 8px;
+    border-radius: 2px;
+  }
+
+  .material-mobile-item:focus-visible {
+    outline: 3px solid var(--materials-indigo);
+    outline-offset: 8px;
+  }
+
+  .material-mobile-item h3 {
+    margin: 0;
+    color: var(--materials-ink);
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.6;
+  }
+
+  .material-mobile-file-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin: 5px 0 16px;
+    color: var(--materials-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .material-mobile-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .material-mobile-meta > div { min-width: 0; }
+  .material-mobile-meta dt { margin-bottom: 4px; color: var(--materials-muted); font-size: 12px; }
+  .material-mobile-meta dd { min-width: 0; margin: 0; color: var(--materials-ink); overflow-wrap: anywhere; }
+  .material-mobile-tags { grid-column: 1 / -1; }
+  .material-mobile-tags dd { display: flex; flex-wrap: wrap; gap: 6px; }
+  .material-mobile-meta :deep(.el-tag) { max-width: 100%; height: auto; min-height: 24px; padding-block: 3px; line-height: 1.5; white-space: normal; }
+  .material-mobile-meta :deep(.el-tag__content) { min-width: 0; overflow-wrap: anywhere; white-space: normal; }
+
+  .material-mobile-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  .material-mobile-actions :deep(.el-button) {
+    min-width: 0;
+    min-height: 44px;
+    height: auto;
+    margin: 0;
+    padding: 10px;
+    line-height: 1.5;
+    white-space: normal;
+  }
+
+  .material-mobile-actions :deep(.el-button > span) { min-width: 0; overflow-wrap: anywhere; }
+  .material-mobile-primary { grid-column: 1 / -1; }
+  .material-mobile-empty { margin: 0; padding: 28px 0; color: var(--materials-muted); font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+}
+
 @media (max-width: 680px) {
+  .detail-grid { grid-template-columns: 1fr; gap: 12px; }
+  .detail-actions { display: grid; grid-template-columns: 1fr; }
+  .detail-actions :deep(.el-button) { width: 100%; margin: 0; }
+
   .material-inbox-search {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;

@@ -240,3 +240,54 @@ def test_canceled_task_is_terminal_until_the_user_explicitly_reopens_it(client):
     assert reopened.status_code == 200
     assert reopened.json()["status"] == "not_started"
     assert reopened.json()["remaining_minutes"] == 45
+
+
+@pytest.mark.parametrize("notice", [
+    "本次作业不取消。",
+    "本次作业不会取消。",
+    "本次作业不再取消，请按原要求提交。",
+    "本次作业取消与否尚未确定，请等待通知。",
+    "如因天气原因取消本次作业，将另行通知。",
+    "如遇设备故障，作业截止时间延期至2026年9月18日20:00。",
+    "计划将作业截止时间延期至2026年9月18日20:00，尚待确认。",
+    "作业截止时间可能延期至2026年9月18日20:00。",
+    "作业截止时间不调整至2026年9月18日20:00，仍按原要求提交。",
+    "提交方式调整为线上，答疑定于2026年9月18日20:00。",
+    "实验报告格式调整为在线文档，答疑定于2026年9月18日20:00。",
+    "答疑时间提前至2026年9月18日20:00。",
+    "作业一截止延期至2026年9月18日20:00；作业二截止延期至2026年9月19日20:00。",
+    "作业一取消；作业二无需提交。",
+    "作业一和作业二截止延期至2026年9月18日20:00。",
+    "实验报告和课堂测验取消。",
+    "作业截止时间延期，答疑定于2026年9月18日20:00。",
+])
+def test_deadline_radar_rejects_unsafe_notice_in_preview_and_direct_apply(client, monkeypatch, notice):
+    monkeypatch.setattr(task_service, "utc_now", lambda: datetime.fromisoformat(REFERENCE_TIME))
+    task = _create_task(client)
+    activity_before = client.get("/api/agent/activity").json()["items"]
+    payload = _radar_payload(task, notice)
+
+    preview = client.post("/api/deadline-radar/preview", json=payload)
+    applied = client.post("/api/deadline-radar/apply", json={
+        **payload, "idempotency_key": "unsafe-notice-must-not-execute",
+    })
+
+    assert preview.status_code == applied.status_code == 422
+    assert preview.json()["error"]["code"] == applied.json()["error"]["code"]
+    assert client.get(f"/api/tasks/{task['id']}").json() == task
+    assert client.get("/api/agent/activity").json()["items"] == activity_before
+
+
+@pytest.mark.parametrize("notice,intent,expected_due_at", [
+    ("模拟作业提交时间调整至2026年9月18日20:00，如有疑问请联系老师。", "reschedule", "2026-09-18T12:00:00Z"),
+    ("本次作业取消，无需提交，如有疑问请联系老师。", "cancel", None),
+    ("无需提交本次实验报告。", "cancel", None),
+    ("实验报告截止时间延期至2026年9月18日20:00，答疑定于2026年9月17日18:00。", "reschedule", "2026-09-18T12:00:00Z"),
+])
+def test_deadline_radar_keeps_explicit_changes_and_their_own_date(client, notice, intent, expected_due_at):
+    task = _create_task(client)
+    response = client.post("/api/deadline-radar/preview", json=_radar_payload(task, notice))
+
+    assert response.status_code == 200
+    assert response.json()["intent"] == intent
+    assert response.json()["task"]["proposed_due_at"] == expected_due_at
