@@ -1,82 +1,68 @@
 {
-  "seconds": 270.11474999999996,
+  "version": 2,
+  "seconds": 209.41666666666669,
   "resolution": "1920x1080",
   "fps": 24,
-  "speech_speed_factor": 1.156468797564688,
-  "tts": "Local Qwen3-TTS-12Hz-0.6B-CustomVoice / Vivian",
+  "narration_characters": 813,
+  "tts": "Local Qwen3-TTS / Vivian",
+  "subtitle_style": "white outlined text; transparent background",
   "subtitle_timing": "phrase timing estimated from text length",
+  "motion": "camera push-ins, focus outlines, device float, staggered title reveal, dissolve transitions",
+  "visual_source": "Actual app screenshots; editorial motion, not a continuous recording",
   "chapters": [
     {
       "scene": 1,
       "start_seconds": 0.0,
-      "duration_seconds": 23.363375,
-      "title": "学伴管家"
+      "duration_seconds": 22.0,
+      "title": "把学习，安排好。"
     },
     {
       "scene": 2,
-      "start_seconds": 23.363375,
-      "duration_seconds": 22.956833333333332,
-      "title": "第一步 收好通知"
+      "start_seconds": 22.0,
+      "duration_seconds": 22.416666666666668,
+      "title": "通知，随手收好"
     },
     {
       "scene": 3,
-      "start_seconds": 46.32020833333333,
-      "duration_seconds": 22.33775,
-      "title": "第二步 核对识别结果"
+      "start_seconds": 44.41666666666667,
+      "duration_seconds": 21.666666666666668,
+      "title": "截止，一眼看清"
     },
     {
       "scene": 4,
-      "start_seconds": 68.65795833333334,
-      "duration_seconds": 21.846458333333334,
-      "title": "确认之后 才进入任务清单"
+      "start_seconds": 66.08333333333334,
+      "duration_seconds": 21.75,
+      "title": "接下来，先做哪件？"
     },
     {
       "scene": 5,
-      "start_seconds": 90.50441666666667,
-      "duration_seconds": 24.331958333333333,
-      "title": "第三步 安排下一步行动"
+      "start_seconds": 87.83333333333334,
+      "duration_seconds": 26.791666666666668,
+      "title": "复习，拆成小步"
     },
     {
       "scene": 6,
-      "start_seconds": 114.836375,
-      "duration_seconds": 22.46925,
-      "title": "计划由使用者掌握"
+      "start_seconds": 114.62500000000001,
+      "duration_seconds": 24.25,
+      "title": "计划有变，也从容"
     },
     {
       "scene": 7,
-      "start_seconds": 137.305625,
-      "duration_seconds": 20.884708333333332,
-      "title": "第四步 形成复习清单"
+      "start_seconds": 138.875,
+      "duration_seconds": 23.458333333333332,
+      "title": "完成一件，轻松一点"
     },
     {
       "scene": 8,
-      "start_seconds": 158.1903333333333,
-      "duration_seconds": 23.168875,
-      "title": "通知改期 先看影响"
+      "start_seconds": 162.33333333333334,
+      "duration_seconds": 24.25,
+      "title": "换个屏幕，继续学习"
     },
     {
       "scene": 9,
-      "start_seconds": 181.3592083333333,
-      "duration_seconds": 22.94325,
-      "title": "完成一件 留下记录"
-    },
-    {
-      "scene": 10,
-      "start_seconds": 204.3024583333333,
-      "duration_seconds": 21.160666666666668,
-      "title": "小屏幕也能继续使用"
-    },
-    {
-      "scene": 11,
-      "start_seconds": 225.46312499999996,
-      "duration_seconds": 22.3355,
-      "title": "本地优先 可复现"
-    },
-    {
-      "scene": 12,
-      "start_seconds": 247.79862499999996,
-      "duration_seconds": 22.316125,
-      "title": "让学习安排更清楚"
+      "start_seconds": 186.58333333333334,
+      "duration_seconds": 22.833333333333332,
+      "title": "下一步，清楚一点。"
     }
   ]
 }
