@@ -4,36 +4,36 @@ import android.content.Context
 import androidx.core.content.edit
 import com.studyagent.mobile.util.ServerAddressPolicy
 
-class StudyRepository(context: Context) {
+class StudyRepository(context: Context) : StudyDataSource {
     private val preferences = context.getSharedPreferences("mobile_preferences", Context.MODE_PRIVATE)
     private val client = ApiClient()
 
-    val savedServer: String
+    override val savedServer: String
         get() = preferences.getString(SERVER_KEY, DEFAULT_SERVER).orEmpty()
 
-    val savedWeek: Int
+    override val savedWeek: Int
         get() = preferences.getInt(WEEK_KEY, 1).coerceIn(1, 30)
 
-    fun configureServer(input: String, allowPrivateHttp: Boolean): String {
+    override fun configureServer(input: String, allowPrivateHttp: Boolean): String {
         val normalized = ServerAddressPolicy.normalize(input, allowPrivateHttp)
         client.configure(normalized)
         preferences.edit { putString(SERVER_KEY, normalized) }
         return normalized
     }
 
-    fun saveWeek(week: Int) {
+    override fun saveWeek(week: Int) {
         preferences.edit { putInt(WEEK_KEY, week.coerceIn(1, 30)) }
     }
 
-    suspend fun login(email: String, password: String): UserProfile = client.login(email, password)
+    override suspend fun login(email: String, password: String): UserProfile = client.login(email, password)
     suspend fun currentUser(): UserProfile = client.currentUser()
-    suspend fun dashboard(): Dashboard = client.dashboard()
-    suspend fun tasks(): List<TaskItem> = client.tasks()
-    suspend fun academicOverview(week: Int): AcademicOverview = client.academicOverview(week)
-    suspend fun completeTask(task: TaskItem): TaskItem = client.completeTask(task)
-    suspend fun logout() = client.logout()
+    override suspend fun dashboard(): Dashboard = client.dashboard()
+    override suspend fun tasks(): List<TaskItem> = client.tasks()
+    override suspend fun academicOverview(week: Int): AcademicOverview = client.academicOverview(week)
+    override suspend fun completeTask(task: TaskItem): TaskItem = client.completeTask(task)
+    override suspend fun logout() = client.logout()
 
-    fun clearSession() = client.clearSession()
+    override fun clearSession() = client.clearSession()
 
     private companion object {
         const val SERVER_KEY = "server_url"

@@ -40,3 +40,6 @@ Thumbs.db
 
 # Tool output
 .claude_resources.json
+
+# Local delivery archives
+/submission/

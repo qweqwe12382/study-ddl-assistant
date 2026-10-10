@@ -1,0 +1,42 @@
+[
+  {
+    "name": "com.studyagent.mobile.ui.AppViewModelTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-10-06T14:19:34.012Z",
+    "hostname": "ZY123",
+    "time": "0.335"
+  },
+  {
+    "name": "com.studyagent.mobile.util.DeadlineCalendarEventTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-10-06T14:19:34.350Z",
+    "hostname": "ZY123",
+    "time": "0.012"
+  },
+  {
+    "name": "com.studyagent.mobile.util.ServerAddressPolicyTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-10-06T14:19:34.365Z",
+    "hostname": "ZY123",
+    "time": "0.017"
+  },
+  {
+    "name": "com.studyagent.mobile.util.StudyTimeTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-10-06T14:19:34.385Z",
+    "hostname": "ZY123",
+    "time": "0.002"
+  }
+]

@@ -159,28 +159,30 @@ def _extract_pdf(content: bytes) -> str:
     except Exception as exc:
         raise FileProcessingError("CORRUPTED_FILE", "PDF 文件损坏或无法打开") from exc
     try:
-        text = "\n".join(page.get_text("text") for page in document).strip()
-        if text:
-            return text
-
-        if len(document) > MAX_PDF_OCR_PAGES:
+        chunks = [page.get_text("text").strip() for page in document]
+        ocr_page_indexes = [index for index, text in enumerate(chunks) if not text]
+        if len(ocr_page_indexes) > MAX_PDF_OCR_PAGES:
             raise FileProcessingError(
                 "PDF_TOO_MANY_OCR_PAGES",
-                f"扫描版 PDF 页数过多，暂只支持不超过 {MAX_PDF_OCR_PAGES} 页的 OCR",
+                f"PDF 中有 {len(ocr_page_indexes)} 页需要 OCR，暂只支持不超过 {MAX_PDF_OCR_PAGES} 页；请拆分文件后重试",
             )
 
-        ocr_chunks: list[str] = []
-        for page in document:
-            pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        for index in ocr_page_indexes:
             try:
+                pixmap = document[index].get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
                 ocr_text = _extract_image_ocr(pixmap.tobytes("png"))
+                if not ocr_text.strip():
+                    raise FileProcessingError("OCR_NO_TEXT", "没有识别到文字，请上传更清晰的页面")
             except FileProcessingError as error:
-                if error.code == "OCR_NO_TEXT":
-                    continue
-                raise
-            if ocr_text:
-                ocr_chunks.append(ocr_text)
-        text = "\n".join(ocr_chunks).strip()
+                raise FileProcessingError(
+                    error.code, f"PDF 第 {index + 1} 页识别未完成：{error.message}；原文件已保留，可重试或手动补充正文",
+                ) from error
+            except Exception as error:
+                raise FileProcessingError(
+                    "OCR_FAILED", f"PDF 第 {index + 1} 页无法完成 OCR；原文件已保留，请重试或手动补充正文",
+                ) from error
+            chunks[index] = ocr_text.strip()
+        text = "\n".join(chunks).strip()
     finally:
         document.close()
     if not text:

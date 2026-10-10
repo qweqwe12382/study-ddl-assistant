@@ -76,12 +76,20 @@ def apply_deadline_change(
             db,
             idempotency_key=payload.idempotency_key,
             task_id=payload.task_id,
+            task_navigation_key=payload.task_navigation_key,
             digest=digest,
         )
         if existing is not None:
             receipt = db.scalar(select(ActionReceipt).where(ActionReceipt.suggestion_id == existing.id))
             task = db.get(Task, existing.source_id)
-            if receipt is None or task is None:
+            if (
+                receipt is None
+                or task is None
+                or task.navigation_key != existing.source_navigation_key
+                or receipt.source_type != "task"
+                or receipt.source_id != task.id
+                or receipt.source_navigation_key != task.navigation_key
+            ):
                 raise DeadlineRadarError(
                     "DEADLINE_CHANGE_RESULT_UNAVAILABLE",
                     "这次操作已有记录，但执行结果当前无法完整读取。",

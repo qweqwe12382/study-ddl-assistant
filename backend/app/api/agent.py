@@ -618,17 +618,18 @@ def complete_agent_task(
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "任务不存在"})
-    check_edit_precondition(db, task, if_match)
     try:
         complete_task_with_feedback(
             db, task, actual_minutes=payload.actual_minutes if payload else None,
             difficulty=payload.difficulty if payload else None,
             idempotency_key=payload.idempotency_key if payload else None,
+            if_match=if_match,
         )
         db.commit()
     except ValueError as exc:
         db.rollback()
-        raise _conflict(str(exc), "幂等键已用于其他操作") from exc
+        message = "已取消任务需先恢复为待办状态，才能标记完成" if str(exc) == "TASK_CANCELED" else "幂等键已用于其他操作"
+        raise _conflict(str(exc), message) from exc
     except IntegrityError as exc:
         db.rollback()
         # A simultaneous retry may already have saved this exact request.
@@ -715,6 +716,9 @@ def accept_plan_delta(
                       "changes": [{"item_id": change["item_id"], "item": change["before"]} for change in changes]}
     for change in changes:
         by_id[change["item_id"]] = StudyPlanItem.model_validate(change["after"])
+        # An explicitly accepted system change becomes the next system
+        # baseline. Manual protection is preserved independently above.
+        metadata["baseline_items"][change["item_id"]] = by_id[change["item_id"]].model_dump(mode="json")
     metadata["adjustment_log"] = [*metadata["adjustment_log"], {
         "suggestion_id": suggestion.id, "trigger": suggestion.reason_code, "applied_at": now.isoformat(),
         "item_ids": [change["item_id"] for change in changes],

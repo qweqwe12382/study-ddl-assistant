@@ -758,7 +758,7 @@ async function completeHomeFocus() {
 const loading = ref(true)
 const dashboardState = ref('loading')
 const router = useRouter()
-const todayLabel = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
+const todayLabel = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
 const { isConciseView, isDetailedView, setViewMode } = useViewMode()
 const error = ref('')
 const dashboard = ref({

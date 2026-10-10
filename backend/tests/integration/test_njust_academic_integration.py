@@ -1,6 +1,10 @@
+from base64 import b64encode
 from datetime import date
 
+import pytest
+
 from app.api import academic_calendar as academic_calendar_api
+from app.services import njust_academic as njust_service
 from app.services.njust_academic import normalize_njust_calendar, parse_njust_exams, parse_njust_schedule
 
 
@@ -137,3 +141,85 @@ def test_njust_api_is_one_shot_no_store_and_never_reflects_credentials(client, m
     assert invalid.headers["cache-control"].startswith("no-store")
     assert "validation-secret" not in invalid.text
     assert '"input"' not in invalid.text
+
+
+class _FakeResponse:
+    def __init__(self, status_code=200, text=""):
+        self.status_code = status_code
+        self.content = text.encode("utf-8")
+        self.headers = {"Content-Type": "text/html"}
+        self.encoding = "utf-8"
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise njust_service.requests.RequestException(f"HTTP {self.status_code}")
+
+
+class _QueueSession:
+    """Answer get/post in call order, ignoring URLs — the flow is sequential."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+
+    def _next(self):
+        return self._responses.pop(0)
+
+    def get(self, _url, **_kwargs):
+        return self._next()
+
+    def post(self, _url, **_kwargs):
+        return self._next()
+
+    def close(self):
+        pass
+
+
+def test_captcha_prefers_direct_login_and_falls_back_to_portal(monkeypatch):
+    attempted = []
+
+    def fake_captcha_response(_session, strategy):
+        attempted.append(strategy)
+        if strategy == "direct_get":
+            raise njust_service.requests.ConnectionError("9080 unreachable")
+        return _FakeResponse(200, "")
+
+    monkeypatch.setattr(
+        njust_service.NjustSessionStore, "_captcha_response", staticmethod(fake_captcha_response)
+    )
+    monkeypatch.setattr(
+        njust_service.NjustSessionStore, "_captcha_payload", staticmethod(lambda _r: (b"png-bytes", "image/png"))
+    )
+    store = njust_service.NjustSessionStore()
+    session_id, data_uri = store.create("owner-key")
+    assert attempted == ["direct_get", "portal_post"]
+    assert data_uri == f"data:image/png;base64,{b64encode(b'png-bytes').decode()}"
+    store.discard(session_id, "owner-key")
+
+
+def test_fetch_reports_a_login_page_as_session_failure_not_a_missing_schedule():
+    login_page = '<form id="Form1"><input name="USERNAME"><input name="PASSWORD"></form>'
+    session = _QueueSession([
+        _FakeResponse(200, "欢迎您，同学"),   # portal login accepted
+        _FakeResponse(200, login_page),      # schedule answers with its login page
+        _FakeResponse(200, ""),
+    ])
+    with pytest.raises(njust_service.NjustAcademicError) as excinfo:
+        njust_service.fetch_njust_pages(
+            session, strategy="portal_post", username="123456789",
+            password="secret", captcha="AB12", term="2026-2027-1",
+        )
+    assert excinfo.value.code == "NJUST_SESSION_INVALID"
+    assert excinfo.value.status_code == 401
+
+
+def test_fetch_direct_login_returns_schedule_pages():
+    session = _QueueSession([
+        _FakeResponse(302, ""),               # direct login redirects on success
+        _FakeResponse(200, '<table id="kbtable"><tr><td><div class="kbcontent1">数学</div></td></tr></table>'),
+        _FakeResponse(200, ""),
+    ])
+    schedule_text, exams_text = njust_service.fetch_njust_pages(
+        session, strategy="direct_get", username="123456789",
+        password="secret", captcha="AB12", term="2026-2027-1",
+    )
+    assert "kbtable" in schedule_text and exams_text == ""

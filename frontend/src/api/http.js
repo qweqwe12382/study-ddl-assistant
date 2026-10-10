@@ -52,7 +52,9 @@ http.interceptors.response.use(
     const apiError = new Error(message)
     apiError.code = error.response?.data?.error?.code || error.code
     apiError.status = error.response.status
-    if (apiError.status === 401 && typeof window !== 'undefined') {
+    // Upstream school credentials can also return 401. Only the website's
+    // own session failure should clear the current learning-space login.
+    if (apiError.status === 401 && apiError.code === 'AUTH_REQUIRED' && typeof window !== 'undefined') {
       window.dispatchEvent(new window.CustomEvent('study-auth-expired'))
     }
     return Promise.reject(apiError)

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from app.models.material import Material
 from app.schemas.extraction import ExtractionResult, ExtractionTaskCandidate
-from app.services.llm_provider import ProviderError, get_provider, parse_deadline_text
+from app.services.llm_provider import ProviderError, get_provider, parse_deadline_text, parse_iso_datetime
 from app.services.material_intent import describe_material, is_learning_activity
 from app.time import as_local, deadline_to_utc, utc_now
 
@@ -28,6 +28,7 @@ def extract_material(material: Material, provider_name: str | None = None) -> tu
 
     try:
         provider = get_provider(provider_name) if provider_name else get_provider()
+        material.extraction_provider = provider.name
         raw = provider.extract(material.extracted_text or "", material.original_filename)
         if isinstance(raw, str):
             raw = json.loads(raw)
@@ -42,7 +43,7 @@ def extract_material(material: Material, provider_name: str | None = None) -> tu
         raise
     except ProviderError as error:
         raise ExtractionError(error.code, error.message) from error
-    except (json.JSONDecodeError, TypeError, ValueError) as error:
+    except (json.JSONDecodeError, TypeError, ValueError, OverflowError) as error:
         raise ExtractionError("INVALID_PROVIDER_JSON", "抽取结果无法通过 JSON 结构校验") from error
 
     material.extraction_status = "needs_review" if result.needs_review else "ready"
@@ -76,6 +77,12 @@ _WINDOWS_PATH_PATTERN = re.compile(r"(?i)\b[a-z]:[\\/][^\s]+")
 _UNIX_PATH_PATTERN = re.compile(r"(?<!\w)/(?:[^\s/]+/)+[^\s]+")
 
 
+def _provider_warnings(value: Any) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise ExtractionError("INVALID_PROVIDER_JSON", "抽取结果中的 warnings 必须是字符串数组")
+    return [item for item in value if item]
+
+
 def _normalize_result(raw: dict[str, Any], material: Material, *, provider_name: str) -> ExtractionResult:
     raw_tasks = raw.get("tasks", [])
     if not isinstance(raw_tasks, list):
@@ -87,11 +94,18 @@ def _normalize_result(raw: dict[str, Any], material: Material, *, provider_name:
         raise ExtractionError("INVALID_PROVIDER_JSON", f"抽取结果中的 tags 最多允许 {_EVIDENCE_TAG_LIMIT} 项")
     source_text = material.extracted_text or ""
     normalized_tasks: list[dict[str, Any]] = []
-    result_warnings = [str(item) for item in raw.get("warnings", []) if item]
+    result_warnings = _provider_warnings(raw.get("warnings", []))
     for index, raw_task in enumerate(raw_tasks):
         if not isinstance(raw_task, dict):
             raise ExtractionError("INVALID_PROVIDER_JSON", "抽取结果中的任务必须是对象")
         task = dict(raw_task)
+        task["warnings"] = _provider_warnings(task.get("warnings", []))
+        for field in ("name", "task_name", "candidate_id", "source_quote"):
+            if task.get(field) is not None and not isinstance(task[field], str):
+                raise ExtractionError("INVALID_PROVIDER_JSON", f"抽取结果中的 {field} 必须是字符串")
+        for field in ("due_at", "due_date"):
+            if task.get(field) is not None and not isinstance(task[field], (str, date)):
+                raise ExtractionError("INVALID_PROVIDER_JSON", f"抽取结果中的 {field} 必须是日期时间")
         name = str(task.get("name") or task.get("task_name") or "").strip()
         if not name:
             raise ExtractionError("INVALID_PROVIDER_JSON", "抽取到的任务缺少 name")
@@ -102,13 +116,13 @@ def _normalize_result(raw: dict[str, Any], material: Material, *, provider_name:
         if task["source_quote"] and task["source_quote"] in source_text and is_learning_activity(task["source_quote"]):
             continue
         if task["source_quote"] and task["source_quote"] not in source_text:
-            task.setdefault("warnings", []).append("SOURCE_QUOTE_NOT_FOUND")
+            task["warnings"].append("SOURCE_QUOTE_NOT_FOUND")
         due_at, date_warnings = _parse_due_at(task, task["source_quote"] or name, material.source_time)
         task["due_at"] = due_at
         task.setdefault("confidence", 0.0)
         task["confidence"] = float(task["confidence"])
         task.setdefault("priority", 3)
-        warnings = [str(item) for item in task.get("warnings", []) if item]
+        warnings = task["warnings"]
         warnings.extend(date_warnings)
         if due_at is None:
             warnings.append("MISSING_DUE_DATE")
@@ -246,12 +260,26 @@ def _parse_due_at(task: dict[str, Any], source: str, source_time: datetime | Non
     source_resolved, source_warnings = parse_deadline_text(source, reference)
     if "AMBIGUOUS_TASK_DATE" in source_warnings:
         return None, source_warnings
+    if isinstance(value, str):
+        value = value.strip()
+        # ISO timestamps already define their timezone. Scanning them as prose
+        # discards Z/offsets and incorrectly reinterprets the clock as Shanghai.
+        try:
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+                value = date.fromisoformat(value)
+            else:
+                value = parse_iso_datetime(value) or value
+        except ValueError:
+            return None, list(dict.fromkeys([*source_warnings, "INVALID_DATE"]))
+        except ProviderError as error:
+            return None, list(dict.fromkeys([*source_warnings, error.code]))
     if isinstance(value, datetime):
         normalized = deadline_to_utc(value)
         if source_resolved is not None and normalized != deadline_to_utc(source_resolved):
             return None, list(dict.fromkeys([*source_warnings, "DATE_CONFLICT_WITH_SOURCE"]))
         return (deadline_to_utc(source_resolved) if source_resolved is not None else normalized), source_warnings
     if isinstance(value, date):
+        source_warnings = list(dict.fromkeys([*source_warnings, "TIME_DEFAULTED_TO_END_OF_DAY"]))
         normalized = deadline_to_utc(datetime.combine(value, time(23, 59)))
         if source_resolved is not None and normalized != deadline_to_utc(source_resolved):
             return None, list(dict.fromkeys([*source_warnings, "DATE_CONFLICT_WITH_SOURCE"]))

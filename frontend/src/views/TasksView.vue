@@ -181,7 +181,7 @@
           <el-table-column label="所属课程" width="150">
             <template #default="{ row }"><div class="task-table-course">{{ courseName(row.course_id) }}</div></template>
           </el-table-column>
-          <el-table-column label="截止时间" width="170">
+          <el-table-column label="截止时间（北京时间）" width="170">
             <template #default="{ row }">
               <span :class="{ overdue: isOverdue(row) }">{{ formatDateTime(row.due_at) }}</span>
             </template>
@@ -218,7 +218,7 @@
                     完成并补充反馈
                   </el-button>
                 </div>
-                <div v-else class="task-row-actions-primary" role="group" :aria-label="`完成反馈：${row.name}`">
+                <div v-else-if="row.status === 'completed'" class="task-row-actions-primary" role="group" :aria-label="`完成反馈：${row.name}`">
                   <el-button
                     type="primary"
                     link
@@ -228,6 +228,9 @@
                   >
                   更新完成反馈
                   </el-button>
+                </div>
+                <div v-else class="task-row-actions-primary" role="group" :aria-label="`恢复任务：${row.name}`">
+                  <el-button type="primary" link :disabled="hasAnyCompletionLoading()" @click="reopenTask(row)">恢复为待办</el-button>
                 </div>
                 <span v-if="!['completed', 'canceled'].includes(row.status)" class="task-action-divider" aria-hidden="true"></span>
                 <div class="task-row-actions-secondary" role="group" :aria-label="`其他操作：${row.name}`">
@@ -254,7 +257,7 @@
         <el-form-item label="任务类型">
             <el-input v-model="form.task_type" placeholder="例如：作业、实验、考试或报告" />
         </el-form-item>
-        <el-form-item label="截止时间">
+        <el-form-item label="截止时间（北京时间）">
           <el-date-picker
             v-model="form.due_at"
             type="datetime"
@@ -316,7 +319,7 @@
         {{ completionDialogHelp }}
       </p>
       <el-form label-width="88px" class="dialog-form">
-        <el-form-item label="实际用时">
+        <el-form-item label="累计实际用时">
           <div class="duration-fields">
             <el-input-number
               v-model="completionActualMinutes"
@@ -385,6 +388,7 @@ const CalendarExportDialog = defineAsyncComponent(() => import('../components/Ca
 const calendarExportVisible = ref(false)
 import { useViewMode } from '../composables/useViewMode'
 import { downloadFile } from '../utils/download'
+import { localReferenceDateTime, validLocalReferenceDateTime } from '../utils/pasteNotice'
 import { formatDateTime, isOverdue, statusLabel, statusType } from '../utils/format'
 import { navigationKey, navigationSourceCacheKey, validatedMaterialTarget } from '../utils/materialSourceNavigation'
 import { editBaseline, editRequestConfig, isEditConflict, isEntityGone, preconditionMessage } from '../utils/editPrecondition'
@@ -449,8 +453,8 @@ const deepLinkEmpty = computed(() => taskDataReady.value && hasRouteFilters.valu
 const completionIsUpdate = computed(() => completionTask.value?.status === 'completed')
 const completionDialogTitle = computed(() => completionIsUpdate.value ? '补充或更新完成反馈' : '完成任务并补充反馈')
 const completionDialogHelp = computed(() => completionIsUpdate.value
-  ? '请至少更新实际用时或完成难度。提交后会覆盖已保存的对应反馈，并用于校准估时。'
-  : '可选填写实际用时和难度，帮助系统逐步校准这门课的估时。留空也可以直接完成。')
+  ? '请填写累计实际用时（包含此前专注记录）或更新难度；保存后会替换对应反馈，并用于校准估时。'
+  : '实际用时填写总累计分钟，包含此前专注记录。留空会保留已记录用时，也可以直接完成。')
 const completionSubmitLabel = computed(() => completionIsUpdate.value ? '保存完成反馈' : '完成任务')
 const hasCompletionDifficulty = computed(() => {
   const value = Number(completionDifficulty.value)
@@ -569,7 +573,7 @@ function localDateOf(value) {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+  return localReferenceDateTime(date).slice(0, 10)
 }
 
 function withinNextDays(value, days) {
@@ -763,42 +767,16 @@ function durationToMinutes(prefix) {
 }
 
 function parseLocalDateTime(value) {
-  if (typeof value !== 'string') return null
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/.exec(value)
-  if (!match) return null
-  const [, yearText, monthText, dayText, hourText, minuteText, secondText] = match
-  const year = Number(yearText)
-  const month = Number(monthText)
-  const day = Number(dayText)
-  const hour = Number(hourText)
-  const minute = Number(minuteText)
-  const second = Number(secondText)
-  const date = new Date(year, month - 1, day, hour, minute, second)
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day ||
-    date.getHours() !== hour ||
-    date.getMinutes() !== minute ||
-    date.getSeconds() !== second
-  ) return null
-  return date
+  if (!validLocalReferenceDateTime(value)) return null
+  return new Date(`${value}+08:00`)
 }
 
 function toUtcIso(value) {
-  if (!value) return null
   return parseLocalDateTime(value)?.toISOString() || null
 }
 
-function padDatePart(value) {
-  return String(value).padStart(2, '0')
-}
-
 function toLocalDateTimeInput(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}:${padDatePart(date.getSeconds())}`
+  return value ? localReferenceDateTime(new Date(value)) : ''
 }
 
 function displayStatus(task) {
@@ -973,14 +951,14 @@ function setCompletionLoading(taskId, loading) {
 }
 
 function openCompletionFeedback(task) {
-  if (!task || hasAnyCompletionLoading()) return
+  if (!task || task.status === 'canceled' || hasAnyCompletionLoading()) return
   if (!editBaseline(task)) {
     ElMessage.warning(preconditionMessage())
     return
   }
   taskConflict.value = null
   completionTask.value = task
-  completionActualMinutes.value = task.status === 'completed' ? numericMinutes(task.actual_minutes) : null
+  completionActualMinutes.value = numericMinutes(task.actual_minutes)
   completionDifficulty.value = task.status === 'completed' && task.difficulty !== null && task.difficulty !== undefined ? Number(task.difficulty) : null
   completionDialogVisible.value = true
 }
@@ -1041,7 +1019,7 @@ async function submitCompletionFeedback() {
 }
 
 async function completeTask(task, feedback = {}) {
-  if (!task?.id || isCompletionLoading(task.id)) return false
+  if (!task?.id || task.status === 'canceled' || isCompletionLoading(task.id)) return false
   const baseline = editBaseline(task)
   const config = editRequestConfig(baseline)
   if (!config) {
@@ -1074,6 +1052,29 @@ async function completeTask(task, feedback = {}) {
     }
     ElMessage.error(err.message)
     return false
+  } finally {
+    setCompletionLoading(task.id, false)
+  }
+}
+
+async function reopenTask(task) {
+  if (!task?.id || task.status !== 'canceled' || hasAnyCompletionLoading()) return
+  const baseline = editBaseline(task)
+  const config = editRequestConfig(baseline)
+  if (!config) {
+    ElMessage.warning(preconditionMessage())
+    return
+  }
+  setCompletionLoading(task.id, true)
+  try {
+    await tasksApi.update(task.id, { status: 'not_started' }, config)
+    completionIdempotencyKeys.delete(String(task.id))
+    ElMessage.success('任务已恢复为待办，可以继续处理。')
+    await loadData()
+  } catch (error) {
+    if (isEditConflict(error) || isEntityGone(error, 'TASK_NOT_FOUND')) {
+      taskConflict.value = { baseline, state: isEntityGone(error, 'TASK_NOT_FOUND') ? 'missing' : 'changed' }
+    } else ElMessage.error(error.message)
   } finally {
     setCompletionLoading(task.id, false)
   }

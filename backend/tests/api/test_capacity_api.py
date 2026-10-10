@@ -182,9 +182,12 @@ def test_extraction_deadline_is_utc_and_capacity_groups_by_shanghai_local_date(c
     )
     capacity = client.get("/api/agent/capacity")
 
-    assert warnings == []
+    # A date without a clock defaults to the end of the Shanghai day and
+    # must remain visible as a review warning, even when grouping is correct.
+    assert warnings == ["TIME_DEFAULTED_TO_END_OF_DAY"]
     assert extracted_due.tzinfo is not None
     assert as_local(extracted_due).date() == local_date
+    assert as_local(extracted_due).time() == time(23, 59)
     assert first.status_code == second.status_code == 201
     group = capacity.json()["same_day_deadline_groups"][0]
     assert group["local_date"] == local_date.isoformat()

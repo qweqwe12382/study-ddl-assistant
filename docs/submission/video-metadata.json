@@ -1,0 +1,82 @@
+{
+  "seconds": 270.11474999999996,
+  "resolution": "1920x1080",
+  "fps": 24,
+  "speech_speed_factor": 1.156468797564688,
+  "tts": "Local Qwen3-TTS-12Hz-0.6B-CustomVoice / Vivian",
+  "subtitle_timing": "phrase timing estimated from text length",
+  "chapters": [
+    {
+      "scene": 1,
+      "start_seconds": 0.0,
+      "duration_seconds": 23.363375,
+      "title": "学伴管家"
+    },
+    {
+      "scene": 2,
+      "start_seconds": 23.363375,
+      "duration_seconds": 22.956833333333332,
+      "title": "第一步 收好通知"
+    },
+    {
+      "scene": 3,
+      "start_seconds": 46.32020833333333,
+      "duration_seconds": 22.33775,
+      "title": "第二步 核对识别结果"
+    },
+    {
+      "scene": 4,
+      "start_seconds": 68.65795833333334,
+      "duration_seconds": 21.846458333333334,
+      "title": "确认之后 才进入任务清单"
+    },
+    {
+      "scene": 5,
+      "start_seconds": 90.50441666666667,
+      "duration_seconds": 24.331958333333333,
+      "title": "第三步 安排下一步行动"
+    },
+    {
+      "scene": 6,
+      "start_seconds": 114.836375,
+      "duration_seconds": 22.46925,
+      "title": "计划由使用者掌握"
+    },
+    {
+      "scene": 7,
+      "start_seconds": 137.305625,
+      "duration_seconds": 20.884708333333332,
+      "title": "第四步 形成复习清单"
+    },
+    {
+      "scene": 8,
+      "start_seconds": 158.1903333333333,
+      "duration_seconds": 23.168875,
+      "title": "通知改期 先看影响"
+    },
+    {
+      "scene": 9,
+      "start_seconds": 181.3592083333333,
+      "duration_seconds": 22.94325,
+      "title": "完成一件 留下记录"
+    },
+    {
+      "scene": 10,
+      "start_seconds": 204.3024583333333,
+      "duration_seconds": 21.160666666666668,
+      "title": "小屏幕也能继续使用"
+    },
+    {
+      "scene": 11,
+      "start_seconds": 225.46312499999996,
+      "duration_seconds": 22.3355,
+      "title": "本地优先 可复现"
+    },
+    {
+      "scene": 12,
+      "start_seconds": 247.79862499999996,
+      "duration_seconds": 22.316125,
+      "title": "让学习安排更清楚"
+    }
+  ]
+}

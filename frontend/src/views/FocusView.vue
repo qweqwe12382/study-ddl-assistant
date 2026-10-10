@@ -109,11 +109,13 @@
         <template v-else>
           <h3>本次专注 {{ recordedLabel }}</h3>
           <p>把这段真实用时记入「{{ selectedTask?.name }}」。</p>
+          <p>本次 {{ recordedLabel }} 会累加到已有记录；仅记录用时不会完成任务。</p>
+          <p v-if="pendingRecord">上次保存结果尚未确认，请重试同一操作，避免重复记录。</p>
           <div class="record-actions">
-            <button class="focus-action primary" type="button" :disabled="recording" @click="record(true)">
+            <button class="focus-action primary" type="button" :disabled="recording || pendingRecord && !pendingRecord.asComplete" @click="record(true)">
               {{ recording ? '正在记录' : '完成并记录' }}
             </button>
-            <button class="focus-action" type="button" :disabled="recording" @click="record(false)">仅记录用时</button>
+            <button class="focus-action" type="button" :disabled="recording || pendingRecord && pendingRecord.asComplete" @click="record(false)">仅记录用时</button>
           </div>
         </template>
       </aside>
@@ -135,12 +137,11 @@ import {
   activeElapsedSeconds,
   formatClock,
   isRecordable,
-  mergeActualMinutes,
   normalizeCustomMinutes,
   recordLabel,
   sessionMinutes,
 } from '../utils/focusTimer'
-import { editRequestConfig } from '../utils/editPrecondition'
+import { buildFocusSaveAttempt, sendFocusSaveAttempt } from '../utils/focusSave'
 import QuickTaskAdd from '../components/QuickTaskAdd.vue'
 import { orderedPendingTasks, resolveFocusTask } from '../utils/dailyWorkflow'
 
@@ -159,6 +160,7 @@ const customMinutesDraft = ref('')
 const phase = ref('idle')
 const elapsedSeconds = ref(0)
 const recording = ref(false)
+const pendingRecord = ref(null)
 const notice = ref('')
 
 let ticker = null
@@ -231,6 +233,7 @@ function resetTimer() {
   stopTicker()
   elapsedSeconds.value = 0
   phase.value = 'idle'
+  pendingRecord.value = null
 }
 
 function applyPreset(minutes) {
@@ -252,30 +255,29 @@ function applyCustomMinutes() {
   applyPreset(normalized)
 }
 
-function taskBaseline(task) {
-  return editRequestConfig({ id: task.id, navigation_key: task.navigation_key, revision: task.revision })
-}
-
 async function record(asComplete) {
   const task = selectedTask.value
   if (!task || recording.value || phase.value !== 'finished') return
   const minutes = sessionMinutes(elapsedSeconds.value)
   if (!isRecordable(elapsedSeconds.value)) return
+  if (pendingRecord.value && pendingRecord.value.asComplete !== asComplete) return
   recording.value = true
   errorMessage.value = ''
-  const actual = mergeActualMinutes(task.actual_minutes, minutes)
-  const config = taskBaseline(task)
   try {
-    if (asComplete) {
-      await http.post(`/tasks/${task.id}/complete`, { actual_minutes: actual }, config)
-    } else {
-      await tasksApi.update(task.id, { actual_minutes: actual }, config)
+    if (!pendingRecord.value) {
+      const key = globalThis.crypto?.randomUUID?.() || `focus-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      pendingRecord.value = buildFocusSaveAttempt(task, minutes, asComplete, key)
     }
+    await sendFocusSaveAttempt(pendingRecord.value, {
+      recordFocus: tasksApi.recordFocusSession,
+      completeFocus: (id, payload, config) => http.post(`/tasks/${id}/complete`, payload, config),
+    })
     notice.value = asComplete ? `已完成「${task.name}」，记录 ${recordLabel(minutes)}` : `已记录 ${recordLabel(minutes)}`
     // The write succeeded; consume the session before a refresh can fail.
     stopTicker()
     elapsedSeconds.value = 0
     phase.value = 'idle'
+    pendingRecord.value = null
     await loadTasks()
   } catch (error) {
     errorMessage.value = error?.code === 'EDIT_CONFLICT'

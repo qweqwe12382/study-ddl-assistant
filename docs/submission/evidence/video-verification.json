@@ -1,0 +1,18 @@
+{
+  "decode_exit_code": 0,
+  "stream_info": [
+    "Duration: 00:04:30.13, start: 0.000000, bitrate: 275 kb/s",
+    "Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(progressive), 1920x1080, 112 kb/s, 24 fps, 24 tbr, 12288 tbn (default)",
+    "Stream #0:1[0x2](und): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, mono, fltp, 158 kb/s (default)",
+    "Stream #0:0 -> #0:0 (h264 (native) -> wrapped_avframe (native))",
+    "Stream #0:1 -> #0:1 (aac (native) -> pcm_s16le (native))",
+    "Stream #0:0(und): Video: wrapped_avframe, yuv420p(progressive), 1920x1080, q=2-31, 200 kb/s, 24 fps, 24 tbn (default)",
+    "Stream #0:1(und): Audio: pcm_s16le, 48000 Hz, mono, s16, 768 kb/s (default)"
+  ],
+  "volume": [
+    "mean_volume: -17.6 dB",
+    "max_volume: -1.9 dB"
+  ],
+  "scene_count": 12,
+  "method": "Complete FFmpeg decode, audio stream/level check, extracted keyframe review"
+}

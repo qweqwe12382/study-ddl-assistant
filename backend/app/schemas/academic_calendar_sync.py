@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from app.schemas.academic_calendar import ExamType, WeekPattern
+from app.schemas.academic_calendar import ExamType, WeekPattern, has_active_class_week
 
 
 class AcademicCalendarPreviewRequest(BaseModel):
@@ -46,6 +46,8 @@ class AcademicCalendarImportItem(BaseModel):
                 raise ValueError("class session import fields are incomplete")
             if self.end_time <= self.start_time or self.end_week < self.start_week:
                 raise ValueError("class session import range is invalid")
+            if not has_active_class_week(self.start_week, self.end_week, self.week_pattern):
+                raise ValueError("周次范围与单双周不匹配，至少需要一个实际上课周")
         else:
             if self.title is None or self.exam_type is None or self.starts_at is None:
                 raise ValueError("exam import fields are incomplete")
@@ -72,12 +74,16 @@ class AcademicCalendarSyncRequest(BaseModel):
     source_type: Literal["ical"] = "ical"
     source_name: str = Field(min_length=1, max_length=120)
     items: list[AcademicCalendarImportItem] = Field(min_length=1, max_length=300)
+    replace_source: bool = Field(
+        default=False,
+        description="以本次导入为准：先清空当前全部课表与考试（含手工录入），再导入本次内容",
+    )
 
 
 class AcademicCalendarSyncConflict(BaseModel):
     item_key: str
     course_name: str
-    reason: Literal["schedule_conflict", "local_changed", "target_unavailable"]
+    reason: Literal["schedule_conflict", "local_changed", "target_unavailable", "recurrence_changed"]
     message: str
 
 
@@ -86,6 +92,7 @@ class AcademicCalendarSyncResponse(BaseModel):
     updated: int = Field(ge=0)
     unchanged: int = Field(ge=0)
     skipped: int = Field(ge=0)
+    removed: int = Field(default=0, ge=0)
     courses_created: int = Field(ge=0)
     conflicts: list[AcademicCalendarSyncConflict]
 

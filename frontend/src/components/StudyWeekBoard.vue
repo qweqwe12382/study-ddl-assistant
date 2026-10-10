@@ -103,6 +103,7 @@
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { localReferenceDateTime } from '../utils/pasteNotice.js'
 
 const props = defineProps({
   plan: { type: Object, default: null },
@@ -115,7 +116,7 @@ const props = defineProps({
 
 const emit = defineEmits(['complete', 'open-details'])
 const itemElements = ref({})
-const today = localDateKey(new Date())
+const today = localReferenceDateTime(new Date()).slice(0, 10)
 
 const progressItems = computed(() => Array.isArray(props.plan?.items) ? props.plan.items : props.items)
 const completedCount = computed(() => progressItems.value.filter((item) => item?.status === 'completed').length)

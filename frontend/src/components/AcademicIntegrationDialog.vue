@@ -87,7 +87,11 @@
           <button type="button" @click="selectedKeys = []">清空</button>
         </div>
       </div>
-      <p class="semester-preview">学期开始于 {{ sourceMode === 'njust' ? njustSemesterStart : form.semester_start }}，确认导入后用于自动定位本周。</p>
+      <p class="semester-preview">学期开始于 {{ sourceMode === 'njust' ? njustSemesterStart : form.semester_start }}，按此计算本周为{{ previewCurrentWeek ? `第 ${previewCurrentWeek} 周` : '学期外' }}，请与教务系统显示的周次核对；确认导入后用于自动定位本周。</p>
+      <label class="replace-toggle">
+        <el-checkbox v-model="replaceSource" />
+        <span>以本次导入为准：先清空当前全部课表与考试（含手动添加），再写入勾选的日程；时间重叠的课程会同时显示</span>
+      </label>
       <div class="preview-list" aria-label="待同步日程">
         <label v-for="item in preview.items" :key="item.item_key" class="preview-item">
           <el-checkbox :model-value="selectedKeys.includes(item.item_key)" :aria-label="`选择 ${item.course_name}`" @change="toggleItem(item.item_key, $event)" />
@@ -118,7 +122,7 @@
       </ol>
       <div class="result-mark" aria-hidden="true">✓</div>
        <strong>课表与考试已导入本地</strong>
-      <p>新增 {{ result.created }} 项，更新 {{ result.updated }} 项，无变化 {{ result.unchanged }} 项。</p>
+      <p>新增 {{ result.created }} 项，更新 {{ result.updated }} 项，无变化 {{ result.unchanged }} 项<template v-if="result.removed">，移除旧日程 {{ result.removed }} 项</template>。</p>
       <div v-if="result.skipped" class="result-conflicts">
         <strong>{{ result.skipped }} 项需要人工处理</strong>
         <ul><li v-for="conflict in result.conflicts" :key="`${conflict.item_key}-${conflict.reason}`">{{ conflict.course_name }}：{{ conflict.message }}</li></ul>
@@ -136,6 +140,7 @@ import { computed, defineAsyncComponent, reactive, ref, watch } from 'vue'
 import { ElButton, ElCheckbox, ElDatePicker, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElMessage } from 'element-plus'
 
 import { academicCalendarApi } from '../api'
+import { computeCurrentWeek } from '../utils/semesterWeek'
 
 const NjustAcademicConnectForm = defineAsyncComponent(() => import('./NjustAcademicConnectForm.vue'))
 
@@ -153,8 +158,12 @@ const formError = ref('')
 const fileInput = ref(null)
 const preview = ref({ items: [], class_count: 0, exam_count: 0, warnings: [] })
 const selectedKeys = ref([])
-const result = ref({ created: 0, updated: 0, unchanged: 0, skipped: 0, conflicts: [] })
+const replaceSource = ref(true)
+const result = ref({ created: 0, updated: 0, unchanged: 0, skipped: 0, removed: 0, conflicts: [] })
 const selectedItems = computed(() => preview.value.items.filter((item) => selectedKeys.value.includes(item.item_key)))
+const previewCurrentWeek = computed(() => computeCurrentWeek(
+  sourceMode.value === 'njust' ? njustSemesterStart.value : form.semester_start,
+))
 
 function defaultForm() { return { source_name: '学校教务处', semester_start: props.semesterStart || '', semester_weeks: 18 } }
 function setSourceMode(mode) {
@@ -171,7 +180,8 @@ function resetDialog() {
   formError.value = ''
   preview.value = { items: [], class_count: 0, exam_count: 0, warnings: [] }
   selectedKeys.value = []
-  result.value = { created: 0, updated: 0, unchanged: 0, skipped: 0, conflicts: [] }
+  replaceSource.value = true
+  result.value = { created: 0, updated: 0, unchanged: 0, skipped: 0, removed: 0, conflicts: [] }
   if (fileInput.value) fileInput.value.value = ''
 }
 function handleNjustPreview(payload) {
@@ -198,6 +208,12 @@ async function readCalendarFile(event) {
   }
   try {
     calendarText.value = await file.text()
+    // Blob.text() always decodes UTF-8 with replacement characters; campus
+    // portals still export GBK calendars, whose names would turn into mojibake.
+    if (calendarText.value.includes('\uFFFD')) {
+      const decoded = new TextDecoder('gbk').decode(await file.arrayBuffer())
+      if (!decoded.includes('\uFFFD')) calendarText.value = decoded
+    }
     fileName.value = file.name
   } catch {
     formError.value = '无法读取该文件，请重新导出后再试'
@@ -244,6 +260,7 @@ async function syncCalendar() {
   try {
     result.value = await academicCalendarApi.syncIntegration({
       source_key: preview.value.source_key, source_type: preview.value.source_type, source_name: preview.value.source_name, items: selectedItems.value,
+      replace_source: replaceSource.value,
     })
     stage.value = 'result'
     emit('synced', {
@@ -269,6 +286,8 @@ watch(() => props.semesterStart, value => {
 .import-options summary { padding: 10px 0; cursor: pointer; font-size: 13px; }
 .import-options summary span { color: var(--ledger-muted); margin-left: 8px; }
 .semester-preview { font-size: 13px; color: var(--ledger-muted); line-height: 1.6; }
+.replace-toggle { display: flex; align-items: flex-start; gap: 8px; margin: 10px 0 12px; padding: 10px 12px; background: #f5f8f7; border: 1px solid #dbe3e0; border-radius: 5px; cursor: pointer; }
+.replace-toggle span { color: #4a5866; font-size: 12px; line-height: 1.55; }
 .integration-contract { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; padding: 11px 13px; color: #334158; background: #f1f5f4; border: 1px solid #cadbd6; border-radius: 5px; }
 .integration-contract.is-njust { background: #f2f6ff; border-color: #cdd8ef; }
 .contract-mark { flex: 0 0 auto; padding: 5px 7px; color: #136d62; background: #d8f3ec; border-radius: 3px; font: 700 10px Bahnschrift, "Microsoft YaHei", sans-serif; letter-spacing: .06em; }

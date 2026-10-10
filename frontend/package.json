@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "navigation:check": "node tests/contracts/check-material-source-navigation.mjs",
     "api-base:check": "node tests/contracts/check-api-base-url.mjs",
+    "auth-boundary:check": "node tests/contracts/check-auth-error-boundary.mjs",
     "edit:check": "node tests/contracts/check-edit-precondition.mjs",
     "onboarding:check": "node tests/contracts/check-first-learning-loop-placement.mjs",
     "plan-delta:check": "node tests/contracts/check-plan-delta-display.mjs",
@@ -19,13 +20,14 @@
     "paste-notice:check": "node tests/contracts/check-paste-notice.mjs",
     "deadline-radar:check": "node tests/contracts/check-deadline-radar.mjs",
     "semester-week:check": "node tests/contracts/check-semester-week.mjs",
+    "calendar-encoding:check": "node tests/contracts/check-calendar-encoding.mjs",
     "commands:check": "node tests/contracts/check-workspace-commands.mjs",
     "workflow:check": "node tests/contracts/check-daily-workflow.mjs",
     "downloads:check": "node tests/contracts/check-downloads.mjs",
     "motion:check": "node tests/contracts/check-motion.mjs",
     "dashboard:check": "node tests/contracts/check-dashboard-deferred.mjs",
     "bundle:check": "node tests/contracts/check-bundle-budget.mjs",
-    "verify": "npm run lint && npm run navigation:check && npm run api-base:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run focus:check && npm run quick-add:check && npm run task-filters:check && npm run paste-notice:check && npm run deadline-radar:check && npm run semester-week:check && npm run commands:check && npm run workflow:check && npm run downloads:check && npm run motion:check && npm run build && npm run dashboard:check && npm run bundle:check"
+    "verify": "npm run lint && npm run navigation:check && npm run api-base:check && npm run auth-boundary:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run focus:check && npm run quick-add:check && npm run task-filters:check && npm run paste-notice:check && npm run deadline-radar:check && npm run semester-week:check && npm run calendar-encoding:check && npm run commands:check && npm run workflow:check && npm run downloads:check && npm run motion:check && npm run build && npm run dashboard:check && npm run bundle:check"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

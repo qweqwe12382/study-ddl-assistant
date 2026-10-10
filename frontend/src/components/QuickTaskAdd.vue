@@ -24,7 +24,7 @@
             </select>
           </label>
           <div class="quick-add-due" role="group" aria-label="快捷截止时间">
-            <span class="quick-due-label">截止日期（可选）</span>
+            <span class="quick-due-label">截止日期（北京时间，可选）</span>
             <button v-for="chip in QUICK_DUE_CHIPS" :key="chip.key" type="button" class="quick-chip" :class="{ active: dueChip === chip.key }" :aria-pressed="dueChip === chip.key" :disabled="submitting" @click="dueChip = dueChip === chip.key ? '' : chip.key">{{ chip.label }}</button>
             <label class="quick-custom-date" :class="{ active: dueChip === 'custom' }">
               <input v-model="customDate" type="date" aria-label="自选截止日期" :disabled="submitting" @change="dueChip = customDate ? 'custom' : ''">

@@ -12,6 +12,13 @@ WeekPattern = Literal["all", "odd", "even"]
 ExamType = Literal["quiz", "midterm", "final", "other"]
 
 
+def has_active_class_week(start_week: int, end_week: int, pattern: str) -> bool:
+    return any(
+        pattern == "all" or (pattern == "odd" and week % 2 == 1) or (pattern == "even" and week % 2 == 0)
+        for week in range(start_week, end_week + 1)
+    )
+
+
 class ClassSessionBase(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
@@ -31,6 +38,8 @@ class ClassSessionBase(BaseModel):
             raise ValueError("end_time must be later than start_time")
         if self.end_week < self.start_week:
             raise ValueError("end_week must not be earlier than start_week")
+        if not has_active_class_week(self.start_week, self.end_week, self.week_pattern):
+            raise ValueError("周次范围与单双周不匹配，至少需要一个实际上课周")
         return self
 
 

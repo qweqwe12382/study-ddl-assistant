@@ -27,6 +27,7 @@ export default [
         requestAnimationFrame: 'readonly',
         HTMLElement: 'readonly',
         File: 'readonly',
+        TextDecoder: 'readonly',
       },
     },
     rules: {

@@ -60,6 +60,30 @@ assert.match(apiSource, /upload: \(files, courseId = null, materialType = null, 
 assert.match(apiSource, /if \(sourceTime\) formData\.append\('source_time', sourceTime\)/)
 
 const materialsSource = await readFile(new URL('../../src/views/MaterialsView.vue', import.meta.url), 'utf8')
+// Exercise the real candidate-to-form conversion: a browser in Los Angeles
+// must still send 20:00 Shanghai, including on US daylight-saving boundaries.
+const conversionSource = materialsSource.match(/function toLocalDateTimeInput\(value\) \{[\s\S]*?\n\}/)?.[0]
+assert.ok(conversionSource)
+const convertDeadline = new Function('localReferenceDateTime', `${conversionSource}; return toLocalDateTimeInput`)(localReferenceDateTime)
+const priorTimezone = process.env.TZ
+try {
+  for (const timezone of ['America/Los_Angeles', 'Asia/Shanghai', 'UTC']) {
+    process.env.TZ = timezone
+    for (const [instant, wallClock] of [
+      ['2026-10-15T12:00:00Z', '2026-10-15T20:00:00'],
+      ['2026-03-07T18:30:00Z', '2026-03-08T02:30:00'],
+      ['2026-10-31T17:30:00Z', '2026-11-01T01:30:00'],
+    ]) {
+      assert.equal(convertDeadline(instant), wallClock, timezone)
+      assert.equal(new Date(`${convertDeadline(instant)}+08:00`).toISOString(), new Date(instant).toISOString())
+    }
+    assert.equal(convertDeadline(null), '')
+    assert.equal(convertDeadline('invalid'), '')
+  }
+} finally {
+  if (priorTimezone === undefined) delete process.env.TZ
+  else process.env.TZ = priorTimezone
+}
 assert.match(materialsSource, /action === 'paste-notice'/)
 assert.match(materialsSource, /<PasteNoticeDialog/)
 assert.match(materialsSource, /new File\(\[notice\.content\], notice\.filename, \{ type: 'text\/plain;charset=utf-8' \}\)/)
@@ -119,4 +143,23 @@ assert.match(candidatesSource, /v-model="task\.estimated_minutes"/)
 assert.match(candidatesSource, /@media \(max-width: 680px\)/)
 assert.doesNotMatch(candidatesSource, /tasksApi|materialsApi|emit\(/, 'mobile editor shares rows with the existing confirmation path without creating a second submit path')
 
-console.log('Paste-notice contracts passed.')
+
+
+const taskEditorSource = await readFile(new URL('../../src/views/TasksView.vue', import.meta.url), 'utf8')
+const taskFunctions = ['parseLocalDateTime', 'toUtcIso', 'toLocalDateTimeInput'].map(name => taskEditorSource.match(new RegExp(`function ${name}\\(value\\) \\{[\\s\\S]*?\\n\\}`))?.[0]).join('\n')
+const editor = new Function('localReferenceDateTime', 'validLocalReferenceDateTime', `${taskFunctions}; return {toUtcIso, toLocalDateTimeInput}`)(localReferenceDateTime, validLocalReferenceDateTime)
+assert.equal(editor.toLocalDateTimeInput('2026-10-15T12:00:00Z'), '2026-10-15T20:00:00')
+assert.equal(editor.toUtcIso('2026-10-15T20:00:00'), '2026-10-15T12:00:00.000Z')
+assert.equal(editor.toUtcIso('2026-03-08T02:30:00'), '2026-03-07T18:30:00.000Z')
+assert.equal(editor.toUtcIso('2026-02-30T12:00:00'), null)
+
+// Test the actual list formatting and day bucketing against Shanghai midnight.
+const flowSource = await readFile(new URL('../../src/components/DeadlineFlow.vue', import.meta.url), 'utf8')
+const flowFormat = flowSource.match(/function formatDueAt\(value\) \{[\s\S]*?\n\}/)[0]
+const formatFlow = new Function(`${flowFormat}; return formatDueAt`)()
+assert.match(formatFlow(new Date('2026-10-15T12:00:00Z')), /20:00/)
+const agendaSource = await readFile(new URL('../../src/components/TaskAgenda.vue', import.meta.url), 'utf8')
+const dayFunction = agendaSource.match(/function localDayKey\(date\) \{[\s\S]*?\n\}/)[0]
+const dayKey = new Function(`${dayFunction}; return localDayKey`)()
+assert.equal(dayKey(new Date('2026-10-15T16:30:00Z')), Date.UTC(2026, 9, 16))
+console.log('Paste-notice and Shanghai task-time contracts passed.')

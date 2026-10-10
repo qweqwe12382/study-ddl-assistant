@@ -117,7 +117,11 @@ class NjustSessionStore:
     def create(self, owner_key: str) -> tuple[str, str]:
         session: requests.Session | None = None
         last_error: Exception | None = None
-        for strategy in ("portal_post", "direct_get"):
+        # Prefer logging in on the academic system itself: a portal login only
+        # establishes the 8080 portal session, and the 9080 schedule endpoints
+        # would answer with the login page. Keep the portal path as fallback
+        # for networks where 9080 is unreachable.
+        for strategy in ("direct_get", "portal_post"):
             session = self._new_http_session()
             try:
                 content, content_type = self._captcha_payload(self._captcha_response(session, strategy))
@@ -236,6 +240,16 @@ def fetch_njust_pages(
         schedule_text = _safe_remote_text(schedule)
         exams_text = _safe_remote_text(exams)
         if "kbtable" not in schedule_text and "kbcontent" not in schedule_text:
+            # The schedule endpoint answers with its login page (form id Form1,
+            # USERNAME field) whenever the request carries no academic-system
+            # session — e.g. after a portal-only login. That is an auth problem,
+            # not a missing schedule, and must not be reported as one.
+            if "Form1" in schedule_text and "USERNAME" in schedule_text:
+                raise NjustAcademicError(
+                    "NJUST_SESSION_INVALID",
+                    "教务系统登录会话未生效，请重新获取验证码后再试；若反复出现，请改在校园网内使用",
+                    401,
+                )
             raise NjustAcademicError("NJUST_SCHEDULE_UNAVAILABLE", "教务系统未返回课表，请核对学期或稍后重试", 502)
         return schedule_text, exams_text
     except NjustAcademicError:
@@ -445,25 +459,42 @@ def parse_njust_exams(html: str) -> list[dict[str, str]]:
     return exams
 
 
-def _week_ranges(raw: str, semester_weeks: int) -> list[tuple[int, int, str]]:
-    week_part = raw.split("节", 1)[0]
-    explicit_pattern = "odd" if "单" in week_part else ("even" if "双" in week_part else None)
-    numbers: set[int] = set()
-    for start_value, end_value in re.findall(r"(\d+)\s*-\s*(\d+)\s*周?", week_part):
-        start, end = sorted((int(start_value), int(end_value)))
-        numbers.update(range(max(1, start), min(semester_weeks, end) + 1))
-    without_ranges = re.sub(r"\d+\s*-\s*\d+\s*周?", " ", week_part)
-    numbers.update(int(value) for value in re.findall(r"\d+", without_ranges) if 1 <= int(value) <= semester_weeks)
-    if not numbers:
-        numbers.update(range(1, semester_weeks + 1))
-    if explicit_pattern:
-        parity = 1 if explicit_pattern == "odd" else 0
+def _parse_week_ranges(raw: str, semester_weeks: int) -> tuple[list[tuple[int, int, str]], str | None]:
+    text = re.sub(r"\s+", "", raw).translate(str.maketrans({
+        "（": "(", "）": ")", "[": "(", "]": ")", "，": ",", "、": ",",
+        "－": "-", "–": "-", "—": "-", "~": "-", "～": "-", "至": "-",
+    }))
+    if not text:
+        return [], "教务页面未提供明确上课周次"
+    # Section numbers in e.g. 1-16(周)[01-03节] are not week numbers.
+    text = re.sub(r"\(?\d+(?:-\d+)?(?:小)?节\)?", "", text)
+    if "单" in text and "双" in text:
+        return [], "单双周说明不明确"
+    pattern = "odd" if "单" in text else ("even" if "双" in text else None)
+    full_semester = bool(re.fullmatch(r"(?:全学期|整个学期|全周|全部周|每周)(?:\([单双]周?\))?", text)) or text in {"单周", "双周"}
+    text = text.replace("单周", "单").replace("双周", "双")
+    text = re.sub(r"[()第周单双]", "", text)
+    if full_semester:
+        numbers = set(range(1, semester_weeks + 1))
+    else:
+        if not re.fullmatch(r"\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*", text):
+            return [], "无法识别上课周次"
+        numbers: set[int] = set()
+        for part in text.split(","):
+            bounds = [int(value) for value in part.split("-")]
+            start, end = bounds[0], bounds[-1]
+            if start > end:
+                return [], "上课周次起止顺序无效"
+            if start < 1 or end > semester_weeks:
+                return [], f"上课周次超出本学期 1–{semester_weeks} 周"
+            numbers.update(range(start, end + 1))
+    if pattern:
+        parity = 1 if pattern == "odd" else 0
         numbers = {week for week in numbers if week % 2 == parity}
-    ordered = sorted(numbers)
-    if not ordered:
-        return []
+    if not numbers:
+        return [], "周次范围与单双周不匹配，没有实际的上课周"
     ranges: list[tuple[int, int, str]] = []
-    remaining = set(ordered)
+    remaining = set(numbers)
     while remaining:
         first = min(remaining)
         consecutive = [first]
@@ -473,10 +504,14 @@ def _week_ranges(raw: str, semester_weeks: int) -> list[tuple[int, int, str]]:
         while alternating[-1] + 2 in remaining:
             alternating.append(alternating[-1] + 2)
         chosen = consecutive if len(consecutive) >= len(alternating) else alternating
-        pattern = "all" if chosen is consecutive or len(chosen) == 1 else ("odd" if first % 2 else "even")
-        ranges.append((chosen[0], chosen[-1], pattern))
+        range_pattern = "all" if chosen is consecutive or len(chosen) == 1 else ("odd" if first % 2 else "even")
+        ranges.append((chosen[0], chosen[-1], range_pattern))
         remaining.difference_update(chosen)
-    return ranges
+    return ranges, None
+
+
+def _week_ranges(raw: str, semester_weeks: int) -> list[tuple[int, int, str]]:
+    return _parse_week_ranges(raw, semester_weeks)[0]
 
 
 def _item_key(key: str, kind: str, external_uid: str) -> str:
@@ -506,11 +541,9 @@ def normalize_njust_calendar(
         occurrence_key = (course["name"].casefold(), course["weekday"])
         occurrence = occurrences.get(occurrence_key, 0) + 1
         occurrences[occurrence_key] = occurrence
-        if not course["weeks"]:
-            warnings.append(f"{course['name']}：教务页面未提供明确周次，已按整个学期导入，请在预览中核对")
-        ranges = _week_ranges(course["weeks"], semester_weeks)
+        ranges, week_error = _parse_week_ranges(course["weeks"], semester_weeks)
         if not ranges:
-            warnings.append(f"{course['name']}：无法识别上课周次，未导入")
+            warnings.append(f"{course['name']}：{week_error}，未导入，请核对后手工录入")
             continue
         for range_index, (start_week, end_week, pattern) in enumerate(ranges, start=1):
             identity = course.get("course_id") or course["name"]
@@ -569,7 +602,7 @@ def normalize_njust_calendar(
             }
         )
 
-    if not items:
+    if not items and not warnings:
         raise NjustAcademicError("NJUST_CALENDAR_EMPTY", "该学期没有可导入的课程或已公布考试")
     # Semester start is intentionally part of user confirmation but not source
     # identity: changing it affects display dates, not recurring week numbers.

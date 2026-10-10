@@ -256,7 +256,7 @@ function bandIdFor(distance) {
 }
 
 function formatDueAt(value) {
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai',
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',

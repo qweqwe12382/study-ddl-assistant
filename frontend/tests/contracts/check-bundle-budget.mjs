@@ -151,7 +151,8 @@ const checks = [
     pattern: /^AcademicIntegrationDialog(?:-[^/]+)?\.js$/,
     // The integration shell loads only after the student opens it; the
     // credential-bearing NJUST form is split into a second short-lived chunk.
-    budget: 5 * 1024,
+    // Includes the shared semester-week helper for the live week hint.
+    budget: 5.5 * 1024,
   },
   {
     key: 'academicIntegrationCss',

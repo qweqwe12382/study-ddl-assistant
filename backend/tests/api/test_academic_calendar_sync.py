@@ -99,6 +99,7 @@ def test_sync_creates_then_updates_without_overwriting_local_changes(client):
         "updated": 0,
         "unchanged": 0,
         "skipped": 0,
+        "removed": 0,
         "courses_created": 3,
         "conflicts": [],
     }
@@ -134,7 +135,7 @@ def test_sync_creates_then_updates_without_overwriting_local_changes(client):
     assert client.get("/api/academic-calendar/class-sessions?week=1").json()[0]["location"] == "我改成的教室"
 
 
-def test_sync_skips_schedule_conflict_and_does_not_create_or_restore_rows(client):
+def test_sync_accepts_overlapping_imports_beside_manual_sessions(client):
     course = client.post("/api/courses", json={"name": "人工课程"}).json()
     manual = client.post(
         "/api/academic-calendar/class-sessions",
@@ -151,21 +152,42 @@ def test_sync_skips_schedule_conflict_and_does_not_create_or_restore_rows(client
     preview = _preview(client)
     math = [item for item in preview["items"] if item["course_name"] == "高等数学"]
     result = _sync(client, preview, math)
+    # Real timetables overlap (labs alongside classes), so an import is
+    # factual data: it lands beside the manual session instead of being
+    # rejected, and the weekly grid shows both blocks.
     assert result.status_code == 200
-    assert result.json()["skipped"] == 1
-    assert result.json()["courses_created"] == 0
-    assert result.json()["conflicts"][0]["reason"] == "schedule_conflict"
-    assert [item["name"] for item in client.get("/api/courses").json()] == ["人工课程"]
+    assert result.json()["skipped"] == 0
+    assert result.json()["created"] == 1
+    week_one = client.get("/api/academic-calendar/class-sessions?week=1").json()
+    assert sorted(item["course_name"] for item in week_one) == ["人工课程", "高等数学"]
+    # Hand-entered sessions keep their clash guard.
+    duplicate = client.post(
+        "/api/academic-calendar/class-sessions",
+        json={
+            "course_id": course["id"],
+            "weekday": 1,
+            "start_time": "09:00",
+            "end_time": "09:30",
+            "start_week": 1,
+            "end_week": 2,
+        },
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "CLASS_SESSION_CONFLICT"
 
     safe_preview = _preview(client, _calendar(course_uid="safe-math").replace("T080000", "T140000").replace("T094000", "T154000"), "第二教务来源")
     safe_math = [item for item in safe_preview["items"] if item["course_name"] == "高等数学"]
     created = _sync(client, safe_preview, safe_math)
     assert created.json()["created"] == 1
-    imported = next(item for item in client.get("/api/academic-calendar/class-sessions?week=1").json() if item["course_name"] == "高等数学")
+    imported = next(
+        item for item in client.get("/api/academic-calendar/class-sessions?week=1").json()
+        if item["course_name"] == "高等数学" and item["start_time"].startswith("14:00")
+    )
     assert client.delete(
         f'/api/academic-calendar/class-sessions/{imported["id"]}', headers=_edit_headers(imported)
     ).status_code == 204
     missing = _sync(client, safe_preview, safe_math)
+    # A locally deleted import row is still not resurrected by a merge import.
     assert missing.json()["skipped"] == 1
     assert missing.json()["conflicts"][0]["reason"] == "target_unavailable"
 
@@ -200,5 +222,8 @@ END:VCALENDAR
             "calendar_text": all_day,
         },
     )
-    assert empty.status_code == 422
-    assert empty.json()["error"]["code"] == "CALENDAR_EMPTY"
+    # A readable calendar with unsupported rows still provides a useful
+    # preview and per-event reasons; no item can be selected for saving.
+    assert empty.status_code == 200
+    assert empty.json()["items"] == []
+    assert any("全天事件" in warning for warning in empty.json()["warnings"])

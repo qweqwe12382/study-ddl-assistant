@@ -83,39 +83,50 @@
           </div>
         </header>
 
-        <div class="desktop-week-board">
-          <section
+        <div class="desktop-week-board" :style="boardStyle" :aria-label="`第 ${selectedWeek} 周课程网格，左列为上课时间，按星期分列`">
+          <div class="grid-corner" aria-hidden="true"><span>节次</span></div>
+          <header
             v-for="day in weekdays"
-            :key="day.value"
-            class="day-column"
+            :key="`head-${day.value}`"
+            class="grid-day-head"
             :class="{ 'is-today': day.value === todayWeekday && selectedWeek === semesterCurrentWeek }"
-            :aria-labelledby="`weekday-${day.value}`"
           >
-            <header>
-              <strong :id="`weekday-${day.value}`">{{ day.label }}</strong>
-              <small>{{ sessionsFor(day.value).length }} 节</small>
-            </header>
-            <div class="day-session-list">
-              <button
-                v-for="item in sessionsFor(day.value)"
-                :key="item.id"
-                type="button"
-                class="class-ticket"
-                :style="{ '--course-color': safeCourseColor(item.course_color) }"
-                :aria-label="`编辑 ${item.course_name}，${formatTimeRange(item)}`"
-                @click="openClassDialog(item)"
-              >
-                <span class="ticket-time">{{ formatTimeRange(item) }}</span>
-                <strong>{{ item.course_name }}</strong>
-                <span>{{ item.location || '地点待补充' }}</span>
-                <small>{{ weekPatternLabel(item.week_pattern) }} · {{ item.start_week }}–{{ item.end_week }} 周</small>
-              </button>
-              <button v-if="!sessionsFor(day.value).length" type="button" class="empty-day" @click="openClassDialog(null, day.value)">
-                <span aria-hidden="true">＋</span>
-                添加课程
-              </button>
-            </div>
-          </section>
+            <strong :id="`weekday-${day.value}`">{{ day.label.replace('星期', '周') }}</strong>
+            <small>{{ day.value === todayWeekday && selectedWeek === semesterCurrentWeek ? '今天' : `${sessionsFor(day.value).length} 节` }}</small>
+          </header>
+          <div
+            v-for="tick in sectionTicks"
+            :key="`tick-${tick.label}`"
+            class="grid-tick"
+            :class="{ 'is-first': tick.isFirst }"
+            :style="{ gridRow: `${tick.row} / span ${tick.span}` }"
+            aria-hidden="true"
+          ><span>{{ tick.label }}</span></div>
+          <button
+            v-for="day in weekdays"
+            :key="`add-${day.value}`"
+            type="button"
+            class="grid-day-add"
+            :class="{ 'is-last': day.value === 7 }"
+            :style="{ gridColumn: `${day.value + 1}`, gridRow: '2 / -1' }"
+            :aria-label="`在${day.label}添加上课时间`"
+            @click="openClassDialog(null, day.value)"
+          ></button>
+          <button
+            v-for="item in gridSessions"
+            :key="`class-${item.id}`"
+            type="button"
+            class="grid-class"
+            :class="{ 'is-short': item.rowSpan < 13, 'is-long': item.rowSpan > 36 }"
+            :style="{ gridColumn: `${item.weekday + 1}`, gridRow: `${item.rowStart} / span ${item.rowSpan}`, '--course-color': item.color }"
+            :aria-label="`编辑 ${item.name}，${item.timeLabel}`"
+            @click="openClassDialog(item.source)"
+          >
+            <strong>{{ item.name }}</strong>
+            <span v-if="item.rowSpan >= 13">{{ item.location || '地点待补充' }}</span>
+            <small v-if="item.rowSpan >= 20">{{ item.timeLabel }}</small>
+          </button>
+          <div v-if="nowLine" class="grid-now" :style="{ gridRow: `${nowLine.row} / span 1` }" aria-hidden="true"></div>
         </div>
 
         <div class="mobile-week-board">
@@ -345,6 +356,64 @@ function assignForm(target, source) {
 function sessionsFor(weekday) {
   return classSessions.value.filter((item) => item.weekday === weekday)
 }
+
+const DAY_START_MINUTES = 8 * 60
+const DAY_END_MINUTES = 21 * 60 + 30
+const SLOT_MINUTES = 5
+const GRID_ROWS = Math.floor((DAY_END_MINUTES - DAY_START_MINUTES) / SLOT_MINUTES)
+const SECTION_START_TIMES = [
+  '08:00', '08:50', '09:50', '10:40', '11:30', '14:00',
+  '14:50', '15:50', '16:40', '17:30', '18:30', '19:20', '20:10',
+]
+
+function timeToMinutes(value) {
+  const [hour, minute] = String(value || '').split(':').map(Number)
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null
+  return hour * 60 + minute
+}
+
+const boardStyle = computed(() => ({
+  gridTemplateRows: `44px repeat(${GRID_ROWS}, 5px)`,
+}))
+
+const sectionTicks = SECTION_START_TIMES.map((label, index) => {
+  const start = timeToMinutes(label)
+  const next = timeToMinutes(SECTION_START_TIMES[index + 1]) ?? DAY_END_MINUTES
+  const row = 2 + Math.max(0, Math.round((start - DAY_START_MINUTES) / SLOT_MINUTES))
+  const span = Math.max(1, Math.round((next - start) / SLOT_MINUTES))
+  return { label, row, span, isFirst: index === 0 }
+})
+
+const gridSessions = computed(() => {
+  const rows = classSessions.value.map((item) => {
+    const start = timeToMinutes(item.start_time)
+    const end = timeToMinutes(item.end_time)
+    if (start === null || end === null) return null
+    const clampedStart = Math.max(DAY_START_MINUTES, start)
+    const clampedEnd = Math.min(DAY_END_MINUTES, end)
+    const rowSpan = Math.max(1, Math.round((clampedEnd - clampedStart) / SLOT_MINUTES))
+    return {
+      id: item.id,
+      weekday: item.weekday,
+      name: item.course_name,
+      location: item.location,
+      timeLabel: `${weekPatternLabel(item.week_pattern)} · ${formatTimeRange(item)}`,
+      color: safeCourseColor(item.course_color),
+      rowStart: 2 + Math.round((clampedStart - DAY_START_MINUTES) / SLOT_MINUTES),
+      rowSpan,
+      source: item,
+    }
+  })
+  return rows.filter(Boolean)
+})
+
+const nowLine = computed(() => {
+  if (!semesterCurrentWeek.value || selectedWeek.value !== semesterCurrentWeek.value) return null
+  const parts = chinaParts(new Date())
+  const minutes = parts.hour * 60 + parts.minute
+  if (minutes < DAY_START_MINUTES || minutes >= DAY_END_MINUTES) return null
+  return { row: 2 + Math.round((minutes - DAY_START_MINUTES) / SLOT_MINUTES) }
+})
 
 function safeCourseColor(value) {
   return /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : '#5964ed'
@@ -676,7 +745,7 @@ onMounted(() => {
 .schedule-switch > span { border-bottom: 2px solid var(--ledger-link); color: var(--ledger-link); font-weight: 600; }
 .schedule-switch small { font-weight: 400; font-size: 12px; color: var(--ledger-muted); }
 .academic-calendar-page { --calendar-blue: var(--ledger-link); --calendar-mint: #dceee3; --calendar-yellow: #ffc857; color: var(--ledger-ink); }
-.calendar-kicker, .section-eyebrow, .ticket-time, .today-stamp, .exam-date-block, .week-switcher { font-family: inherit; font-variant-numeric: tabular-nums; }
+.calendar-kicker, .section-eyebrow, .today-stamp, .exam-date-block, .week-switcher { font-family: inherit; font-variant-numeric: tabular-nums; }
 .calendar-intro h1 { font-family: inherit; font-size: clamp(24px, 2.3vw, 30px); font-weight: 700; letter-spacing: 0; }
 .calendar-kicker, .section-eyebrow { color: var(--ledger-muted); font-size: 12px; font-weight: 700; letter-spacing: 0; }
 .course-gate, .calendar-error { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; padding: 18px; background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 6px; }
@@ -715,24 +784,32 @@ onMounted(() => {
 .week-switcher button { min-height: 44px; color: var(--ledger-ink); background: #fff; border: 1px solid var(--ledger-line); border-radius: 4px; cursor: pointer; }
 .week-switcher button:disabled { color: #a4adba; background: #f5f8f7; cursor: not-allowed; }
 .week-switcher :deep(.el-input__wrapper) { min-height: 44px; padding: 0 8px; }
-.desktop-week-board { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); min-width: 0; }
-.day-column { min-width: 0; border-right: 1px solid var(--ledger-line); }
-.day-column:last-child { border-right: 0; }
-.day-column > header { display: flex; align-items: center; justify-content: space-between; gap: 7px; min-height: 50px; padding: 12px 11px; background: #f5f8f7; border-bottom: 1px solid var(--ledger-line); }
-.day-column > header strong { min-width: 0; font-size: 12px; }
-.day-column > header small { color: var(--ledger-muted); font-size: 12px; }
-.day-column.is-today > header { background: #f1f7f3; }
-.day-column.is-today > header strong { color: var(--calendar-blue); }
-.day-session-list { display: flex; flex-direction: column; gap: 8px; min-height: 238px; padding: 9px; }
-.class-ticket { position: relative; width: 100%; min-height: 116px; padding: 11px 10px 10px 13px; overflow: hidden; color: var(--ledger-ink); background: #fff; border: 1px solid var(--ledger-line); border-radius: 5px; cursor: pointer; text-align: left; }
-.class-ticket::before { position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--course-color); content: ""; }
-.class-ticket:hover { border-color: var(--ledger-indigo); }
-.class-ticket .ticket-time { display: block; color: var(--ledger-muted); font-size: 12px; font-weight: 700; }
-.class-ticket strong { display: block; margin-top: 7px; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
-.class-ticket > span:not(.ticket-time), .class-ticket small { display: block; margin-top: 6px; color: var(--ledger-muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
-.empty-day { display: grid; place-items: center; gap: 4px; min-height: 82px; color: var(--ledger-muted); background: transparent; border: 1px dashed var(--ledger-line); border-radius: 5px; cursor: pointer; font-size: 11px; }
-.empty-day span { font-size: 20px; line-height: 1; }
-.empty-day:hover { color: var(--calendar-blue); border-color: #c8ddd1; background: #f1f7f3; }
+.desktop-week-board { position: relative; display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)); min-width: 0; overflow: hidden; }
+.grid-corner { display: grid; place-items: center end; padding-right: 10px; background: #f5f8f7; border-bottom: 1px solid var(--ledger-line); border-right: 1px solid var(--ledger-line); }
+.grid-corner span { color: var(--ledger-muted); font-size: 11px; font-weight: 700; }
+.grid-day-head { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; padding: 0 8px; background: #f5f8f7; border-bottom: 1px solid var(--ledger-line); border-right: 1px solid var(--ledger-line); }
+.grid-day-head:last-of-type { border-right: 0; }
+.grid-day-head strong { min-width: 0; font-size: 13px; }
+.grid-day-head small { flex: none; color: var(--ledger-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.grid-day-head.is-today { background: var(--calendar-mint); }
+.grid-day-head.is-today strong, .grid-day-head.is-today small { color: #23503c; }
+.grid-tick { position: relative; grid-column: 1 / -1; border-top: 1px solid #e7ecf1; }
+.grid-tick.is-first { border-top-color: transparent; }
+.grid-tick span { position: absolute; top: -6px; right: 8px; color: var(--ledger-muted); font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--ledger-paper); padding: 0 1px; }
+.grid-day-add { position: relative; z-index: 0; min-width: 0; padding: 0; background: transparent; border: 0; border-right: 1px solid #eef1f5; cursor: pointer; }
+.grid-day-add.is-last { border-right: 0; }
+.grid-day-add:hover { background: #f8faf9; }
+.grid-day-add:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: -3px; }
+.grid-class { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; margin: 2px 3px; padding: 6px 7px 6px 9px; overflow: hidden; text-align: left; color: var(--ledger-ink); background: color-mix(in srgb, var(--course-color) 12%, #ffffff); border: 1px solid color-mix(in srgb, var(--course-color) 34%, #ffffff); border-left: 3px solid var(--course-color); border-radius: 5px; cursor: pointer; }
+.grid-class strong { max-width: 100%; font-size: 12.5px; line-height: 1.3; overflow-wrap: anywhere; color: color-mix(in srgb, var(--course-color) 62%, var(--ledger-ink)); }
+.grid-class span, .grid-class small { max-width: 100%; color: #55627a; font-size: 11px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grid-class.is-short { justify-content: center; }
+.grid-class.is-long { justify-content: center; gap: 5px; }
+.grid-class.is-long strong { font-size: 13px; }
+.grid-class:hover { border-color: color-mix(in srgb, var(--course-color) 62%, #ffffff); background: color-mix(in srgb, var(--course-color) 17%, #ffffff); }
+.grid-class:focus-visible { outline: 3px solid color-mix(in srgb, var(--ledger-indigo) 42%, transparent); outline-offset: 1px; }
+.grid-now { position: relative; grid-column: 2 / -1; z-index: 2; align-self: center; height: 0; border-top: 2px solid var(--ledger-coral); pointer-events: none; }
+.grid-now::before { position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; background: var(--ledger-coral); border-radius: 50%; content: ""; }
 .mobile-week-board { display: none; }
 .exam-header { align-items: flex-end; }
 .past-exam-toggle { display: inline-flex; align-items: center; min-height: 44px; }

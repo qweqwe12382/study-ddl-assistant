@@ -202,7 +202,7 @@ class TaskCompletionFeedback(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    actual_minutes: int | None = Field(default=None, ge=15, le=10080)
+    actual_minutes: int | None = Field(default=None, ge=15, le=10080, description="累计实际用时，包含此前专注记录；省略则保留已有累计值")
     difficulty: int | None = Field(default=None, ge=1, le=5)
     idempotency_key: str | None = Field(
         default=None, min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"

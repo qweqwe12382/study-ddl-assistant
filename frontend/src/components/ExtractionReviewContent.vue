@@ -9,7 +9,7 @@
       <li v-for="(task, index) in tasks" :key="task.candidate_id || index"><strong>{{ task.name }}</strong><span>截止：{{ displayDueAt(task.due_at) }}</span><details><summary>查看来源与任务信息</summary><p>{{ task.source_quote || '无来源原文' }}</p><p>{{ task.task_type || '任务' }} · {{ task.estimated_minutes ? `预计 ${task.estimated_minutes} 分钟` : '用时待补充' }}</p></details></li>
     </ul>
     <template v-else>
-      <p class="task-selection-help">只把需要完成的事项勾选加入。请核对截止时间；不明确的可以留空，之后再补充。</p>
+      <p class="task-selection-help">只把需要完成的事项勾选加入。截止时间按北京时间显示和保存；不明确的可以留空，之后再补充。</p>
         <div class="table-wrap extraction-table-wrap extraction-desktop-table">
           <el-table :data="tasks" empty-text="暂未识别到任务" aria-label="智能识别任务结果">
           <el-table-column label="确认" width="70">
@@ -41,13 +41,13 @@
 import { computed, defineAsyncComponent } from 'vue'
 import { ElTable, ElTableColumn, ElCheckbox, ElInput, ElInputNumber, ElDatePicker, ElTag } from 'element-plus'
 import { extractionWarningLabel } from '../utils/extractionWarning'
+import { formatDateTime } from '../utils/format'
 const props = defineProps({ result: { type: Object, required: true }, tasks: { type: Array, required: true } })
 const kindLabel = computed(() => ({ study_material: '学习资料', review_outline: '复习安排 · 参考', task_notice: '任务通知', mixed: '学习内容与任务要求' })[props.result.content_kind] || '资料内容')
 const ExtractionCandidatesEditor = defineAsyncComponent(() => import('./ExtractionCandidatesEditor.vue'))
 function displayDueAt(value) {
   if (!value) return '待补充'
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+  return `${formatDateTime(`${value}+08:00`)}（北京时间）`
 }
 </script>
 <style scoped>

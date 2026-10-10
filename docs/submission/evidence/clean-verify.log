@@ -1,0 +1,270 @@
+Project root: <PROJECT>\.tmp\submission-clean-20261010
+Pytest evidence directory: <PROJECT>\.tmp\submission-clean-20261010\.pytest-tmp\run-20261010-064052-013dde8682d849f1a829106fc6ce7de2\pytest
+Checking Python dependencies...
+No broken requirements found.
+Running backend tests with an isolated in-repository basetemp...
+........................................................................ [ 15%]
+........................................................................ [ 31%]
+........................................................................ [ 46%]
+........................................................................ [ 62%]
+........................................................................ [ 77%]
+........................................................................ [ 93%]
+...............................                                          [100%]
+============================== warnings summary ===============================
+.tmp\submission-clean-20261010\.venv\Lib\site-packages\fastapi\testclient.py:1
+  <PROJECT>\.tmp\submission-clean-20261010\.venv\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+463 passed, 1 warning in 25.78s
+Running the complete frontend verification (contracts, build, and bundle budget)...
+
+> learning-assistant-frontend@0.1.0 verify
+> npm run lint && npm run navigation:check && npm run api-base:check && npm run auth-boundary:check && npm run edit:check && npm run onboarding:check && npm run plan-delta:check && npm run focus:check && npm run quick-add:check && npm run task-filters:check && npm run paste-notice:check && npm run deadline-radar:check && npm run semester-week:check && npm run calendar-encoding:check && npm run commands:check && npm run workflow:check && npm run downloads:check && npm run motion:check && npm run build && npm run dashboard:check && npm run bundle:check
+
+
+> learning-assistant-frontend@0.1.0 lint
+> eslint .
+
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+
+> learning-assistant-frontend@0.1.0 navigation:check
+> node tests/contracts/check-material-source-navigation.mjs
+
+Material source navigation check passed.
+
+> learning-assistant-frontend@0.1.0 api-base:check
+> node tests/contracts/check-api-base-url.mjs
+
+API base URL contract check passed
+
+> learning-assistant-frontend@0.1.0 auth-boundary:check
+> node tests/contracts/check-auth-error-boundary.mjs
+
+Authentication error boundary passed: only site session expiry clears login.
+
+> learning-assistant-frontend@0.1.0 edit:check
+> node tests/contracts/check-edit-precondition.mjs
+
+Edit precondition check passed.
+
+> learning-assistant-frontend@0.1.0 onboarding:check
+> node tests/contracts/check-first-learning-loop-placement.mjs
+
+first-learning-loop placement checks passed
+
+> learning-assistant-frontend@0.1.0 plan-delta:check
+> node tests/contracts/check-plan-delta-display.mjs
+
+plan-delta display checks passed
+
+> learning-assistant-frontend@0.1.0 focus:check
+> node tests/contracts/check-focus-timer.mjs
+
+focus save retry and cumulative total contract check passed
+focus timer contract check passed
+
+> learning-assistant-frontend@0.1.0 quick-add:check
+> node tests/contracts/check-quick-add.mjs
+
+quick task add contract check passed (local timezone and UTC/Shanghai/Los Angeles/Berlin)
+
+> learning-assistant-frontend@0.1.0 task-filters:check
+> node tests/contracts/check-task-filters.mjs
+
+Task filter contract check passed.
+
+> learning-assistant-frontend@0.1.0 paste-notice:check
+> node tests/contracts/check-paste-notice.mjs
+
+Paste-notice contracts passed.
+
+> learning-assistant-frontend@0.1.0 deadline-radar:check
+> node tests/contracts/check-deadline-radar.mjs
+
+Deadline radar contract check passed.
+
+> learning-assistant-frontend@0.1.0 semester-week:check
+> node tests/contracts/check-semester-week.mjs
+
+semester week contract check passed
+
+> learning-assistant-frontend@0.1.0 calendar-encoding:check
+> node tests/contracts/check-calendar-encoding.mjs
+
+Calendar encoding fallback passed: GBK uploads decode without mojibake.
+
+> learning-assistant-frontend@0.1.0 commands:check
+> node tests/contracts/check-workspace-commands.mjs
+
+Workspace command search and shortcut checks passed.
+
+> learning-assistant-frontend@0.1.0 workflow:check
+> node tests/contracts/check-daily-workflow.mjs
+
+Daily task, focus identity, and exam defaults checks passed.
+
+> learning-assistant-frontend@0.1.0 downloads:check
+> node tests/contracts/check-downloads.mjs
+
+Authenticated download URLs, files, cleanup, and failures passed.
+
+> learning-assistant-frontend@0.1.0 motion:check
+> node tests/contracts/check-motion.mjs
+
+Motion lifecycle, reduced-motion, interruption and visibility checks passed.
+
+> learning-assistant-frontend@0.1.0 build
+> vite build --configLoader runner
+
+vite v7.3.6 building client environment for production...
+transforming...
+node_modules/@vueuse/core/dist/index.js (3362:0): A comment
+
+"/* #__PURE__ */"
+
+in "node_modules/@vueuse/core/dist/index.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@vueuse/core/dist/index.js (5780:22): A comment
+
+"/* #__PURE__ */"
+
+in "node_modules/@vueuse/core/dist/index.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 1764 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                        0.45 kB │ gzip:   0.31 kB
+dist/assets/study-paper-sage-CfB3AFsA.webp            25.11 kB
+dist/assets/study-sculpture-v2-small-C-N4UIKD.webp    28.22 kB
+dist/assets/study-moment-CQzFChT5.webp                39.22 kB
+dist/assets/study-sculpture-v2-vkPeVQ-r.webp          99.88 kB
+dist/assets/EstimateActionDialog-C2TnEy82.css          0.30 kB │ gzip:   0.19 kB
+dist/assets/CalendarExportDialog-BGIL4ef8.css          0.33 kB │ gzip:   0.22 kB
+dist/assets/AcademicEntryForms-CshdGCAO.css            0.68 kB │ gzip:   0.33 kB
+dist/assets/CourseSelect-B6K72hxl.css                  0.81 kB │ gzip:   0.40 kB
+dist/assets/ConfirmedTasksDialog-CiPEKgVe.css          1.01 kB │ gzip:   0.43 kB
+dist/assets/PasteNoticeDialog-Bc46EyV5.css             1.01 kB │ gzip:   0.43 kB
+dist/assets/download-CW9F56Hk.css                      1.54 kB │ gzip:   0.56 kB
+dist/assets/ExtractionReviewContent-tohoTz4e.css       1.57 kB │ gzip:   0.58 kB
+dist/assets/NjustAcademicConnectForm-BKKRj5tW.css      1.99 kB │ gzip:   0.70 kB
+dist/assets/WorkspaceCommandMenu-BawZtULm.css          2.08 kB │ gzip:   0.74 kB
+dist/assets/ExtractionCandidatesEditor-DW7FGWTT.css    2.64 kB │ gzip:   0.78 kB
+dist/assets/PlanSourcePicker-CThtRXHb.css              2.86 kB │ gzip:   0.89 kB
+dist/assets/QuickTaskAdd-DWFhErcF.css                  3.78 kB │ gzip:   0.98 kB
+dist/assets/MaterialFlowGuide-RRf2123K.css             5.11 kB │ gzip:   1.27 kB
+dist/assets/TaskAgenda-DYtxw4iY.css                    6.44 kB │ gzip:   1.52 kB
+dist/assets/FocusView-D0kycIT2.css                     6.45 kB │ gzip:   1.52 kB
+dist/assets/StudyWeekBoard-0Dasxxgm.css                7.27 kB │ gzip:   1.77 kB
+dist/assets/AcademicIntegrationDialog-DM3thZN2.css     7.76 kB │ gzip:   1.88 kB
+dist/assets/DashboardReviewInsights-A9pIUMsT.css      12.41 kB │ gzip:   2.03 kB
+dist/assets/DeadlineRadarView-e7QW54dd.css            12.80 kB │ gzip:   2.74 kB
+dist/assets/SettingsView-C9r78AGn.css                 12.97 kB │ gzip:   2.41 kB
+dist/assets/TasksView-cYVp6ZVG.css                    14.38 kB │ gzip:   2.81 kB
+dist/assets/AcademicCalendarView-C7nau6BT.css         15.23 kB │ gzip:   2.99 kB
+dist/assets/AuthView-CvAJcrhi.css                     18.17 kB │ gzip:   3.99 kB
+dist/assets/StudyPlansView-C6HALiOU.css               21.31 kB │ gzip:   3.62 kB
+dist/assets/MaterialsView-CF98P0gH.css                23.20 kB │ gzip:   4.11 kB
+dist/assets/LandingView-DkH9Dx-q.css                  42.66 kB │ gzip:   8.64 kB
+dist/assets/DashboardView-LyP_xJSg.css                49.00 kB │ gzip:   7.45 kB
+dist/assets/index-J5BNNJ8W.css                       214.08 kB │ gzip:  32.89 kB
+dist/assets/index-BpLQjHVs.js                          0.61 kB │ gzip:   0.38 kB
+dist/assets/format-Dpb_RDOu.js                         0.86 kB │ gzip:   0.52 kB
+dist/assets/debounce-1XrXuqP8.js                       1.03 kB │ gzip:   0.56 kB
+dist/assets/_baseIteratee-BfHm6QK9.js                  1.13 kB │ gzip:   0.59 kB
+dist/assets/folioEnter-K7DCih0C.js                     1.29 kB │ gzip:   0.66 kB
+dist/assets/pasteNotice-BnG8Gy1o.js                    1.33 kB │ gzip:   0.84 kB
+dist/assets/EstimateActionDialog-BaJRauhb.js           1.72 kB │ gzip:   0.98 kB
+dist/assets/download-BsJkGFhK.js                       1.72 kB │ gzip:   1.06 kB
+dist/assets/dailyWorkflow-DWnXqK0w.js                  1.75 kB │ gzip:   0.90 kB
+dist/assets/CalendarExportDialog-BXqHs5Xa.js           1.88 kB │ gzip:   1.19 kB
+dist/assets/ConfirmedTasksDialog-CA0NHE5M.js           2.60 kB │ gzip:   1.46 kB
+dist/assets/CourseSelect-DJY__Xot.js                   2.61 kB │ gzip:   1.31 kB
+dist/assets/index-DmS74iXW.js                          2.81 kB │ gzip:   1.19 kB
+dist/assets/ExtractionCandidatesEditor-prC1XI7O.js     3.85 kB │ gzip:   1.62 kB
+dist/assets/WorkspaceCommandMenu-CFAVc1Oj.js           3.88 kB │ gzip:   1.97 kB
+dist/assets/PasteNoticeDialog-NZb4jxCZ.js              4.03 kB │ gzip:   1.96 kB
+dist/assets/index-CVFN3QTg.js                          4.34 kB │ gzip:   1.79 kB
+dist/assets/index-6o1mTB3C.js                          5.24 kB │ gzip:   2.18 kB
+dist/assets/NjustAcademicConnectForm-tcDUBNBw.js       5.35 kB │ gzip:   2.40 kB
+dist/assets/editPrecondition-DdfsCSRI.js               5.77 kB │ gzip:   2.05 kB
+dist/assets/QuickTaskAdd-DMVIm75-.js                   6.17 kB │ gzip:   2.88 kB
+dist/assets/index-HiA_hONc.js                          7.03 kB │ gzip:   2.86 kB
+dist/assets/ExtractionReviewContent-D4Ful9ul.js        7.26 kB │ gzip:   3.21 kB
+dist/assets/MaterialFlowGuide-CfM7L2pD.js              7.40 kB │ gzip:   2.44 kB
+dist/assets/PlanSourcePicker-BnByl2e7.js               7.47 kB │ gzip:   3.18 kB
+dist/assets/StudyWeekBoard-CpXHsdfz.js                 8.25 kB │ gzip:   3.49 kB
+dist/assets/AcademicEntryForms-Dsr6I9H0.js             8.47 kB │ gzip:   2.59 kB
+dist/assets/index-XF_Pd7HA.js                          9.02 kB │ gzip:   3.26 kB
+dist/assets/AuthView-BE0m4tGW.js                      10.37 kB │ gzip:   4.14 kB
+dist/assets/FocusView-vVmKZBSS.js                     10.96 kB │ gzip:   4.79 kB
+dist/assets/index-CAvMLus9.js                         11.39 kB │ gzip:   4.25 kB
+dist/assets/DeadlineRadarView-BY1Y-Wg4.js             13.23 kB │ gzip:   5.53 kB
+dist/assets/AcademicIntegrationDialog-cSMNaIjL.js     13.39 kB │ gzip:   5.27 kB
+dist/assets/index-C0R_dOzU.js                         13.70 kB │ gzip:   5.67 kB
+dist/assets/TaskAgenda-BE0qcntp.js                    14.59 kB │ gzip:   5.61 kB
+dist/assets/index-H_2y-iLz.js                         15.36 kB │ gzip:   5.66 kB
+dist/assets/AcademicCalendarView-BgFmOJ08.js          21.60 kB │ gzip:   8.19 kB
+dist/assets/LandingView-B6gWlkbt.js                   22.74 kB │ gzip:   8.38 kB
+dist/assets/DashboardReviewInsights-Ja7XrJco.js       24.20 kB │ gzip:   6.89 kB
+dist/assets/index-BvMC8lX4.js                         27.06 kB │ gzip:   9.52 kB
+dist/assets/index-Db6-YX9B.js                         30.10 kB │ gzip:  10.30 kB
+dist/assets/StudyPlansView-BbxJrGZa.js                43.61 kB │ gzip:  14.81 kB
+dist/assets/TasksView-COI2ACwX.js                     43.63 kB │ gzip:  14.64 kB
+dist/assets/SettingsView-BmxZtHwi.js                  51.83 kB │ gzip:  16.55 kB
+dist/assets/index-CeaQ_Prl.js                         76.61 kB │ gzip:  26.68 kB
+dist/assets/MaterialsView-raVAEv-8.js                 77.55 kB │ gzip:  23.54 kB
+dist/assets/index-CmMGHB9K.js                         91.10 kB │ gzip:  26.59 kB
+dist/assets/DashboardView-BwQLyLiT.js                123.15 kB │ gzip:  38.99 kB
+dist/assets/index-DP7LB5FQ.js                        374.15 kB │ gzip: 135.89 kB
+✓ built in 5.22s
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+
+> learning-assistant-frontend@0.1.0 dashboard:check
+> node tests/contracts/check-dashboard-deferred.mjs
+
+Dashboard deferred panels passed: retry/cancel/props, separate lazy chunks; entry 38.08 KiB gzip.
+
+> learning-assistant-frontend@0.1.0 bundle:check
+> node tests/contracts/check-bundle-budget.mjs
+
+Bundle budget check (gzip, dist/assets)
+----------------------------------------
+[PASS] global entry CSS: index-J5BNNJ8W.css — 32.12 KiB gzip / 34.00 KiB budget
+[PASS] Dashboard JS: DashboardView-BwQLyLiT.js — 38.08 KiB gzip / 42.00 KiB budget
+[PASS] Dashboard CSS: DashboardView-LyP_xJSg.css — 7.28 KiB gzip / 10.00 KiB budget
+[PASS] Tasks JS: TasksView-COI2ACwX.js — 14.30 KiB gzip / 18.00 KiB budget
+[PASS] Tasks CSS: TasksView-cYVp6ZVG.css — 2.75 KiB gzip / 5.00 KiB budget
+[PASS] Task Agenda JS: TaskAgenda-BE0qcntp.js — 5.48 KiB gzip / 6.00 KiB budget
+[PASS] Task Agenda CSS: TaskAgenda-DYtxw4iY.css — 1.49 KiB gzip / 2.75 KiB budget
+[PASS] Quick Add JS: QuickTaskAdd-DMVIm75-.js — 2.81 KiB gzip / 6.00 KiB budget
+[PASS] Quick Add CSS: QuickTaskAdd-DWFhErcF.css — 0.96 KiB gzip / 2.00 KiB budget
+[PASS] Focus JS: FocusView-vVmKZBSS.js — 4.68 KiB gzip / 10.00 KiB budget
+[PASS] Focus CSS: FocusView-D0kycIT2.css — 1.48 KiB gzip / 4.00 KiB budget
+[PASS] Deadline Radar JS: DeadlineRadarView-BY1Y-Wg4.js — 5.40 KiB gzip / 8.00 KiB budget
+[PASS] Deadline Radar CSS: DeadlineRadarView-e7QW54dd.css — 2.68 KiB gzip / 4.00 KiB budget
+[PASS] Materials JS: MaterialsView-raVAEv-8.js — 22.99 KiB gzip / 24.00 KiB budget
+[PASS] Materials CSS: MaterialsView-CF98P0gH.css — 4.01 KiB gzip / 5.00 KiB budget
+[PASS] StudyPlans JS: StudyPlansView-BbxJrGZa.js — 14.46 KiB gzip / 16.00 KiB budget
+[PASS] StudyPlans CSS: StudyPlansView-C6HALiOU.css — 3.54 KiB gzip / 6.00 KiB budget
+[PASS] Study Week Board JS: StudyWeekBoard-CpXHsdfz.js — 3.41 KiB gzip / 4.00 KiB budget
+[PASS] Study Week Board CSS: StudyWeekBoard-0Dasxxgm.css — 1.73 KiB gzip / 2.25 KiB budget
+[PASS] Academic Calendar JS: AcademicCalendarView-BgFmOJ08.js — 8.00 KiB gzip / 8.00 KiB budget
+[PASS] Academic Calendar CSS: AcademicCalendarView-C7nau6BT.css — 2.92 KiB gzip / 4.00 KiB budget
+[PASS] Academic Integration JS: AcademicIntegrationDialog-cSMNaIjL.js — 5.14 KiB gzip / 5.50 KiB budget
+[PASS] Academic Integration CSS: AcademicIntegrationDialog-DM3thZN2.css — 1.83 KiB gzip / 2.00 KiB budget
+[PASS] largest single JS: index-DP7LB5FQ.js — 132.70 KiB gzip / 136.00 KiB budget
+
+Bundle budget check passed.
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+Local verification passed: pip check, backend pytest, and frontend verify.

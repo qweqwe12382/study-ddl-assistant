@@ -31,15 +31,15 @@ for (const [today, tomorrow] of [
 }
 assert.equal(quickDueDate('day_after', '2026-10-24'), '2026-10-26')
 assert.equal(quickDueDate('day_after', '2026-10-31'), '2026-11-02')
-assert.equal(quickDueDate('tomorrow', new Date(2026, 8, 5, 23, 45)), '2026-09-06')
+assert.equal(quickDueDate('tomorrow', new Date('2026-09-05T15:45:00Z')), '2026-09-06')
 
 function assertLocalEndOfDay(iso, year, month, day) {
-  const due = new Date(iso)
-  assert.equal(due.toISOString(), iso, 'payload uses an ISO instant')
+  const due = new Date(new Date(iso).getTime() + 8 * 60 * 60 * 1000)
+  assert.equal(new Date(iso).toISOString(), iso, 'payload uses an ISO instant')
   assert.deepEqual([
-    due.getFullYear(), due.getMonth() + 1, due.getDate(),
-    due.getHours(), due.getMinutes(), due.getSeconds(), due.getMilliseconds(),
-  ], [year, month, day, 23, 59, 59, 0], 'deadline is 23:59:59 on the selected local date')
+    due.getUTCFullYear(), due.getUTCMonth() + 1, due.getUTCDate(),
+    due.getUTCHours(), due.getUTCMinutes(), due.getUTCSeconds(), due.getUTCMilliseconds(),
+  ], [year, month, day, 23, 59, 59, 0], 'deadline is 23:59:59 on the selected Shanghai date')
 }
 
 // Minimal payload: name only
@@ -53,7 +53,7 @@ assert.deepEqual(minimal.payload, {
   status: 'not_started',
 })
 
-// Assert the user's local deadline, not a fixed +08:00 UTC representation.
+// All task entry points use Shanghai wall-clock deadlines.
 const withDue = buildQuickAddPayload({ name: '实验报告', courseId: 3, dueChip: 'tomorrow', today: '2026-09-05' })
 assert.equal(withDue.payload.course_id, 3)
 assertLocalEndOfDay(withDue.payload.due_at, 2026, 9, 6)
@@ -81,3 +81,9 @@ if (!process.argv.includes('--timezone-child')) {
   }
   console.log('quick task add contract check passed (local timezone and UTC/Shanghai/Los Angeles/Berlin)')
 }
+
+for (const invalid of ['2026-02-30', '2026-13-01', '2026-00-10', '2025-02-29']) {
+  assert.ok(buildQuickAddPayload({ name: '边界测试', dueChip: 'custom', customDate: invalid }).error)
+}
+assert.equal(quickDueDate('today', new Date('2026-10-09T16:30:00Z')), '2026-10-10')
+assert.equal(buildQuickAddPayload({name:'测试', dueChip:'custom', customDate:'2026-10-15'}).payload.due_at, '2026-10-15T15:59:59.000Z')

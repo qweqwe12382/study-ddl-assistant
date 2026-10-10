@@ -22,6 +22,7 @@ from app.services.study_plan import (
     decode_plan_content,
     plan_content_fingerprint,
 )
+from app.services.edit_concurrency import check_edit_precondition
 from app.time import as_utc, utc_now
 
 
@@ -133,14 +134,14 @@ def _candidate_changes(plan: StudyPlan, task: Task, trigger: str) -> list[dict[s
         return []
     if not eligible:
         return []
-    if trigger in {"task_completed", "task_canceled"}:
+    if task.status in {"completed", "canceled"}:
         targets = [item for item in eligible if any(ref.source_id == task.id and ref.navigation_key == task.navigation_key for ref in item.source_task_refs)]
         changes: list[dict[str, Any]] = []
         for item in targets:
             after = item.model_copy(deep=True)
             after.source_task_ids = [value for value in after.source_task_ids if value != task.id]
             after.source_task_refs = [ref for ref in after.source_task_refs if ref.navigation_key != task.navigation_key]
-            terminal_label = "已完成" if trigger == "task_completed" else "已取消"
+            terminal_label = "已完成" if task.status == "completed" else "已取消"
             after.content = f"{after.content}\n智能体差异：关联任务“{task.name}”{terminal_label}，预留时段改作复盘或缓冲。"[:2000]
             changes.append({"item_id": item.id, "before": item.model_dump(mode="json"), "after": after.model_dump(mode="json")})
         return changes
@@ -154,11 +155,15 @@ def _candidate_changes(plan: StudyPlan, task: Task, trigger: str) -> list[dict[s
         "deadline_changed": "截止时间变化",
     }
     note = labels.get(trigger, "任务变化")
-    minutes = task.actual_minutes if trigger == "actual_minutes_changed" else (task.remaining_minutes or task.estimated_minutes)
+    minutes = task.remaining_minutes if task.remaining_minutes is not None else task.estimated_minutes
     detail = f"智能体差异：{note}“{task.name}”"
     if minutes is not None:
-        detail += f"（{minutes} 分钟）"
-    after.content = f"{after.content}\n{detail}，请在确认后纳入本时段。"[:2000]
+        detail += f"（剩余 {minutes} 分钟）"
+    if trigger == "actual_minutes_changed":
+        detail += f"，累计已用 {task.actual_minutes or 0} 分钟，请按最新进度复核本时段。"
+    else:
+        detail += "，请在确认后纳入本时段。"
+    after.content = f"{after.content}\n{detail}"[:2000]
     if task.id not in after.source_task_ids:
         after.source_task_ids = [*after.source_task_ids, task.id][:50]
     if not any(ref.navigation_key == task.navigation_key for ref in after.source_task_refs):
@@ -252,17 +257,22 @@ def recompute_delta_is_current(db: Session, suggestion: AgentSuggestion) -> tupl
 
 def complete_task_with_feedback(
     db: Session, task: Task, *, actual_minutes: int | None, difficulty: int | None,
-    idempotency_key: str | None, now: datetime | None = None,
+    idempotency_key: str | None, now: datetime | None = None, if_match: str | None = None,
 ) -> Task:
     """Atomically complete one task and retain a real receipt for feedback."""
 
+    if task.status == "canceled":
+        raise ValueError("TASK_CANCELED")
     evaluated_at = now or utc_now()
     if idempotency_key:
         existing = db.scalar(select(AgentSuggestion).where(AgentSuggestion.idempotency_key == idempotency_key))
         if existing is not None:
             if existing.action_type == COMPLETE_TASK and existing.source_type == "task" and existing.source_id == task.id and existing.source_navigation_key == task.navigation_key:
+                if if_match != existing.current_payload.get("request_if_match"):
+                    check_edit_precondition(db, task, if_match)
                 return task
             raise ValueError("IDEMPOTENCY_KEY_CONFLICT")
+    check_edit_precondition(db, task, if_match)
     before = task_feedback_snapshot(task)
     was_completed = task.status == "completed"
     # The legacy empty completion remains a no-op on an already completed task;
@@ -281,7 +291,7 @@ def complete_task_with_feedback(
         action_type=COMPLETE_TASK, status="accepted", source_type="task", source_id=task.id, source_navigation_key=task.navigation_key, source_name=task.name,
         title=f"完成“{task.name}”", explanation="用户确认任务完成；实际用时与难度仅在主动填写后保存。",
         reason_code="completion_feedback" if actual_minutes is not None or difficulty is not None else "completion_quick",
-        current_payload=before, proposed_payload=selected, risk_level="low", confidence=1.0,
+        current_payload={**before, "request_if_match": if_match}, proposed_payload=selected, risk_level="low", confidence=1.0,
         expires_at=evaluated_at, fingerprint=fingerprint, idempotency_key=idempotency_key,
         created_at=evaluated_at, updated_at=evaluated_at, accepted_at=evaluated_at,
     )
@@ -306,9 +316,16 @@ def complete_task_with_feedback(
     suggestion.executed_at = evaluated_at
     db.add(AgentEvent(event_type="task_completed" if not was_completed else "task_feedback_updated", suggestion_id=suggestion.id,
                       entity_type="task", entity_id=task.id, entity_navigation_key=task.navigation_key, payload={"before": before, "after": after}))
+    actual_changed = actual_minutes is not None and before.get("actual_minutes") != actual_minutes
     if not was_completed:
+        if actual_changed:
+            # Retain the feedback evidence but evaluate the final completion
+            # once, so a second event cannot supersede its removal candidate.
+            db.add(AgentEvent(event_type="actual_minutes_changed", entity_type="task", entity_id=task.id,
+                              entity_navigation_key=task.navigation_key,
+                              payload={"trigger": "actual_minutes_changed", "task_snapshot": task_feedback_snapshot(task)}))
         create_plan_delta_candidates(db, task, "task_completed", now=evaluated_at)
-    if actual_minutes is not None and before.get("actual_minutes") != actual_minutes:
+    elif actual_changed:
         create_plan_delta_candidates(db, task, "actual_minutes_changed", now=evaluated_at)
     return task
 

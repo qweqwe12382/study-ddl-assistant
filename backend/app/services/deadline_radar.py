@@ -283,6 +283,7 @@ def find_idempotent_result(
     *,
     idempotency_key: str,
     task_id: int,
+    task_navigation_key: str,
     digest: str,
 ) -> AgentSuggestion | None:
     existing = db.scalar(select(AgentSuggestion).where(AgentSuggestion.idempotency_key == idempotency_key))
@@ -291,6 +292,7 @@ def find_idempotent_result(
     if (
         existing.action_type not in {UPDATE_DEADLINE_FROM_NOTICE, CANCEL_TASK_FROM_NOTICE}
         or existing.source_id != task_id
+        or existing.source_navigation_key != task_navigation_key
         or existing.current_payload.get("notice_digest") != digest
     ):
         raise DeadlineRadarError(

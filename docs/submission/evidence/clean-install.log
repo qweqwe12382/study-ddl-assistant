@@ -1,0 +1,73 @@
+WARNING: There was an error checking the latest version of pip.
+Requirement already satisfied: fastapi==0.141.1 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 1)) (0.141.1)
+Requirement already satisfied: uvicorn==0.52.1 in .\.venv\Lib\site-packages (from uvicorn[standard]==0.52.1->-r backend\requirements.txt (line 2)) (0.52.1)
+Requirement already satisfied: pydantic==2.13.4 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 3)) (2.13.4)
+Requirement already satisfied: SQLAlchemy==2.0.51 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 4)) (2.0.51)
+Requirement already satisfied: PyMuPDF==1.28.0 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 5)) (1.28.0)
+Requirement already satisfied: python-docx==1.2.0 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 6)) (1.2.0)
+Requirement already satisfied: python-multipart==0.0.32 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 7)) (0.0.32)
+Requirement already satisfied: pytest==9.1.1 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 8)) (9.1.1)
+Requirement already satisfied: python-dotenv==1.2.2 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 9)) (1.2.2)
+Requirement already satisfied: icalendar==7.2.2 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 10)) (7.2.2)
+Requirement already satisfied: requests==2.34.2 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 11)) (2.34.2)
+Requirement already satisfied: beautifulsoup4==4.13.4 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 12)) (4.13.4)
+Requirement already satisfied: openai==2.53.0 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 13)) (2.53.0)
+Requirement already satisfied: pandas==3.0.5 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 14)) (3.0.5)
+Requirement already satisfied: rapidocr-onnxruntime==1.2.3 in .\.venv\Lib\site-packages (from -r backend\requirements.txt (line 15)) (1.2.3)
+Requirement already satisfied: starlette>=0.46.0 in .\.venv\Lib\site-packages (from fastapi==0.141.1->-r backend\requirements.txt (line 1)) (1.7.0)
+Requirement already satisfied: typing-extensions>=4.8.0 in .\.venv\Lib\site-packages (from fastapi==0.141.1->-r backend\requirements.txt (line 1)) (4.16.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in .\.venv\Lib\site-packages (from fastapi==0.141.1->-r backend\requirements.txt (line 1)) (0.4.4)
+Requirement already satisfied: annotated-doc>=0.0.2 in .\.venv\Lib\site-packages (from fastapi==0.141.1->-r backend\requirements.txt (line 1)) (0.0.5)
+Requirement already satisfied: click>=7.0 in .\.venv\Lib\site-packages (from uvicorn==0.52.1->uvicorn[standard]==0.52.1->-r backend\requirements.txt (line 2)) (8.5.0)
+Requirement already satisfied: h11>=0.8 in .\.venv\Lib\site-packages (from uvicorn==0.52.1->uvicorn[standard]==0.52.1->-r backend\requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: annotated-types>=0.6.0 in .\.venv\Lib\site-packages (from pydantic==2.13.4->-r backend\requirements.txt (line 3)) (0.8.0)
+Requirement already satisfied: pydantic-core==2.46.4 in .\.venv\Lib\site-packages (from pydantic==2.13.4->-r backend\requirements.txt (line 3)) (2.46.4)
+Requirement already satisfied: greenlet>=1 in .\.venv\Lib\site-packages (from SQLAlchemy==2.0.51->-r backend\requirements.txt (line 4)) (3.5.6)
+Requirement already satisfied: lxml>=3.1.0 in .\.venv\Lib\site-packages (from python-docx==1.2.0->-r backend\requirements.txt (line 6)) (6.1.3)
+Requirement already satisfied: colorama>=0.4 in .\.venv\Lib\site-packages (from pytest==9.1.1->-r backend\requirements.txt (line 8)) (0.4.6)
+Requirement already satisfied: iniconfig>=1.0.1 in .\.venv\Lib\site-packages (from pytest==9.1.1->-r backend\requirements.txt (line 8)) (2.3.1)
+Requirement already satisfied: packaging>=22 in .\.venv\Lib\site-packages (from pytest==9.1.1->-r backend\requirements.txt (line 8)) (26.3)
+Requirement already satisfied: pluggy<2,>=1.5 in .\.venv\Lib\site-packages (from pytest==9.1.1->-r backend\requirements.txt (line 8)) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in .\.venv\Lib\site-packages (from pytest==9.1.1->-r backend\requirements.txt (line 8)) (2.21.0)
+Requirement already satisfied: python-dateutil in .\.venv\Lib\site-packages (from icalendar==7.2.2->-r backend\requirements.txt (line 10)) (2.9.0.post0)
+Requirement already satisfied: tzdata>=2025.3 in .\.venv\Lib\site-packages (from icalendar==7.2.2->-r backend\requirements.txt (line 10)) (2026.5)
+Requirement already satisfied: charset_normalizer<4,>=2 in .\.venv\Lib\site-packages (from requests==2.34.2->-r backend\requirements.txt (line 11)) (3.5.2)
+Requirement already satisfied: idna<4,>=2.5 in .\.venv\Lib\site-packages (from requests==2.34.2->-r backend\requirements.txt (line 11)) (3.20)
+Requirement already satisfied: urllib3<3,>=1.26 in .\.venv\Lib\site-packages (from requests==2.34.2->-r backend\requirements.txt (line 11)) (2.8.0)
+Requirement already satisfied: certifi>=2023.5.7 in .\.venv\Lib\site-packages (from requests==2.34.2->-r backend\requirements.txt (line 11)) (2026.7.22)
+Requirement already satisfied: soupsieve>1.2 in .\.venv\Lib\site-packages (from beautifulsoup4==4.13.4->-r backend\requirements.txt (line 12)) (3.0)
+Requirement already satisfied: anyio<5,>=3.5.0 in .\.venv\Lib\site-packages (from openai==2.53.0->-r backend\requirements.txt (line 13)) (4.15.1)
+Requirement already satisfied: distro<2,>=1.7.0 in .\.venv\Lib\site-packages (from openai==2.53.0->-r backend\requirements.txt (line 13)) (1.9.0)
+Requirement already satisfied: httpx<1,>=0.23.0 in .\.venv\Lib\site-packages (from openai==2.53.0->-r backend\requirements.txt (line 13)) (0.28.1)
+Requirement already satisfied: jiter<1,>=0.10.0 in .\.venv\Lib\site-packages (from openai==2.53.0->-r backend\requirements.txt (line 13)) (0.17.0)
+Requirement already satisfied: sniffio in .\.venv\Lib\site-packages (from openai==2.53.0->-r backend\requirements.txt (line 13)) (1.3.1)
+Requirement already satisfied: tqdm>4 in .\.venv\Lib\site-packages (from openai==2.53.0->-r backend\requirements.txt (line 13)) (4.70.1)
+Requirement already satisfied: numpy>=2.3.3 in .\.venv\Lib\site-packages (from pandas==3.0.5->-r backend\requirements.txt (line 14)) (2.5.3)
+Requirement already satisfied: pyclipper>=1.2.1 in .\.venv\Lib\site-packages (from rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (1.4.0)
+Requirement already satisfied: onnxruntime>=1.7.0 in .\.venv\Lib\site-packages (from rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (1.31.0)
+Requirement already satisfied: opencv-python>=4.5.1.48 in .\.venv\Lib\site-packages (from rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (5.0.0.93)
+Requirement already satisfied: six>=1.15.0 in .\.venv\Lib\site-packages (from rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (1.17.0)
+Requirement already satisfied: Shapely>=1.7.1 in .\.venv\Lib\site-packages (from rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (2.2.0)
+Requirement already satisfied: PyYAML in .\.venv\Lib\site-packages (from rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (6.0.3)
+Requirement already satisfied: Pillow in .\.venv\Lib\site-packages (from rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (12.3.0)
+Requirement already satisfied: httptools>=0.8.0 in .\.venv\Lib\site-packages (from uvicorn[standard]==0.52.1->-r backend\requirements.txt (line 2)) (0.9.0)
+Requirement already satisfied: watchfiles>=0.20 in .\.venv\Lib\site-packages (from uvicorn[standard]==0.52.1->-r backend\requirements.txt (line 2)) (1.3.0)
+Requirement already satisfied: websockets>=13.0 in .\.venv\Lib\site-packages (from uvicorn[standard]==0.52.1->-r backend\requirements.txt (line 2)) (17.2)
+Requirement already satisfied: httpcore==1.* in .\.venv\Lib\site-packages (from httpx<1,>=0.23.0->openai==2.53.0->-r backend\requirements.txt (line 13)) (1.0.9)
+Requirement already satisfied: flatbuffers in .\.venv\Lib\site-packages (from onnxruntime>=1.7.0->rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (25.12.19)
+Requirement already satisfied: protobuf>=4.25.8 in .\.venv\Lib\site-packages (from onnxruntime>=1.7.0->rapidocr-onnxruntime==1.2.3->-r backend\requirements.txt (line 15)) (7.36.2)
+
+added 178 packages in 22s
+
+43 packages are looking for funding
+  run `npm fund` for details
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+npm warn allow-scripts   esbuild@0.28.1 (postinstall: node install.js)
+npm warn allow-scripts
+npm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.
+npm notice
+npm notice New major version of npm available! 11.17.0 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+Ready. Run: .\scripts\start-reviewer.ps1

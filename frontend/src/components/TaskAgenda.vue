@@ -345,7 +345,7 @@ function parseDate(value) {
   const day = Number(dayText)
   const calendarDate = new Date(Date.UTC(year, month - 1, day))
   if (calendarDate.getUTCFullYear() !== year || calendarDate.getUTCMonth() !== month - 1 || calendarDate.getUTCDate() !== day) return null
-  if (hourText === undefined) return { date: new Date(year, month - 1, day), hasTime: false }
+  if (hourText === undefined) return { date: new Date(Date.UTC(year, month - 1, day) - 8 * 3600000), hasTime: false }
 
   const hour = Number(hourText)
   const minute = Number(minuteText)
@@ -354,12 +354,7 @@ function parseDate(value) {
   const milliseconds = Number((fractionText || '').slice(0, 3).padEnd(3, '0'))
 
   if (!timezoneText) {
-    const date = new Date(year, month - 1, day, hour, minute, second, milliseconds)
-    if (
-      date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day
-      || date.getHours() !== hour || date.getMinutes() !== minute || date.getSeconds() !== second
-    ) return null
-    return { date, hasTime: true }
+    return { date: new Date(Date.UTC(year, month - 1, day, hour, minute, second, milliseconds) - 8 * 3600000), hasTime: true }
   }
 
   const normalizedTimezone = timezoneText.toUpperCase() === 'Z'
@@ -371,7 +366,8 @@ function parseDate(value) {
 }
 
 function localDayKey(date) {
-  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+  const china = new Date(date.getTime() + 8 * 3600000)
+  return Date.UTC(china.getUTCFullYear(), china.getUTCMonth(), china.getUTCDate())
 }
 
 function localDayDifference(first, second) {
@@ -380,9 +376,9 @@ function localDayDifference(first, second) {
 
 function dueLabel(date, hasTime) {
   if (!date) return '未设置截止日期'
-  const dateText = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'numeric', day: 'numeric' }).format(date)
+  const dateText = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric' }).format(date)
   if (!hasTime) return `截止 ${dateText}`
-  const timeText = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date)
+  const timeText = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date)
   return `截止 ${dateText} ${timeText}`
 }
 
@@ -468,7 +464,7 @@ function statusText(status, groupId) {
 }
 
 function formatDateTime(date) {
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai',
     month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).format(date)
 }

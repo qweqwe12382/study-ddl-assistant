@@ -71,6 +71,15 @@ class TaskUpdate(BaseModel):
         return deadline_to_utc(value) if value is not None else None
 
 
+class TaskFocusSession(BaseModel):
+    """One confirmed session; minutes are additive, never a replacement total."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    minutes: int = Field(ge=15, le=10080)
+    idempotency_key: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
 class TaskRead(TaskBase):
     model_config = ConfigDict(from_attributes=True)
 

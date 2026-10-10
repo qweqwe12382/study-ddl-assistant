@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from app.config import settings
+from app.time import as_local
 
 
 class ProviderError(RuntimeError):
@@ -107,12 +108,28 @@ _DATE_CORE = (
     r"\s+\d{1,2}(?:,\s*\d{4})?"
     r"|today|tomorrow|next\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekend))"
 )
+_CLOCK_NUMBER = r"(?:\d{1,2}|[零〇一二两三四五六七八九十]{1,3})"
+_CHINESE_MINUTE = r"(?:半|\d{1,2}\s*(?:分|刻)?|[零〇一二两三四五六七八九十]{1,3}\s*(?:分|刻))"
 _TIME_SUFFIX = (
-    r"(?:\s*T?\s*(?:上午|下午|晚上|中午|早上|凌晨)?\s*\d{1,2}"
-    r"(?:(?:[:：]\d{1,2})|(?:[点时](?:\s*\d{1,2}\s*分?)?))"
-    r"(?:\s*(?:AM|PM))?)?"
+    rf"(?:\s*T?\s*(?:上午|下午|晚上|中午|早上|凌晨)?\s*{_CLOCK_NUMBER}"
+    rf"(?:(?:[:：]\d{{1,2}}(?::\d{{1,2}}(?:\.\d+)?)?)|(?:[点时](?:\s*{_CHINESE_MINUTE})?))"
+    r"(?:\s*(?:AM|PM))?(?:Z|[+-]\d{2}(?::?\d{2})?)?)?"
 )
 _DEADLINE_PATTERN = re.compile(rf"(?P<date>{_DATE_CORE})(?P<time>{_TIME_SUFFIX})", re.IGNORECASE)
+_ISO_DATETIME_PATTERN = re.compile(
+    r"\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:[Zz]|[+-]\d{2}(?::?\d{2})?)?"
+)
+
+
+def parse_iso_datetime(value: str) -> datetime | None:
+    """Recognize complete ISO clocks before the natural-language date scanner."""
+
+    if not _ISO_DATETIME_PATTERN.fullmatch(value):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00").replace("z", "+00:00"))
+    except ValueError as error:
+        raise ProviderError("INVALID_TIME", "日期或时间格式无效，请核对原文") from error
 
 
 @dataclass(frozen=True)
@@ -143,8 +160,16 @@ def parse_deadline_text(value: str, reference: datetime) -> tuple[datetime | Non
     invalid_mention_seen = False
     for mention in mentions:
         try:
-            parsed_date, year_inferred = _parse_mention_date(mention.text, reference.date())
-            parsed_time = _parse_mention_time(mention.text)
+            stamp = parse_iso_datetime(mention.text)
+            if stamp is not None:
+                if stamp.tzinfo is not None:
+                    stamp = as_local(stamp).replace(tzinfo=None)
+                parsed_date, year_inferred, parsed_time = stamp.date(), False, stamp.time()
+            else:
+                parsed_date, year_inferred = _parse_mention_date(mention.text, reference.date())
+                parsed_time = _parse_mention_time(mention.text)
+            if re.match(r"\s*(?:左右|多|差|过|半|[一二两三四五六七八九十]+刻)", value[mention.end:]):
+                raise ProviderError("INVALID_TIME", "时间表达无法精确解析，请核对原文")
         except ProviderError as error:
             # Keep the candidate and its verbatim source reviewable.  A stale
             # or revoked malformed date must not abort the surrounding notice,
@@ -292,39 +317,53 @@ def _parse_mention_date(value: str, reference: date) -> tuple[date, bool]:
     raise ProviderError("INVALID_DATE", "无法解析抽取到的日期")
 
 
+def _clock_number(value: str) -> int:
+    value = value.strip()
+    if value.isdigit():
+        return int(value)
+    digits = dict(zip("零〇一二两三四五六七八九", (0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9)))
+    if "十" in value:
+        tens, _, ones = value.partition("十")
+        if (tens and tens not in digits) or (ones and ones not in digits):
+            raise ProviderError("INVALID_TIME", "中文时间数字无法解析，请核对原文")
+        return digits.get(tens, 1) * 10 + digits.get(ones, 0)
+    return int("".join(str(digits[char]) for char in value))
+
+
 def _parse_mention_time(value: str) -> time | None:
-    prefix = re.search(
-        r"(上午|下午|晚上|中午|早上|凌晨)\s*(\d{1,2})"
-        r"(?:(?:[:：](\d{1,2}))|(?:[点时](?:\s*(\d{1,2})\s*分?)?))?",
-        value,
+    chinese = re.search(
+        rf"(?P<period>上午|下午|晚上|中午|早上|凌晨)?\s*(?P<hour>{_CLOCK_NUMBER})"
+        rf"[点时](?:\s*(?P<minute>{_CHINESE_MINUTE}))?", value,
     )
-    suffix = re.search(r"(?<!\d)(\d{1,2})(?:[:：](\d{1,2}))?\s*(AM|PM)\b", value, re.IGNORECASE)
-    plain = re.search(
-        r"(?<!\d)(\d{1,2})(?:(?:[:：](\d{1,2}))|(?:[点时](?:\s*(\d{1,2})\s*分?)?))",
-        value,
+    clock = re.search(
+        r"(?P<period>上午|下午|晚上|中午|早上|凌晨)?\s*(?<!\d)(?P<hour>\d{1,2})"
+        r"[:：](?P<minute>\d{1,2})(?::(?P<second>\d{1,2})(?:\.(?P<fraction>\d+))?)?"
+        r"(?:\s*(?P<suffix>AM|PM)\b)?", value, re.IGNORECASE,
     )
-    if prefix:
-        meridiem = prefix.group(1)
-        hour = int(prefix.group(2))
-        minute = int(prefix.group(3) or prefix.group(4) or 0)
-        if meridiem in {"下午", "晚上", "中午"} and hour < 12:
-            hour += 12
-        if meridiem in {"上午", "早上", "凌晨"} and hour == 12:
-            hour = 0
+    suffix = re.search(r"(?<!\d)(?P<hour>\d{1,2})\s*(?P<suffix>AM|PM)\b", value, re.IGNORECASE)
+    second = microsecond = 0
+    if chinese:
+        hour = _clock_number(chinese.group("hour"))
+        minute_text = (chinese.group("minute") or "0").strip()
+        minute = 30 if minute_text == "半" else _clock_number(minute_text.rstrip("分刻")) * (15 if minute_text.endswith("刻") else 1)
+        meridiem = chinese.group("period") or ""
+    elif clock:
+        hour, minute = int(clock.group("hour")), int(clock.group("minute"))
+        second = int(clock.group("second") or 0)
+        microsecond = int((clock.group("fraction") or "").ljust(6, "0")[:6])
+        meridiem = clock.group("period") or clock.group("suffix") or ""
     elif suffix:
-        hour, minute = int(suffix.group(1)), int(suffix.group(2) or 0)
-        if suffix.group(3).lower() == "pm" and hour < 12:
-            hour += 12
-        if suffix.group(3).lower() == "am" and hour == 12:
-            hour = 0
-    elif plain:
-        hour = int(plain.group(1))
-        minute = int(plain.group(2) or plain.group(3) or 0)
+        hour, minute = int(suffix.group("hour")), 0
+        meridiem = suffix.group("suffix")
     else:
         return None
-    if hour > 23 or minute > 59:
+    if meridiem.lower() in {"下午", "晚上", "中午", "pm"} and hour < 12:
+        hour += 12
+    if meridiem.lower() in {"上午", "早上", "凌晨", "am"} and hour == 12:
+        hour = 0
+    if hour > 23 or minute > 59 or second > 59:
         raise ProviderError("INVALID_TIME", f"抽取到无效时间：{hour}:{minute:02d}")
-    return time(hour, minute)
+    return time(hour, minute, second, microsecond)
 
 
 def _has_invalid_deadline_time(value: str) -> bool:
@@ -615,6 +654,14 @@ def _split_comma_task_boundaries(part: SourcePart) -> list[SourcePart]:
 
 
 def _is_task_part(value: str) -> bool:
+    # Content requirements describe an existing deliverable, not another task.
+    # Preserve clauses that also contain a real action or a separate deadline.
+    if (
+        re.search(r"(?:报告|作业|论文|文档)(?:正文|内容)?\s*(?:需|须|应|必须|需要)?\s*(?:包含|包括|涵盖)", value)
+        and not _ACTION_WORD_PATTERN.search(value)
+        and not find_deadline_mentions(value)
+    ):
+        return False
     if _NEGATED_OR_FINISHED_PATTERN.search(value) and not _POSTPONED_PATTERN.search(value):
         return False
     if re.search(r"维护|(?:上传|提交|登记)功能[^。；;！？]{0,30}(?:恢复|开放)", value) and not _OBLIGATION_PATTERN.search(value):

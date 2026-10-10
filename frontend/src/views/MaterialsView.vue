@@ -306,7 +306,7 @@
             <span class="provider-option-content">
               <strong>{{ provider.label }}</strong>
               <span>{{ provider.description }}</span>
-              <small v-if="!provider.available">暂不可用，可在设置中配置</small>
+              <small v-if="!provider.available">暂不可用，请由部署者配置服务端模型参数</small>
             </span>
           </el-radio>
         </el-radio-group>
@@ -809,15 +809,11 @@ function formatFileSize(size) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`
 }
 
-function padDatePart(value) {
-  return String(value).padStart(2, '0')
-}
-
 function toLocalDateTimeInput(value) {
   if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}T${padDatePart(date.getHours())}:${padDatePart(date.getMinutes())}:${padDatePart(date.getSeconds())}`
+  // Confirmation sends a wall-clock value that the API interprets as Shanghai.
+  // Never strip the browser's timezone from a UTC candidate before submitting.
+  return localReferenceDateTime(new Date(value))
 }
 
 function validateUploadFile(file) {
@@ -1286,7 +1282,7 @@ async function confirmExtraction(materialOnly = false) {
       ElMessage.warning('请补充所选任务的名称')
       return false
     }
-    if (task.due_at && Number.isNaN(new Date(task.due_at).getTime())) {
+    if (task.due_at && !validLocalReferenceDateTime(task.due_at)) {
       ElMessage.warning(`请核对“${task.name}”的截止时间`)
       return false
     }

@@ -68,6 +68,7 @@ export const tasksApi = {
   create: (payload) => http.post('/tasks', payload),
   update: (id, payload, config) => http.patch(`/tasks/${id}`, payload, config),
   complete: (id, config) => http.post(`/tasks/${id}/complete`, undefined, config),
+  recordFocusSession: (id, payload, config) => http.post(`/tasks/${id}/focus-sessions`, payload, config),
   remove: (id, config) => http.delete(`/tasks/${id}`, config),
 }
 

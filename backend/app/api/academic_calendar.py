@@ -1,7 +1,9 @@
 from datetime import datetime, time
 import hashlib
+import re
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -18,6 +20,7 @@ from app.schemas.academic_calendar import (
     ExamCreate,
     ExamRead,
     ExamUpdate,
+    has_active_class_week,
 )
 from app.schemas.academic_calendar_sync import (
     AcademicCalendarImportItem,
@@ -71,7 +74,7 @@ def _patterns_share_week(start_week: int, end_week: int, first: str, second: str
     return any(_week_matches(week, first) and _week_matches(week, second) for week in range(start_week, end_week + 1))
 
 
-def _ensure_class_values(start_time: time, end_time: time, start_week: int, end_week: int) -> None:
+def _ensure_class_values(start_time: time, end_time: time, start_week: int, end_week: int, week_pattern: str) -> None:
     if end_time <= start_time:
         raise HTTPException(
             status_code=422,
@@ -81,6 +84,11 @@ def _ensure_class_values(start_time: time, end_time: time, start_week: int, end_
         raise HTTPException(
             status_code=422,
             detail={"code": "CLASS_WEEK_RANGE_INVALID", "message": "结束周不能早于开始周"},
+        )
+    if not has_active_class_week(start_week, end_week, week_pattern):
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "CLASS_WEEK_PATTERN_EMPTY", "message": "周次范围与单双周不匹配，至少需要一个实际上课周"},
         )
 
 
@@ -203,6 +211,63 @@ def _apply_import_item(entity, item: AcademicCalendarImportItem, course_id: int)
     entity.ends_at = deadline_to_utc(item.ends_at) if item.ends_at is not None else None
 
 
+def _validated_preview_items(items: list[dict], warnings: list[str]) -> list[AcademicCalendarImportItem]:
+    parsed = []
+    for item in items:
+        try:
+            parsed.append(AcademicCalendarImportItem.model_validate(item))
+        except ValidationError:
+            # A malformed upstream row must not hide otherwise usable rows or
+            # expose a model-validation exception as a server error.
+            name = str(item.get("course_name") or "未命名日程")[:120]
+            warnings.append(f"{name}：时间或周次信息不完整，未导入，请核对后手工录入")
+    return parsed
+
+
+def _recurrence_group(external_uid: str) -> str | None:
+    match = re.fullmatch(r"(.+:weekday:[1-7])(?::s[0-9]+)?", external_uid)
+    return match.group(1) if match else None
+
+
+def _changed_recurrence_groups(db: Session, payload: AcademicCalendarSyncRequest) -> set[str]:
+    """Do not leave stale split ranges behind when an exclusion list changes.
+
+    Sync deliberately never deletes local rows. A changed partition therefore
+    needs an explicit local review instead of partially updating its siblings.
+    Ordinary metadata changes and repeated imports of the same partition work
+    through the existing identity/concurrency checks.
+    """
+    incoming: dict[str, list] = {}
+    for item in payload.items:
+        group = _recurrence_group(item.external_uid) if item.kind == "class_session" else None
+        if group:
+            incoming.setdefault(group, []).append(item)
+    if not incoming:
+        return set()
+    previous: dict[str, list] = {}
+    links = db.scalars(select(AcademicCalendarSyncLink).where(
+        AcademicCalendarSyncLink.source_key == payload.source_key,
+        AcademicCalendarSyncLink.entity_type == "class_session",
+    )).all()
+    for link in links:
+        group = _recurrence_group(link.external_uid)
+        if group not in incoming:
+            continue
+        entity = _linked_entity(db, link)
+        if entity is not None:
+            previous.setdefault(group, []).append(entity)
+
+    def shape(items):
+        return sorted((item.start_week, item.end_week, item.week_pattern) for item in items)
+
+    return {
+        group for group, items in incoming.items()
+        if previous.get(group)
+        and (len(items) > 1 or len(previous[group]) > 1)
+        and shape(items) != shape(previous[group])
+    }
+
+
 @router.get("/overview", response_model=AcademicCalendarOverview)
 def overview(
     week: int = Query(default=1, ge=1, le=30),
@@ -227,7 +292,7 @@ def preview_academic_calendar_import(payload: AcademicCalendarPreviewRequest) ->
         )
     except AcademicCalendarImportError as exc:
         raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message}) from exc
-    parsed = [AcademicCalendarImportItem.model_validate(item) for item in items]
+    parsed = _validated_preview_items(items, warnings)
     return AcademicCalendarPreviewResponse(
         source_key=source_key,
         source_type=payload.source_type,
@@ -311,7 +376,7 @@ def preview_njust_academic_calendar(
         session.close()
         del password
 
-    parsed = [AcademicCalendarImportItem.model_validate(item) for item in items]
+    parsed = _validated_preview_items(items, warnings)
     return AcademicCalendarPreviewResponse(
         source_key=source_key,
         source_type="ical",
@@ -334,10 +399,33 @@ def sync_academic_calendar_import(
             detail={"code": "CALENDAR_SOURCE_MISMATCH", "message": "教务来源标识与预览不一致，请重新预览"},
         )
 
-    created = updated = unchanged = skipped = courses_created = 0
+    created = updated = unchanged = skipped = removed = courses_created = 0
     conflicts: list[AcademicCalendarSyncConflict] = []
     seen_external: set[tuple[str, str]] = set()
+    if payload.replace_source:
+        # WakeUp-style full replace: the import becomes the whole schedule.
+        # Every previous session/exam — imported from any source or entered
+        # by hand — is cleared first; real timetables do overlap (labs and
+        # internships run alongside regular classes), so imports are never
+        # blocked on time conflicts either.
+        for link in db.scalars(select(AcademicCalendarSyncLink)).all():
+            db.delete(link)
+        for entity in db.scalars(select(ClassSession)).all():
+            db.delete(entity)
+            removed += 1
+        for entity in db.scalars(select(Exam)).all():
+            db.delete(entity)
+            removed += 1
+        db.flush()
+    changed_groups = set() if payload.replace_source else _changed_recurrence_groups(db, payload)
     for item in payload.items:
+        if _recurrence_group(item.external_uid) in changed_groups:
+            skipped += 1
+            conflicts.append(_sync_conflict(
+                item, "recurrence_changed",
+                "课程的分段周次与本地记录不一致，请选齐同源区间，或先核对并手工移除旧记录；本次未改写这组课程",
+            ))
+            continue
         external_identity = (item.kind, item.external_uid)
         if external_identity in seen_external:
             skipped += 1
@@ -357,59 +445,39 @@ def sync_academic_calendar_import(
         if link is not None:
             entity = _linked_entity(db, link)
             if entity is None:
-                skipped += 1
-                conflicts.append(
-                    _sync_conflict(item, "target_unavailable", "对应的本地日程已删除，本次不会自动恢复")
-                )
-                continue
-            if payload_hash(_current_payload(entity, item.kind)) != link.applied_hash:
-                skipped += 1
-                conflicts.append(
-                    _sync_conflict(item, "local_changed", "本地内容在上次同步后修改过，请保留本地内容或重新录入")
-                )
-                continue
-            if remote_hash == link.applied_hash:
-                unchanged += 1
-                continue
-            if item.kind == "class_session":
-                try:
-                    _ensure_no_class_conflict(
-                        db,
-                        weekday=item.weekday,
-                        start_time=item.start_time,
-                        end_time=item.end_time,
-                        start_week=item.start_week,
-                        end_week=item.end_week,
-                        week_pattern=item.week_pattern,
-                        exclude_id=entity.id,
-                    )
-                except HTTPException:
+                if not payload.replace_source:
                     skipped += 1
-                    conflicts.append(_sync_conflict(item, "schedule_conflict", "更新后的时间与现有课程冲突"))
+                    conflicts.append(
+                        _sync_conflict(item, "target_unavailable", "对应的本地日程已删除，本次不会自动恢复")
+                    )
                     continue
-            course, was_created = _get_or_create_course(db, item.course_name, item.teacher)
-            courses_created += int(was_created)
-            _apply_import_item(entity, item, course.id)
-            link.applied_hash = remote_hash
-            link.source_name = payload.source_name
-            updated += 1
-            continue
-
-        if item.kind == "class_session":
-            try:
-                _ensure_no_class_conflict(
-                    db,
-                    weekday=item.weekday,
-                    start_time=item.start_time,
-                    end_time=item.end_time,
-                    start_week=item.start_week,
-                    end_week=item.end_week,
-                    week_pattern=item.week_pattern,
-                )
-            except HTTPException:
-                skipped += 1
-                conflicts.append(_sync_conflict(item, "schedule_conflict", "该时间与现有课程冲突"))
+                db.delete(link)
+                db.flush()
+                link = None
+            else:
+                if not payload.replace_source and payload_hash(_current_payload(entity, item.kind)) != link.applied_hash:
+                    skipped += 1
+                    conflicts.append(
+                        _sync_conflict(item, "local_changed", "本地内容在上次同步后修改过，请保留本地内容或重新录入")
+                    )
+                    continue
+                if remote_hash == link.applied_hash:
+                    unchanged += 1
+                    continue
+                # Imported timetables are factual data and may legitimately
+                # overlap (labs/internships alongside classes), so updates
+                # are never blocked on time conflicts; the weekly grid shows
+                # overlapping blocks side by side.
+                course, was_created = _get_or_create_course(db, item.course_name, item.teacher)
+                courses_created += int(was_created)
+                _apply_import_item(entity, item, course.id)
+                link.applied_hash = remote_hash
+                link.source_name = payload.source_name
+                updated += 1
                 continue
+
+        # Create path likewise accepts overlapping imports without conflict
+        # checks; only hand-entered sessions are guarded against clashes.
         course, was_created = _get_or_create_course(db, item.course_name, item.teacher)
         courses_created += int(was_created)
         if item.kind == "class_session":
@@ -438,6 +506,7 @@ def sync_academic_calendar_import(
         updated=updated,
         unchanged=unchanged,
         skipped=skipped,
+        removed=removed,
         courses_created=courses_created,
         conflicts=conflicts,
     )
@@ -486,7 +555,7 @@ def update_class_session(
         "end_week": changes.get("end_week", item.end_week),
         "week_pattern": changes.get("week_pattern", item.week_pattern),
     }
-    _ensure_class_values(values["start_time"], values["end_time"], values["start_week"], values["end_week"])
+    _ensure_class_values(values["start_time"], values["end_time"], values["start_week"], values["end_week"], values["week_pattern"])
     _ensure_no_class_conflict(db, **values, exclude_id=item.id)
     check_edit_precondition(db, item, if_match)
     for field, value in changes.items():

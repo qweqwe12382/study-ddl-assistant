@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import './check-focus-save.mjs'
 
 import {
   FOCUS_PRESET_MINUTES,

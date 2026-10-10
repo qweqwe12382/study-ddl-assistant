@@ -11,14 +11,16 @@ from app.models.material import Material
 from app.models.agent import AgentEvent
 from app.models.task import Task
 from app.schemas.agent import TaskCompletionFeedback
-from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
+from app.schemas.task import TaskCreate, TaskFocusSession, TaskRead, TaskUpdate
 from app.services.agent_feedback import (
     complete_task_with_feedback,
     create_plan_delta_candidates,
     task_feedback_snapshot,
 )
 from app.services.edit_concurrency import check_edit_precondition, edit_conflict
-from app.services.task_service import sync_overdue_tasks
+from app.services.focus_sessions import record_focus_session
+from app.services.task_service import reconcile_overdue_status, sync_overdue_tasks
+from app.time import as_utc
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -89,13 +91,13 @@ def complete_task(
             status_code=409,
             detail={"code": "TASK_CANCELED", "message": "已取消任务需先恢复为待办状态，才能标记完成"},
         )
-    check_edit_precondition(db, task, if_match)
     try:
         complete_task_with_feedback(
             db, task,
             actual_minutes=payload.actual_minutes if payload else None,
             difficulty=payload.difficulty if payload else None,
             idempotency_key=payload.idempotency_key if payload else None,
+            if_match=if_match,
         )
         commit_or_rollback(db)
     except ValueError as exc:
@@ -117,6 +119,34 @@ def get_task(task_id: int, db: Session = Depends(get_db)) -> Task:
     task = db.get(Task, task_id)
     if task is None:
         raise _not_found()
+    return task
+
+
+@router.post("/{task_id}/focus-sessions", response_model=TaskRead)
+def record_task_focus_session(
+    task_id: int,
+    payload: TaskFocusSession,
+    if_match: str | None = Header(default=None, alias="If-Match"),
+    db: Session = Depends(get_db),
+) -> Task:
+    task = db.get(Task, task_id)
+    if task is None:
+        raise _not_found()
+    try:
+        record_focus_session(db, task, minutes=payload.minutes, idempotency_key=payload.idempotency_key, if_match=if_match)
+        commit_or_rollback(db)
+    except HTTPException:
+        db.rollback()
+        raise
+    except StaleDataError as exc:
+        db.rollback()
+        raise edit_conflict() from exc
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail={
+            "code": "FOCUS_RECORD_FAILED", "message": "专注用时未保存，请重试",
+        }) from exc
+    db.refresh(task)
     return task
 
 
@@ -146,6 +176,10 @@ def update_task(
         message="关联资料不存在",
     )
     target_status = changes.get("status", task.status)
+    if task.status == "canceled" and target_status == "completed":
+        raise HTTPException(status_code=409, detail={
+            "code": "TASK_CANCELED", "message": "已取消任务需先恢复为待办状态，才能标记完成",
+        })
     target_estimated = changes.get("estimated_minutes", task.estimated_minutes)
     terminal_status = target_status in {"completed", "canceled"}
     target_remaining = 0 if terminal_status else changes.get("remaining_minutes", task.remaining_minutes)
@@ -155,7 +189,7 @@ def update_task(
     check_edit_precondition(db, task, if_match)
     if "material_id" in changes and changes["material_id"] is not None:
         task.source_material_name = material.original_filename if material else None
-    before_actual = task.actual_minutes
+    before_due = as_utc(task.due_at) if task.due_at is not None else None
     before_status = task.status
     for field, value in changes.items():
         setattr(task, field, value)
@@ -169,6 +203,8 @@ def update_task(
             task.completed_at = utc_now()
     elif before_status in {"completed", "canceled"} or target_status == "canceled":
         task.completed_at = None
+    if "due_at" in changes:
+        reconcile_overdue_status(task)
     flush_or_rollback(db)
     if before_status != "completed" and task.status == "completed":
         db.add(AgentEvent(
@@ -188,9 +224,10 @@ def update_task(
             payload={"cancellation_path": "task_update", "after": task_feedback_snapshot(task)},
         ))
         create_plan_delta_candidates(db, task, "task_canceled")
-    if "actual_minutes" in changes and before_actual != task.actual_minutes:
-        create_plan_delta_candidates(db, task, "actual_minutes_changed")
-    if task.status == "overdue" and before_status != "overdue":
+    current_due = as_utc(task.due_at) if task.due_at is not None else None
+    if "due_at" in changes and before_due != current_due and task.status not in {"completed", "canceled"}:
+        create_plan_delta_candidates(db, task, "deadline_changed")
+    elif task.status == "overdue" and before_status != "overdue":
         create_plan_delta_candidates(db, task, "task_overdue")
     commit_or_rollback(db)
     db.refresh(task)
