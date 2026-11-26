@@ -32,13 +32,17 @@
 
     <el-container>
       <el-header class="app-header" :class="{ 'has-view-modes': hasViewModes }">
-        <div class="header-identity">
+        <div class="header-identity" :class="{ 'has-focus-timer': focusSession }">
           <div class="desktop-context"><span>学习空间</span><span aria-hidden="true">/</span><strong>{{ currentPageLabel }}</strong></div>
           <span class="mobile-brand" aria-label="学伴管家">
             <BrandMark class="compact-brand-mark" />
             <span>学伴管家</span>
           </span>
           <button type="button" class="mobile-command-trigger" aria-label="搜索页面和快捷操作" aria-haspopup="dialog" @click="openCommandMenu"><el-icon aria-hidden="true"><Search /></el-icon></button>
+          <router-link v-if="focusSession" class="header-focus" to="/focus" :aria-label="`${focusStatus}，打开专注计时`" :title="focusStatus">
+            <el-icon aria-hidden="true"><Timer /></el-icon>
+            <span>{{ focusSession.phase === 'finished' ? '待记录' : focusRemaining }}</span>
+          </router-link>
         </div>
           <div v-if="hasViewModes" class="view-mode-switch" :class="{ 'is-detailed': isDetailedView }" role="group" aria-label="页面内容视图">
             <button
@@ -158,6 +162,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { healthApi } from '../api'
 import { authSession, logout } from '../auth/session'
 import { useViewMode } from '../composables/useViewMode'
+import { useFocusSession } from '../composables/useFocusSession'
 import { isCommandShortcut } from '../utils/workspaceCommands'
 import BrandMark from './BrandMark.vue'
 
@@ -185,6 +190,10 @@ function handleWorkspaceKey(event) {
 
 const route = useRoute()
 const router = useRouter()
+const { session: focusSession, remaining: focusRemaining } = useFocusSession()
+const focusStatus = computed(() => ({
+  running: '正在专注', paused: '专注已暂停', finished: '专注待记录',
+})[focusSession.value?.phase])
 const mobileNav = ref(null)
 const mobileMenuTrigger = ref(null)
 const mobileMenuOpen = ref(false)
@@ -294,6 +303,9 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.has-focus-timer { display: flex; align-items: center; gap: 8px; }
+.header-focus { display: inline-flex; flex: none; align-items: center; gap: 4px; padding: 6px 7px; color: var(--ledger-link); border: 1px solid var(--ledger-line); border-radius: 999px; font-size: 12px; font-variant-numeric: tabular-nums; text-decoration: none; white-space: nowrap; }
+@media (max-width: 390px) { .has-focus-timer .mobile-brand > span { display: none; } }
 .compact-brand-mark { width: 30px; height: 30px; border-radius: 6px; }
 .workspace-search { display: flex; align-items: center; gap: 9px; min-height: 42px; margin: -10px 20px 22px; padding: 8px 10px; border: 1px solid var(--ledger-line); border-radius: 8px; color: var(--ledger-muted); background: var(--ledger-canvas); text-align: left; cursor: pointer; }
 .workspace-search span { flex: 1; font-size: 12px; }

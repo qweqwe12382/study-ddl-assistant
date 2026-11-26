@@ -67,7 +67,7 @@
         </div>
         <div class="form-grid two-columns">
           <el-form-item label="开始时间" required>
-            <el-date-picker v-model="examForm.starts_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" format="YYYY-MM-DD HH:mm" placeholder="选择日期和时间" style="width: 100%" />
+            <BeijingDatePicker v-model="examForm.starts_at" placeholder="选择日期和时间" style="width: 100%" />
           </el-form-item>
           <el-form-item label="考场">
             <el-input v-model="examForm.location" maxlength="120" placeholder="例如：第一教学楼 101" />
@@ -80,7 +80,7 @@
           </el-form-item>
           <div class="form-grid two-columns">
           <el-form-item label="结束时间">
-            <el-date-picker v-model="examForm.ends_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" format="YYYY-MM-DD HH:mm" placeholder="可选" style="width: 100%" />
+            <BeijingDatePicker v-model="examForm.ends_at" placeholder="可选" style="width: 100%" />
           </el-form-item>
           <el-form-item label="座位号">
             <el-input v-model="examForm.seat_number" maxlength="50" placeholder="例如：A-18" />
@@ -100,7 +100,8 @@
 
 </template>
 <script setup>
-import { ElButton, ElDatePicker, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElSelect } from 'element-plus'
+import { ElButton, ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElOption, ElSelect } from 'element-plus'
+import BeijingDatePicker from './BeijingDatePicker.vue'
 import CourseSelect from './CourseSelect.vue'
 const classDialogVisible = defineModel('classDialogVisible', { type: Boolean, default: false })
 const examDialogVisible = defineModel('examDialogVisible', { type: Boolean, default: false })

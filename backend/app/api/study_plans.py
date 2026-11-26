@@ -145,12 +145,17 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
         ).all()
     )
     explicit_selection = payload.material_sources is not None or payload.task_sources is not None
+    course_tasks = tasks
     if explicit_selection:
         # A partially supplied explicit selection still excludes the other kind.
         materials = _select_sources(db, materials, payload.material_sources or [], material=True)
         tasks = _select_sources(db, tasks, payload.task_sources or [])
-        if not materials and not tasks:
-            raise _invalid_plan("请至少选择一份资料或一条任务", code="EMPTY_PLAN_SOURCES")
+    elif payload.exam_review:
+        tasks = []
+    review_scope = (payload.review_scope or "").strip()
+    if (explicit_selection or payload.exam_review) and not materials and not tasks and not review_scope:
+        message = "请先填写考试章节或选择复习资料" if payload.exam_review else "请至少选择一份资料或一条任务"
+        raise _invalid_plan(message, code="EMPTY_PLAN_SOURCES")
     selection = {"materials": [{"source_id": row.id, "navigation_key": row.navigation_key} for row in materials],
                  "tasks": [{"source_id": row.id, "navigation_key": row.navigation_key} for row in tasks]} if explicit_selection else None
     try:
@@ -164,11 +169,16 @@ def generate_study_plan(payload: StudyPlanGenerate, db: Session = Depends(get_db
             daily_minutes=payload.daily_minutes,
             materials=materials,
             tasks=tasks,
+            review_scope=review_scope,
+            reserve_tasks=course_tasks if payload.exam_review else (),
+            exam_review=payload.exam_review,
             calibration_factor=calibration_factor,
             evaluated_at=evaluated_at,
         )
     except ValueError as error:
         raise _invalid_plan(str(error), code="PLAN_RANGE_TOO_LARGE") from error
+    if payload.exam_review and not items:
+        raise _invalid_plan("这段时间没有可用的复习时段，请调整日期或每天可用时间。", code="EMPTY_PLAN_SOURCES")
 
     plan = StudyPlan(
         course_id=course.id if course else payload.course_id,

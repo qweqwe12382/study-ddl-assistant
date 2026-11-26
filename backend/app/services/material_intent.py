@@ -60,7 +60,7 @@ def material_source_option(material) -> dict:
         bool((material.extraction_result or {}).get("tasks")) and not description["learning_points"]
     )
     return {"source_id": material.id, "navigation_key": material.navigation_key, "revision": material.revision,
-            "label": material.original_filename, **description, "available": usable,
+            "label": material.label, **description, "available": usable,
             "recommended": usable and not reference,
             "hint": "请先补充正文或重新解析" if not usable else "参考安排，原日期不会导入新计划" if description["content_kind"] == "review_outline"
             else "通知与要求，可按需选入" if reference else "用于安排复习内容"}

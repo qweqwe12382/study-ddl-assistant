@@ -24,7 +24,7 @@
     <section v-if="recentUploaded.length" class="material-upload-result" aria-label="刚添加的资料">
       <div class="material-result-heading"><div><strong>已保存 {{ recentUploaded.length }} 份资料</strong><p>内容已保留，核对后即可继续学习。</p></div><el-button link @click="recentUploaded = []">收起</el-button></div>
       <div v-for="material in recentUploaded" :key="material.navigation_key" class="material-result-row">
-        <span>{{ material.original_filename }}</span>
+        <span>{{ materialLabel(material) }}</span>
         <div><el-button link @click="openDetail(material)">查看内容</el-button><el-button v-if="material.extracted_text" link type="primary" @click="openExtraction(material)">核对结果</el-button><el-button v-else link type="warning" @click="openEdit(material)">补充正文</el-button></div>
       </div>
     </section>
@@ -107,7 +107,7 @@
           :aria-labelledby="`material-mobile-name-${material.id}`"
           :aria-current="materialRowClassName({ row: material }) ? 'true' : undefined"
         >
-          <h3 :id="`material-mobile-name-${material.id}`">{{ material.original_filename }}</h3>
+          <h3 :id="`material-mobile-name-${material.id}`">{{ materialLabel(material) }}</h3>
           <p class="material-mobile-file-meta"><span>{{ material.file_type || '未知格式' }}</span><span>{{ formatFileSize(material.file_size) }}</span></p>
           <dl class="material-mobile-meta">
             <div><dt>所属课程</dt><dd>{{ courseName(material.course_id) }}</dd></div>
@@ -132,7 +132,7 @@
         <el-table :data="filteredMaterials" :empty-text="tableEmptyText" :row-class-name="materialRowClassName" aria-labelledby="materials-heading">
           <el-table-column label="文件名称" min-width="220">
             <template #default="{ row }">
-              <div class="row-title material-table-name">{{ row.original_filename }}</div>
+              <div class="row-title material-table-name">{{ materialLabel(row) }}</div>
               <div class="row-meta material-table-meta">{{ row.file_type || '未知格式' }}</div>
               <div v-for="snippet in row.match_snippets || []" :key="snippet" class="match-snippet">{{ snippet }}</div>
             </template>
@@ -223,7 +223,7 @@
     <el-dialog v-model="detailDialogVisible" title="资料详情" width="680px" destroy-on-close>
       <template v-if="detailMaterial">
         <div class="detail-grid">
-          <div><span>文件名</span><strong>{{ detailMaterial.original_filename }}</strong></div>
+          <div><span>资料名称</span><strong>{{ materialLabel(detailMaterial) }}</strong></div>
           <div><span>格式</span><strong>{{ (detailMaterial.file_type || '未知').toUpperCase() }}</strong></div>
           <div><span>大小</span><strong>{{ formatFileSize(detailMaterial.file_size) }}</strong></div>
           <div><span>状态</span><el-tag size="small" :type="statusType(detailMaterial.processing_status)">{{ statusLabel(detailMaterial.processing_status) }}</el-tag></div>
@@ -253,7 +253,7 @@
       </div>
       <template v-if="extractionResult && !extractionLoading">
         <el-alert v-if="!materialConflict" :title="extractionResult.status === 'confirmed' ? `资料已整理${extractionResult.confirmed_task_ids?.length ? `，已加入 ${extractionResult.confirmed_task_ids.length} 条任务` : ''}。需要时可继续安排复习。` : extractionTasks.length ? '资料已保存。核对下面的任务名称、截止时间与原文，再确认加入任务。' : '资料已保存，可直接完成整理，也可以继续安排复习。'" :type="extractionResult.status === 'confirmed' ? 'success' : extractionResult.needs_review ? 'warning' : 'info'" show-icon :closable="false" class="detail-alert" />
-        <ExtractionReviewContent :result="extractionResult" :tasks="extractionTasks" />
+        <ExtractionReviewContent :result="extractionResult" :tasks="extractionTasks" :calendar-disabled="Boolean(materialConflict) || extractionSaving" @review-calendar="reviewCalendarCandidate" />
         <div class="material-course-choice"><span>所属课程 <span class="muted">（安排复习时需要）</span></span><CourseSelect v-model="extractionCourseId" :courses="courses" :disabled="extractionSaving" @created="addCreatedCourse" /><p v-if="courseRequired && !extractionCourseId" class="material-course-error" role="alert">先选择或新建一门课程，再安排这份资料的复习。</p></div>
         <details class="material-optional-fields">
           <summary>分类、标签与识别依据</summary>
@@ -358,6 +358,7 @@ import {
 import { useRoute, useRouter } from 'vue-router'
 
 import { coursesApi, materialsApi } from '../api'
+import { authSession } from '../auth/session'
 import EditConflictCard from '../components/EditConflictCard.vue'
 import MaterialInboxFocus from '../components/MaterialInboxFocus.vue'
 import CourseSelect from '../components/CourseSelect.vue'
@@ -680,7 +681,7 @@ async function submitPastedNotice() {
   pastingNotice.value = true
   try {
     const file = new File([notice.content], notice.filename, { type: 'text/plain;charset=utf-8' })
-    const uploaded = await materialsApi.upload([file], uploadCourseId.value || positiveRouteId(route.query.course_id), route.query.intent === 'plan' ? '复习安排' : null, notice.sourceTime)
+    const uploaded = await materialsApi.upload([file], uploadCourseId.value || positiveRouteId(route.query.course_id), route.query.intent === 'plan' ? '复习安排' : null, notice.sourceTime, { title: notice.title })
     const savedMaterial = Array.isArray(uploaded) ? uploaded[0] : null
     if (!editBaseline(savedMaterial)) throw new Error('通知已保存，但未能读取可确认的资料版本。请在资料库中重新打开。')
     materials.value = [savedMaterial, ...materials.value.filter((material) => material.id !== savedMaterial.id)]
@@ -829,6 +830,10 @@ function handleUploadExceed() {
   ElMessage.warning(`一次最多选择 ${uploadPolicy.value.max_upload_files} 个文件`)
 }
 
+function materialLabel(material) {
+  return material.display_name || material.original_filename
+}
+
 function openEdit(material) {
   const baseline = editBaseline(material)
   if (!baseline) {
@@ -837,7 +842,8 @@ function openEdit(material) {
   }
   materialConflict.value = null
   Object.assign(form, {
-    original_filename: material.original_filename,
+    original_filename: materialLabel(material),
+    editsDisplayName: Boolean(material.display_name),
     course_id: material.course_id,
     file_type: material.file_type || '',
     material_type: material.material_type || '',
@@ -917,7 +923,7 @@ async function saveMaterial() {
   saving.value = true
   try {
     const payload = {
-      original_filename: form.original_filename.trim(),
+      [editingId.value && form.editsDisplayName ? 'display_name' : 'original_filename']: form.original_filename.trim(),
       course_id: form.course_id,
       file_type: form.file_type.trim() || null,
       material_type: form.material_type || null,
@@ -1188,6 +1194,22 @@ function buildTagEvidenceView() {
   }
 }
 
+function reviewCalendarCandidate(item) {
+  if (materialConflict.value || extractionSaving.value || !authSession.user) return
+  router.push({
+    path: '/schedule',
+    query: { action: 'notice' },
+    state: {
+      noticeDraft: {
+        ...item,
+        owner: authSession.user.id,
+        courseId: extractionCourseId.value,
+        courseName: extractionResult.value?.course_name || '',
+      },
+    },
+  })
+}
+
 function applyExtractionResult(result, material = extractionMaterial.value) {
   const previewBaseline = extractionPreviewBaseline(material, result)
   if (!previewBaseline) {
@@ -1429,7 +1451,7 @@ async function removeMaterial(material) {
     return
   }
   try {
-    await ElMessageBox.confirm(`确定删除“${material.original_filename}”吗？`, '删除资料', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除“${materialLabel(material)}”吗？`, '删除资料', { type: 'warning' })
     await materialsApi.remove(material.id, config)
     ElMessage.success('资料已删除')
     await loadData()
@@ -1459,7 +1481,7 @@ async function viewLatestMaterial() {
       return
     }
     materialConflict.value = { ...materialConflict.value, latestFields: [
-      { label: '文件名', value: material.original_filename || '未命名资料' },
+      { label: '资料名称', value: materialLabel(material) || '未命名资料' },
       { label: '所属课程', value: courseName(material.course_id) },
       { label: '文件格式', value: material.file_type || '未填写' },
       { label: '资料类型', value: material.material_type || '未分类' },

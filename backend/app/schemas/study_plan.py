@@ -73,6 +73,8 @@ class StudyPlanGenerate(BaseModel):
     # lists so an empty selection can never expand to the entire course.
     material_sources: list[PlanSelectedSource] | None = Field(default=None, max_length=100)
     task_sources: list[PlanSelectedSource] | None = Field(default=None, max_length=100)
+    review_scope: str | None = Field(default=None, max_length=2000)
+    exam_review: bool = False
 
 
 class StudyPlanUpdate(BaseModel):

@@ -2,7 +2,7 @@
 
 这里是与本地演示版隔离的在线部署入口。它复用现有 `backend/` 和 `frontend/` 源码，但不修改这些源码，也不使用根目录的本地 `data/` 数据。
 
-当前代码已经具备邮箱账号、Cookie 会话、CSRF 以及按账号拆分的 SQLite 学习工作区；第一个注册账号为实例管理员，后续账号不能修改实例级外部 AI 配置。但它仍缺少邮箱验证、找回密码、生产级登录限流、静态加密、备份恢复和运维审计，因此本目录只能作为待验证部署起点，不能直接当作成熟 SaaS 公开运营。
+在线注册创建普通账号和独立的 SQLite 工作区。对外测试请注册单独的普通账号，实例管理员账号由运营者保管。已有实例的账号角色在升级时保留。
 
 ## 服务器要求
 
@@ -12,6 +12,16 @@
 - 防火墙放行 TCP 80、443
 
 ## 首次部署
+
+先为 `xuebanguanjia.cc.cd` 添加指向 `107.173.123.218` 的 A 记录。在 Windows 的项目根目录执行以下命令，脚本通过 SSH 从 GitHub 拉取代码并启动 Docker Compose。
+
+```powershell
+.\online\deploy.ps1
+```
+
+默认连接 `deploy@107.173.123.218`，部署目录为服务器上的 `~/apps/study-ddl-assistant`。应用只在服务器的 `127.0.0.1:18080` 上提供 HTTP。用服务器已有的反向代理为 `xuebanguanjia.cc.cd` 新增 HTTPS 站点，将整个域名转发到 `http://127.0.0.1:18080`。反向代理若在独立容器中，需要先配置该容器到应用的网络连接。配置完成后访问 `https://xuebanguanjia.cc.cd/` 和 `/api/health`。如果 `18080` 已被占用，脚本可通过 `-LocalPort` 改用其他端口。
+
+如果服务器的 80/443 端口可用于本项目，可以用 `.\online\deploy.ps1 -DirectHttps` 让项目内的 Caddy 直接提供 HTTPS。
 
 在服务器上取得项目代码后执行：
 
@@ -75,13 +85,13 @@ docker compose up -d --build
 
 ## 临时用 IP 测试
 
-如果还没有域名，可以把 `.env` 中的 `SITE_ADDRESS` 改为 `:80`，同时将 `CORS_ORIGINS` 改为服务器访问地址或暂时留空，然后执行：
+如果还没有域名，可以把 `.env` 中的 `SITE_ADDRESS` 改为 `:80`，将 `CORS_ORIGINS` 改为服务器访问地址（例如 `http://107.173.123.218`），同时设置 `AUTH_COOKIE_SECURE=false`，然后执行：
 
 ```bash
 docker compose up -d --build
 ```
 
-此时使用 `http://服务器IP/` 访问，不会有自动 HTTPS。正式使用仍建议绑定域名并启用 HTTPS。
+此时使用 `http://服务器IP/` 访问，不会有自动 HTTPS。HTTP 下必须关闭 Cookie 的 Secure 标记，否则浏览器无法保持登录。绑定域名并启用 HTTPS 后，将 `AUTH_COOKIE_SECURE` 恢复为 `true`。
 
 ## 端口与安全边界
 

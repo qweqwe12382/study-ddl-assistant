@@ -21,6 +21,8 @@
 @import 'element-plus/theme-chalk/el-header.css';
 @import 'element-plus/theme-chalk/el-icon.css';
 @import 'element-plus/theme-chalk/el-main.css';
+@import 'element-plus/theme-chalk/el-skeleton.css';
+@import 'element-plus/theme-chalk/el-skeleton-item.css';
 @import 'element-plus/theme-chalk/el-tag.css';
 
 /* Form controls and their dropdown/panel dependencies. */

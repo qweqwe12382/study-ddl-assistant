@@ -13,15 +13,74 @@ def _utc(value):
     return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed.astimezone(timezone.utc)
 
 
-def _upload(client, source_time=None):
-    data = {"material_type": "课程通知"}
+def _upload(client, source_time=None, notice=NOTICE, **fields):
+    data = {"material_type": "课程通知", **fields}
     if source_time is not None:
         data["source_time"] = source_time
     return client.post(
         "/api/materials/upload",
         data=data,
-        files={"files": ("课程通知.txt", NOTICE.encode("utf-8"), "text/plain")},
+        files={"files": ("课程通知.txt", notice.encode("utf-8"), "text/plain")},
     )
+
+
+def test_mixed_notice_extracts_three_separate_candidates_without_writing_records(client, isolated_upload_dir):
+    notice = (
+        "【数据结构】各位同学好：1. 第五次实验报告（二叉树遍历）请于下周五晚上8点前提交到学习通，逾期不收。"
+        "2. 明天下午的课调到周六上午9:00，地点不变（教三 204）。"
+        "3. 期中考试定于12月10日上午10点，范围是第1-6章，请提前复习。"
+    )
+    response = _upload(client, "2026-11-26T09:45:00", notice)
+    assert response.status_code == 201, response.text
+    material = response.json()[0]
+    preview = material["extraction_result"]
+    assert preview["course_name"] == "数据结构"
+    task, = preview["tasks"]
+    assert task["name"] == "第五次实验报告（二叉树遍历）"
+    assert "提交到学习通" in task["description"]
+    assert "逾期不收" in task["description"]
+    assert _utc(task["due_at"]) == datetime(2026, 12, 4, 12, tzinfo=timezone.utc)
+    moved_class, exam = preview["calendar_candidates"]
+    assert moved_class["kind"] == "class_change"
+    assert moved_class["original_date"] == "2026-11-27"
+    assert moved_class["original_time_text"] == "明天下午"
+    assert _utc(moved_class["starts_at"]) == datetime(2026, 11, 28, 1, tzinfo=timezone.utc)
+    assert moved_class["location"] == "教三 204"
+    assert exam["kind"] == "exam"
+    assert _utc(exam["starts_at"]) == datetime(2026, 12, 10, 2, tzinfo=timezone.utc)
+    assert exam["scope"] == "第1-6章"
+    for item in [task, moved_class, exam]:
+        assert item["source_quote"] in notice
+    assert client.get("/api/tasks").json() == []
+    assert client.get("/api/academic-calendar/exams").json() == []
+    assert client.get("/api/academic-calendar/class-sessions").json() == []
+
+
+@pytest.mark.parametrize("title", ["", "数据结构上课 9:00"])
+def test_pasted_notice_keeps_title_and_body_separate(client, isolated_upload_dir, title):
+    notice = "【数据结构】周六上午9:00到教室。"
+    response = _upload(client, "2026-11-26T09:45:00", notice, pasted_notice="true", notice_title=title)
+    assert response.status_code == 201, response.text
+    material = response.json()[0]
+    assert material["display_name"] == (title or "数据结构 · 课程通知 · 11/26")
+    assert material["original_filename"] == "课程通知.txt"
+    assert material["extracted_text"] == notice
+    assert client.get(f'/api/materials/{material["id"]}/file').content.decode() == notice
+
+
+@pytest.mark.parametrize(("notice", "task_count", "exam_count"), [
+    ("【数据结构】实验报告，截止明天18:00。", 1, 0),
+    ("【数据结构】请提交实验报告。", 1, 0),
+    ("【数据结构】①实验报告，截止明天18:00。②期中考试定于12月10日上午10点。", 1, 1),
+])
+def test_compact_notice_formats(client, isolated_upload_dir, notice, task_count, exam_count):
+    response = _upload(client, "2026-11-26T09:45:00", notice)
+    assert response.status_code == 201, response.text
+    preview = response.json()[0]["extraction_result"]
+    assert len(preview["tasks"]) == task_count
+    assert len(preview["calendar_candidates"]) == exam_count
+    if "截止" not in notice:
+        assert preview["tasks"][0]["due_at"] is None
 
 
 @pytest.mark.parametrize("reference", ["2026-09-09T09:00:00", "2026-09-09T01:00:00Z", "2026-09-09T03:00:00+02:00"])

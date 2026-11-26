@@ -3,7 +3,6 @@
     <div class="page-intro calendar-intro">
       <div>
         <h1>课表与考试</h1>
-        <p>导入或填写固定的上课、考试时间，复习时段在计划里安排。</p>
       </div>
       <div class="page-actions">
         <el-button @click="openClassDialog()">添加上课时间</el-button>
@@ -16,6 +15,8 @@
       <span aria-current="page">课表与考试 <small>固定时间</small></span>
       <router-link to="/study-plans">复习计划 <small>每天学什么</small></router-link>
     </nav>
+
+    <NoticeScheduleReview v-if="scheduleRead && route.query.action === 'notice'" @exam="openNoticeExam" />
 
     <div v-if="!courses.length && !loading && !error" class="course-gate" role="status">
       <div class="course-gate-mark" aria-hidden="true">课</div>
@@ -55,16 +56,18 @@
           <span>本学期第 <strong>{{ semesterCurrentWeek }}</strong> 周</span>
           <button v-if="selectedWeek !== semesterCurrentWeek" type="button" @click="jumpToCurrentWeek">跳到本周</button>
         </template>
-        <label v-else class="semester-start-setter">
-          <span>设置学期开学日（周一），自动定位本周：</span>
-          <input
+        <div v-else class="semester-start-setter">
+          <span>设置学期开学日（周一），自动定位本周</span>
+          <el-date-picker
             v-model="semesterStartDraft"
             type="date"
+            value-format="YYYY-MM-DD"
+            :clearable="false"
             aria-label="学期开学日（周一）"
             :disabled="semesterStartSaving"
             @change="saveSemesterStart"
-          >
-        </label>
+          />
+        </div>
       </div>
 
       <section class="schedule-ledger" aria-labelledby="schedule-title">
@@ -94,14 +97,12 @@
             <strong :id="`weekday-${day.value}`">{{ day.label.replace('星期', '周') }}</strong>
             <small>{{ day.value === todayWeekday && selectedWeek === semesterCurrentWeek ? '今天' : `${sessionsFor(day.value).length} 节` }}</small>
           </header>
-          <div
-            v-for="tick in sectionTicks"
-            :key="`tick-${tick.label}`"
-            class="grid-tick"
-            :class="{ 'is-first': tick.isFirst }"
-            :style="{ gridRow: `${tick.row} / span ${tick.span}` }"
-            aria-hidden="true"
-          ><span>{{ tick.label }}</span></div>
+          <template v-for="tick in sectionTicks" :key="tick.label">
+            <div class="grid-tick" :style="{ gridRow: `${tick.row} / span ${tick.span}` }">
+              <span>第 {{ tick.period }} 节</span><time>{{ tick.label }}</time>
+            </div>
+            <div v-if="tick.period > 1" class="grid-separator" :style="{ gridRow: tick.row }" aria-hidden="true"></div>
+          </template>
           <button
             v-for="day in weekdays"
             :key="`add-${day.value}`"
@@ -154,6 +155,7 @@
               </div>
               <el-button @click="openClassDialog(null, activeWeekday)">添加</el-button>
             </div>
+            <div v-if="sessionsFor(activeWeekday).length" class="mobile-time-heading" aria-hidden="true">节次 / 时间</div>
             <button
               v-for="item in sessionsFor(activeWeekday)"
               :key="item.id"
@@ -162,7 +164,10 @@
               :style="{ '--course-color': safeCourseColor(item.course_color) }"
               @click="openClassDialog(item)"
             >
-              <span class="mobile-class-time">{{ formatTimeRange(item) }}</span>
+              <span class="mobile-class-time">
+                <small v-if="sectionNumber(item.start_time)">第 {{ sectionNumber(item.start_time) }} 节</small>
+                <span>{{ formatTimeRange(item) }}</span>
+              </span>
               <span class="mobile-class-main">
                 <strong>{{ item.course_name }}</strong>
                 <small>{{ item.location || '地点待补充' }} · {{ weekPatternLabel(item.week_pattern) }}</small>
@@ -206,7 +211,7 @@
               </dl>
             </div>
             <div class="exam-actions">
-              <router-link v-if="!isPastExam(exam)" :to="{ path: '/study-plans', query: { action: 'create', course_id: exam.course_id, exam_date: chinaParts(new Date(exam.starts_at)).dateKey } }">安排复习</router-link>
+              <router-link v-if="!isPastExam(exam)" :to="{ path: '/study-plans', query: { action: 'create', course_id: exam.course_id, exam_id: exam.id, exam_date: localReferenceDateTime(new Date(exam.starts_at)).slice(0, 10) } }">安排复习</router-link>
               <button type="button" @click="openExamDialog(exam)">编辑</button>
               <button type="button" class="danger-action" @click="removeExam(exam)">删除</button>
             </div>
@@ -246,6 +251,7 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ElButton,
   ElCheckbox,
+  ElDatePicker,
   ElInputNumber,
   ElMessage,
   ElMessageBox,
@@ -254,12 +260,15 @@ import {
 import { academicCalendarApi, coursesApi, studyPreferencesApi } from '../api'
 import { editBaseline, editRequestConfig } from '../utils/editPrecondition'
 import { formatDateTime } from '../utils/format'
+import { localReferenceDateTime } from '../utils/pasteNotice'
 import { computeCurrentWeek } from '../utils/semesterWeek'
 
 const AcademicEntryForms = defineAsyncComponent(() => import('../components/AcademicEntryForms.vue'))
 const AcademicIntegrationDialog = defineAsyncComponent(() => import('../components/AcademicIntegrationDialog.vue'))
+const NoticeScheduleReview = defineAsyncComponent(() => import('../components/NoticeScheduleReview.vue'))
 const route = useRoute()
 const router = useRouter()
+const scheduleRead = ref(false)
 
 const weekdays = [
   { value: 1, short: '一', label: '星期一' },
@@ -295,7 +304,7 @@ let loadRequestId = 0
 const semesterStartDate = ref('')
 const semesterStartDraft = ref('')
 const semesterStartSaving = ref(false)
-const semesterCurrentWeek = computed(() => computeCurrentWeek(semesterStartDate.value))
+const semesterCurrentWeek = computed(() => computeCurrentWeek(semesterStartDate.value, localReferenceDateTime().slice(0, 10)))
 
 const classForm = reactive(emptyClassForm())
 const examForm = reactive(emptyExamForm())
@@ -381,8 +390,12 @@ const sectionTicks = SECTION_START_TIMES.map((label, index) => {
   const next = timeToMinutes(SECTION_START_TIMES[index + 1]) ?? DAY_END_MINUTES
   const row = 2 + Math.max(0, Math.round((start - DAY_START_MINUTES) / SLOT_MINUTES))
   const span = Math.max(1, Math.round((next - start) / SLOT_MINUTES))
-  return { label, row, span, isFirst: index === 0 }
+  return { label, row, span, period: index + 1 }
 })
+
+function sectionNumber(time) {
+  return SECTION_START_TIMES.indexOf(time.slice(0, 5)) + 1
+}
 
 const gridSessions = computed(() => {
   const rows = classSessions.value.map((item) => {
@@ -409,8 +422,7 @@ const gridSessions = computed(() => {
 
 const nowLine = computed(() => {
   if (!semesterCurrentWeek.value || selectedWeek.value !== semesterCurrentWeek.value) return null
-  const parts = chinaParts(new Date())
-  const minutes = parts.hour * 60 + parts.minute
+  const minutes = timeToMinutes(currentTime())
   if (minutes < DAY_START_MINUTES || minutes >= DAY_END_MINUTES) return null
   return { row: 2 + Math.round((minutes - DAY_START_MINUTES) / SLOT_MINUTES) }
 })
@@ -432,17 +444,11 @@ function formatTimeRange(item) {
 }
 
 function formatExamRange(exam) {
-  if (!exam.ends_at) return formatDateTime(exam.starts_at)
-  const start = new Date(exam.starts_at)
-  const end = new Date(exam.ends_at)
-  const startParts = chinaParts(start)
-  const endParts = chinaParts(end)
-  const sameDay = startParts.dateKey === endParts.dateKey
-  const endOptions = sameDay ? { hour: '2-digit', minute: '2-digit' } : {
-    month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  }
-  const endText = new Intl.DateTimeFormat('zh-CN', { timeZone: chinaTimeZone, ...endOptions }).format(end)
-  return `${formatDateTime(exam.starts_at)} – ${endText}`
+  const label = formatDateTime(exam.starts_at)
+  if (!exam.ends_at) return label
+  const start = toLocalDatetime(exam.starts_at)
+  const end = toLocalDatetime(exam.ends_at)
+  return `${label} – ${start.slice(0, 10) === end.slice(0, 10) ? end.slice(11, 16) : formatDateTime(exam.ends_at)}`
 }
 
 function examDateParts(value) {
@@ -455,10 +461,8 @@ function examDateParts(value) {
 }
 
 function countdownLabel(value) {
-  const target = chinaParts(new Date(value))
-  const today = chinaParts(new Date())
-  const targetDay = Date.UTC(target.year, target.month - 1, target.day)
-  const localToday = Date.UTC(today.year, today.month - 1, today.day)
+  const targetDay = Date.parse(localReferenceDateTime(new Date(value)).slice(0, 10))
+  const localToday = Date.parse(localReferenceDateTime().slice(0, 10))
   const days = Math.round((targetDay - localToday) / 86400000)
   if (days < 0) return '已结束'
   if (days === 0) return '今天'
@@ -471,33 +475,11 @@ function isPastExam(exam) {
 }
 
 function currentTime() {
-  const now = chinaParts(new Date())
-  return `${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')}`
+  return localReferenceDateTime().slice(11, 16)
 }
 
 function toLocalDatetime(value) {
-  if (!value) return ''
-  const date = chinaParts(new Date(value))
-  const part = (number) => String(number).padStart(2, '0')
-  return `${date.year}-${part(date.month)}-${part(date.day)}T${part(date.hour)}:${part(date.minute)}:00`
-}
-
-function chinaParts(value) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
-    timeZone: chinaTimeZone,
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
-  }).formatToParts(value).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]))
-  const year = Number(parts.year)
-  const month = Number(parts.month)
-  const day = Number(parts.day)
-  return {
-    year,
-    month,
-    day,
-    hour: Number(parts.hour),
-    minute: Number(parts.minute),
-    dateKey: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-  }
+  return value ? localReferenceDateTime(new Date(value)) : ''
 }
 
 function normalizeOptional(value) {
@@ -550,6 +532,17 @@ function openExamDialog(item = null) {
     starts_at: toLocalDatetime(item.starts_at),
     ends_at: toLocalDatetime(item.ends_at),
   } : emptyExamForm())
+  examDialogVisible.value = true
+}
+
+function openNoticeExam(draft) {
+  assignForm(examForm, {
+    ...emptyExamForm(),
+    ...draft,
+    course_id: courses.value.some(course => course.id === draft.course_id) ? draft.course_id : null,
+    starts_at: toLocalDatetime(draft.starts_at),
+  })
+  editingExam.value = null
   examDialogVisible.value = true
 }
 
@@ -678,10 +671,8 @@ async function handleIntegrationSynced(syncInfo = {}) {
     } catch {
       ElMessage.warning('课表已导入，但开学日未保存。请在课表上补充开学日以自动定位本周。')
     }
-    const [year, month, day] = syncInfo.semester_start.split('-').map(Number)
-    const semesterStart = Date.UTC(year, month - 1, day)
-    const today = chinaParts(new Date())
-    const chinaToday = Date.UTC(today.year, today.month - 1, today.day)
+    const semesterStart = Date.parse(syncInfo.semester_start)
+    const chinaToday = Date.parse(localReferenceDateTime().slice(0, 10))
     const importedWeek = Math.min(30, Math.max(1, Math.floor((chinaToday - semesterStart) / 604800000) + 1))
     if (importedWeek !== selectedWeek.value) {
       selectedWeek.value = importedWeek
@@ -733,9 +724,10 @@ function jumpToCurrentWeek() {
   if (semesterCurrentWeek.value) selectedWeek.value = semesterCurrentWeek.value
 }
 
-onMounted(() => {
-  loadPage()
+onMounted(async () => {
   loadSemesterStart()
+  await loadPage()
+  scheduleRead.value = true
 })
 </script>
 
@@ -754,7 +746,7 @@ onMounted(() => {
 .semester-week-bar button { min-height: 36px; padding: 0 12px; color: var(--calendar-blue); background: #fff; border: 1px solid #c8ddd1; border-radius: 4px; font-weight: 700; cursor: pointer; }
 .semester-week-bar button:hover { border-color: var(--calendar-blue); }
 .semester-start-setter { display: inline-flex; align-items: center; gap: 9px; flex-wrap: wrap; }
-.semester-start-setter input { min-height: 36px; padding: 0 9px; border: 1px solid #c8ddd1; border-radius: 4px; background: #fff; color: var(--ledger-ink); font-size: 12.5px; }
+.semester-start-setter :deep(.el-date-editor) { width: 156px; max-width: 100%; }
 .course-gate-mark { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; color: #fff; background: var(--calendar-blue); border-radius: 4px; font-weight: 800; }
 .course-gate > div:nth-child(2) { min-width: 0; flex: 1; }
 .course-gate strong { font-size: 15px; }
@@ -785,7 +777,7 @@ onMounted(() => {
 .week-switcher button:disabled { color: #a4adba; background: #f5f8f7; cursor: not-allowed; }
 .week-switcher :deep(.el-input__wrapper) { min-height: 44px; padding: 0 8px; }
 .desktop-week-board { position: relative; display: grid; grid-template-columns: 52px repeat(7, minmax(0, 1fr)); min-width: 0; overflow: hidden; }
-.grid-corner { display: grid; place-items: center end; padding-right: 10px; background: #f5f8f7; border-bottom: 1px solid var(--ledger-line); border-right: 1px solid var(--ledger-line); }
+.grid-corner { display: grid; place-items: center; background: #f5f8f7; border-bottom: 1px solid var(--ledger-line); border-right: 1px solid var(--ledger-line); }
 .grid-corner span { color: var(--ledger-muted); font-size: 11px; font-weight: 700; }
 .grid-day-head { display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; padding: 0 8px; background: #f5f8f7; border-bottom: 1px solid var(--ledger-line); border-right: 1px solid var(--ledger-line); }
 .grid-day-head:last-of-type { border-right: 0; }
@@ -793,9 +785,9 @@ onMounted(() => {
 .grid-day-head small { flex: none; color: var(--ledger-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .grid-day-head.is-today { background: var(--calendar-mint); }
 .grid-day-head.is-today strong, .grid-day-head.is-today small { color: #23503c; }
-.grid-tick { position: relative; grid-column: 1 / -1; border-top: 1px solid #e7ecf1; }
-.grid-tick.is-first { border-top-color: transparent; }
-.grid-tick span { position: absolute; top: -6px; right: 8px; color: var(--ledger-muted); font-size: 10.5px; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--ledger-paper); padding: 0 1px; }
+.grid-tick { grid-column: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 2px; color: var(--ledger-muted); background: var(--ledger-paper); border-top: 1px solid #e7ecf1; border-right: 1px solid var(--ledger-line); font-size: 10px; }
+.grid-tick time { font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.grid-separator { grid-column: 2 / -1; border-top: 1px solid #e7ecf1; pointer-events: none; }
 .grid-day-add { position: relative; z-index: 0; min-width: 0; padding: 0; background: transparent; border: 0; border-right: 1px solid #eef1f5; cursor: pointer; }
 .grid-day-add.is-last { border-right: 0; }
 .grid-day-add:hover { background: #f8faf9; }
@@ -842,8 +834,8 @@ onMounted(() => {
 @media (max-width: 1100px) {
   .desktop-week-board { display: none; }
   .mobile-week-board { display: block; }
-  .mobile-day-tabs { display: grid; grid-template-columns: repeat(7, minmax(48px, 1fr)); overflow-x: auto; border-bottom: 1px solid var(--ledger-line); }
-  .mobile-day-tabs button { min-width: 48px; min-height: 58px; padding: 7px 4px; color: var(--ledger-muted); background: #f5f8f7; border: 0; border-right: 1px solid var(--ledger-line); cursor: pointer; }
+  .mobile-day-tabs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid var(--ledger-line); }
+  .mobile-day-tabs button { min-width: 0; min-height: 58px; padding: 7px 4px; color: var(--ledger-muted); background: #f5f8f7; border: 0; border-right: 1px solid var(--ledger-line); cursor: pointer; }
   .mobile-day-tabs button:last-child { border-right: 0; }
   .mobile-day-tabs span, .mobile-day-tabs strong { display: block; }
   .mobile-day-tabs span { font-size: 11px; }
@@ -856,7 +848,9 @@ onMounted(() => {
   .mobile-day-heading span { color: var(--ledger-muted); font-size: 11px; }
   .mobile-day-heading strong { font-size: 15px; }
   .mobile-class-row { display: grid; grid-template-columns: 74px minmax(0, 1fr) auto; align-items: center; gap: 13px; width: 100%; min-height: 72px; margin-top: 8px; padding: 10px 12px; color: var(--ledger-ink); background: #fff; border: 1px solid var(--ledger-line); border-left: 5px solid var(--course-color); border-radius: 5px; cursor: pointer; text-align: left; }
-  .mobile-class-time { font-family: inherit; font-size: 11px; font-weight: 700; }
+  .mobile-time-heading { padding-left: 17px; color: var(--ledger-muted); font-size: 11px; }
+  .mobile-class-time { display: grid; gap: 4px; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .mobile-class-time small { color: var(--ledger-muted); }
   .mobile-class-main { min-width: 0; display: grid; gap: 5px; }
   .mobile-class-main strong, .mobile-class-main small { overflow-wrap: anywhere; }
   .mobile-class-main small { color: var(--ledger-muted); line-height: 1.4; }

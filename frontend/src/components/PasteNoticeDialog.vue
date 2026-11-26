@@ -24,17 +24,14 @@
           <el-input v-model="draft.title" maxlength="120" show-word-limit placeholder="留空自动命名" :disabled="submitting" autocomplete="off" />
         </el-form-item>
       <el-form-item label="通知参考时间">
-        <el-date-picker
+        <BeijingDatePicker
           v-model="draft.sourceTime"
-          type="datetime"
-          value-format="YYYY-MM-DDTHH:mm:ss"
-          format="YYYY-MM-DD HH:mm"
           placeholder="选择通知发布时间或阅读时间"
           :disabled="submitting"
           style="width: 100%"
           aria-label="通知参考时间"
         />
-        <p class="paste-notice-reference">“明天”“本周”等相对日期会按这个时间理解。默认是现在，按北京时间（Asia/Shanghai）处理；可按通知实际时间修改。</p>
+        <p class="paste-notice-reference">“明天”“本周”等日期按这里填写的北京时间理解。默认使用当前时间。</p>
       </el-form-item>
       </details>
       <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" role="alert" />
@@ -49,7 +46,8 @@
 </template>
 
 <script setup>
-import { ElAlert, ElButton, ElDatePicker, ElDialog, ElForm, ElFormItem, ElInput } from 'element-plus'
+import { ElAlert, ElButton, ElDialog, ElForm, ElFormItem, ElInput } from 'element-plus'
+import BeijingDatePicker from './BeijingDatePicker.vue'
 
 import { MAX_PASTE_NOTICE_CHARACTERS } from '../utils/pasteNotice'
 

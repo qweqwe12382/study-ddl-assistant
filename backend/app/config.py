@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -31,6 +31,18 @@ class Settings:
     user_database_dir: Path = _resolve_path(os.getenv("USER_DATABASE_DIR", "data/users"))
     auth_session_days: int = int(os.getenv("AUTH_SESSION_DAYS", "30"))
     auth_cookie_secure: bool = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
+    auth_turnstile_enabled: bool = os.getenv("AUTH_TURNSTILE_ENABLED", "false").lower() == "true"
+    auth_turnstile_site_key: str = os.getenv("AUTH_TURNSTILE_SITE_KEY", "")
+    auth_turnstile_secret_key: str = field(default=os.getenv("AUTH_TURNSTILE_SECRET_KEY", ""), repr=False)
+    auth_turnstile_hostname: str = os.getenv("AUTH_TURNSTILE_HOSTNAME", "")
+    auth_email_verification_enabled: bool = os.getenv("AUTH_EMAIL_VERIFICATION_ENABLED", "false").lower() == "true"
+    auth_email_code_secret: str = field(default=os.getenv("AUTH_EMAIL_CODE_SECRET", ""), repr=False)
+    auth_smtp_host: str = os.getenv("AUTH_SMTP_HOST", "")
+    auth_smtp_port: int = int(os.getenv("AUTH_SMTP_PORT", "465"))
+    auth_smtp_starttls: bool = os.getenv("AUTH_SMTP_STARTTLS", "false").lower() == "true"
+    auth_smtp_username: str = os.getenv("AUTH_SMTP_USERNAME", "")
+    auth_smtp_password: str = field(default=os.getenv("AUTH_SMTP_PASSWORD", ""), repr=False)
+    auth_smtp_from: str = os.getenv("AUTH_SMTP_FROM", "")
     upload_dir: Path = _resolve_path(os.getenv("UPLOAD_DIR", "data/uploads"))
     max_upload_size_mb: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "20"))
     max_upload_files: int = int(os.getenv("MAX_UPLOAD_FILES", "10"))

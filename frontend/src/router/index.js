@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { authSession, restoreSession } from '../auth/session'
+import { apiBaseUrl, readCookie } from '../api/http'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -30,6 +31,7 @@ const router = createRouter({
       props: { mode: 'register' },
       meta: { title: '注册', publicLayout: true, guestOnly: true },
     },
+    { path: '/privacy', name: 'privacy', component: () => import('../views/PrivacyView.vue'), meta: { title: '隐私与数据', publicLayout: true } },
     { path: '/app', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: '学习总览' } },
     { path: '/materials', name: 'materials', component: () => import('../views/MaterialsView.vue'), meta: { title: '资料库' } },
     { path: '/tasks', name: 'tasks', component: () => import('../views/TasksView.vue'), meta: { title: '截止任务' } },
@@ -43,6 +45,8 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  const sameOrigin = new window.URL(apiBaseUrl, window.location.origin).origin === window.location.origin
+  if (to.meta.publicLayout && !to.meta.guestOnly && sameOrigin && !readCookie('study_csrf')) return true
   try {
     await restoreSession()
   } catch {

@@ -69,7 +69,6 @@
         id="settings-courses"
         class="table-card settings-section"
         shadow="never"
-        v-loading="loading"
         :aria-busy="loading"
         aria-labelledby="settings-courses-heading"
         tabindex="-1"
@@ -91,7 +90,8 @@
           class="settings-inline-alert"
           @close="courseError = ''"
         />
-        <div v-if="isConciseView" class="section-summary course-concise-summary">
+        <ElSkeleton v-if="loading && coursesState !== 'ready'" :rows="2" aria-label="正在读取课程" />
+        <div v-else-if="isConciseView" class="section-summary course-concise-summary">
           <template v-if="coursesState === 'ready'">
             <p v-if="courses.length">已记录 {{ courses.length }} 门课：{{ courseNamesSummary }}。</p>
             <p v-else>还没有课程。添加课程后，学习计划才能按课程安排。</p>
@@ -139,7 +139,6 @@
         id="settings-capacity"
         class="content-card preference-card settings-section"
         shadow="never"
-        v-loading="preferenceLoading"
         :aria-busy="preferenceLoading"
         aria-labelledby="settings-capacity-heading"
         tabindex="-1"
@@ -152,7 +151,8 @@
           <el-tag type="primary" effect="plain">规划约束</el-tag>
         </div>
         <el-alert v-if="preferenceError" :title="preferenceError" type="warning" show-icon closable class="mb-18" @close="preferenceError = ''" />
-        <div v-if="isConciseView" class="section-summary capacity-concise-summary">
+        <ElSkeleton v-if="preferenceLoading" :rows="2" aria-label="正在读取学习容量" />
+        <div v-else-if="isConciseView" class="section-summary capacity-concise-summary">
           <template v-if="preferenceState === 'ready' && preferenceSnapshot">
             <div class="summary-facts" aria-label="当前学习容量规则">
               <span><strong>{{ preferenceSnapshot.weekly_available_minutes }}</strong> 分钟/周</span>
@@ -225,14 +225,13 @@
             <el-button type="primary" :loading="preferenceSaving" @click="saveStudyPreferences">保存容量与偏好</el-button>
           </div>
         </template>
-        <div v-else-if="isDetailedView" class="preference-unavailable" role="status">{{ preferenceRuleState.detail }}</div>
+        <div v-else-if="isDetailedView && !preferenceLoading" class="preference-unavailable" role="status">{{ preferenceRuleState.detail }}</div>
       </el-card>
 
       <el-card
         id="settings-reminders"
         class="content-card reminder-preference-card settings-section"
         shadow="never"
-        v-loading="reminderPreferenceLoading"
         :aria-busy="reminderPreferenceLoading"
         aria-labelledby="settings-reminders-heading"
         tabindex="-1"
@@ -245,7 +244,8 @@
           <el-tag type="warning" effect="plain">展示偏好</el-tag>
         </div>
         <el-alert v-if="reminderPreferenceError" :title="reminderPreferenceError" type="warning" show-icon closable class="mb-18" @close="reminderPreferenceError = ''" />
-        <div v-if="isConciseView" class="section-summary reminder-concise-summary">
+        <ElSkeleton v-if="reminderPreferenceLoading" :rows="2" aria-label="正在读取提醒偏好" />
+        <div v-else-if="isConciseView" class="section-summary reminder-concise-summary">
           <template v-if="reminderPreferenceState === 'ready' && reminderPreferenceSnapshot">
             <p>{{ reminderSummary }}</p>
           </template>
@@ -283,7 +283,7 @@
             <el-button type="primary" :loading="reminderPreferenceSaving" @click="saveReminderPreferences">保存提醒偏好</el-button>
           </div>
         </template>
-        <div v-else-if="isDetailedView" class="preference-unavailable" role="status">{{ reminderRuleState.detail }}</div>
+        <div v-else-if="isDetailedView && !reminderPreferenceLoading" class="preference-unavailable" role="status">{{ reminderRuleState.detail }}</div>
         <div class="reminder-safety-note">
           <el-tag type="danger" size="small" effect="plain">高风险保护</el-tag>
           <span v-if="reminderPreferenceForm.high_risk_policy === 'always_presented'">高风险提醒始终呈现；这里的偏好只会影响普通提醒。</span>
@@ -313,6 +313,7 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElSkeleton } from 'element-plus'
 import {
   ElAlert,
   ElCard,

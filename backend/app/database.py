@@ -137,6 +137,7 @@ def _apply_lightweight_migrations() -> None:
 
     columns = {column["name"] for column in inspect(engine).get_columns("materials")}
     additions = {
+        "display_name": "VARCHAR(120)",
         "file_size": "INTEGER",
         "content_hash": "VARCHAR(64)",
         "processing_error": "TEXT",

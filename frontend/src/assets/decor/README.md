@@ -9,7 +9,7 @@
 | `folio-lines.svg` | 本项目编写的书页曲线矢量图 | 首页深绿通知改期展示区 |
 | `study-path.svg` | 本项目编写的纸页与路径矢量图 | 工作区页首 |
 | `study-sculpture-v2.png` | 2026-09-20 内置 image_gen 生成的立体书页原图，1536 × 1024 | 设计源文件，不进入网页资源包 |
-| `study-sculpture-v2.webp` | 原图压缩为 WebP，1536 × 1024，99,882 字节 | 首页桌面主视觉 |
+| `frontend/public/study-preview.webp` | 原图压缩为 WebP，1536 × 1024，99,882 字节 | 首页桌面主视觉及分享图 |
 | `study-sculpture-v2-small.webp` | 原图等比例缩小为 WebP，768 × 512，28,218 字节 | 首页 760px 及以下主视觉 |
 
 生成方式：内置 `image_gen`，不是第三方图库下载。WebP 使用 Sharp 做格式压缩，构图和尺寸不变。原始 PNG 保留供后续设计修改；网页仅引用较小的 WebP。

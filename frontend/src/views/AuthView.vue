@@ -16,30 +16,30 @@
 
         <div v-if="errorMessage" class="form-alert" role="alert">{{ errorMessage }}</div>
 
-        <form :aria-busy="submitting || demoLoading" @submit.prevent="submitForm">
+        <form :aria-busy="formBusy" @submit.prevent="submitForm">
           <label v-if="isRegister" class="form-field">
-            <span>怎么称呼你</span>
+            <span>昵称（选填）</span>
             <input
               v-model.trim="form.display_name"
               name="display_name"
               type="text"
               autocomplete="name"
               maxlength="40"
-              placeholder="例如：小林"
-              :disabled="submitting || demoLoading"
-              required
+              placeholder="默认称呼：同学"
+              :disabled="formBusy"
             />
           </label>
           <label class="form-field">
             <span>邮箱</span>
             <input
+              ref="emailField"
               v-model.trim="form.email"
               name="email"
               type="email"
               autocomplete="email"
               maxlength="254"
               placeholder="name@example.com"
-              :disabled="submitting || demoLoading"
+              :disabled="formBusy"
               required
             />
           </label>
@@ -54,38 +54,61 @@
                 minlength="8"
                 maxlength="128"
                 :placeholder="isRegister ? '至少 8 位，包含字母和数字' : '输入密码'"
-                :disabled="submitting || demoLoading"
+                :disabled="formBusy"
                 required
               />
-              <button type="button" :aria-pressed="showPassword" :disabled="submitting || demoLoading" :aria-label="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword">
+              <button type="button" :aria-pressed="showPassword" :disabled="formBusy" :aria-label="showPassword ? '隐藏密码' : '显示密码'" @click="showPassword = !showPassword">
                 {{ showPassword ? '隐藏' : '显示' }}
               </button>
             </span>
           </label>
-          <label v-if="isRegister" class="form-field">
-            <span>再次输入密码</span>
-            <input
-              v-model="form.confirmPassword"
-              name="confirm_password"
-              :type="showPassword ? 'text' : 'password'"
-              autocomplete="new-password"
-              minlength="8"
-              maxlength="128"
-              placeholder="再次输入密码"
-              :disabled="submitting || demoLoading"
-              required
-            />
-          </label>
 
           <p v-if="isRegister" class="password-tip">请使用至少 8 位、包含字母和数字的密码。</p>
 
-          <button class="submit-button" type="submit" :disabled="submitting || demoLoading">
+          <p v-if="configError" class="form-alert" role="alert">
+            {{ configError }} <button type="button" class="verification-retry" @click="loadAuthConfig">重试</button>
+          </p>
+          <TurnstileChallenge
+            v-if="turnstileSiteKey"
+            :key="challengeAction"
+            ref="challenge"
+            v-model:token="turnstileToken"
+            :site-key="turnstileSiteKey"
+            :action="challengeAction"
+          />
+
+          <div v-if="requiresEmailCode" class="form-field">
+            <label for="signup-email-code">邮箱验证码</label>
+            <span class="email-code-input">
+              <input
+                id="signup-email-code"
+                v-model.trim="form.emailCode"
+                name="email_code"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxlength="6"
+                placeholder="输入 6 位验证码"
+                :disabled="formBusy"
+                required
+              />
+              <button type="button" :disabled="formBusy || !form.email || !captchaReady || resendPending" @click="sendCode">
+                {{ sendingCode ? '正在发送' : resendPending ? '稍后重发' : '发送验证码' }}
+              </button>
+            </span>
+            <small v-if="sentEmail && sentEmail === normalizedEmail" class="password-tip" role="status">
+              验证码已发送，请查看邮箱。验证码 10 分钟内有效。
+            </small>
+          </div>
+
+          <button class="submit-button" type="submit" :disabled="formBusy || !canSubmit">
             <span v-if="submitting" class="submit-spinner" aria-hidden="true"></span>
             {{ submitting ? (isRegister ? '正在建立学习空间' : '正在登录') : (isRegister ? '注册并开始使用' : '登录') }}
           </button>
+          <p v-if="isRegister" class="password-tip">查看邮箱、验证码及学习资料的处理方式。<router-link to="/privacy" target="_blank" rel="noopener">隐私与数据</router-link></p>
         </form>
 
-        <div class="demo-entry">
+        <div v-if="demoSpaceEnabled" class="demo-entry">
           <button class="demo-button" type="button" :disabled="submitting || demoLoading" @click="startDemo">
             <span v-if="demoLoading" class="submit-spinner" aria-hidden="true"></span>
             {{ demoLoading ? '正在准备演示空间' : '体验示例空间' }}
@@ -144,11 +167,13 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { demoLogin, login, register } from '../auth/session'
+import { authApi } from '../api'
+import { demoLogin, demoSpaceEnabled, login, register } from '../auth/session'
 import BrandMark from '../components/BrandMark.vue'
+import TurnstileChallenge from '../components/TurnstileChallenge.vue'
 import { vFolioEnter } from '../directives/folioEnter'
 
 const props = defineProps({ mode: { type: String, required: true } })
@@ -157,9 +182,32 @@ const route = useRoute()
 const isRegister = computed(() => props.mode === 'register')
 const submitting = ref(false)
 const demoLoading = ref(false)
+const sendingCode = ref(false)
 const errorMessage = ref('')
+const configError = ref('')
+const authConfig = ref(null)
 const showPassword = ref(false)
-const form = reactive({ display_name: '', email: '', password: '', confirmPassword: '' })
+const form = reactive({ display_name: '', email: '', password: '', emailCode: '' })
+const emailField = ref(null)
+const challenge = ref(null)
+const turnstileToken = ref('')
+const sentEmail = ref('')
+const waitingToResend = ref(false)
+let resendTimer
+let active = true
+const normalizedEmail = computed(() => form.email.toLowerCase())
+const turnstileSiteKey = computed(() => authConfig.value?.turnstile_site_key)
+const requiresEmailCode = computed(() => isRegister.value && authConfig.value?.email_verification_required)
+const challengeAction = computed(() => {
+  if (!isRegister.value) return 'login'
+  return requiresEmailCode.value ? 'register_code' : 'register'
+})
+const formBusy = computed(() => submitting.value || demoLoading.value || sendingCode.value)
+const captchaReady = computed(() => !turnstileSiteKey.value || Boolean(turnstileToken.value))
+const canSubmit = computed(() => Boolean(authConfig.value) && (
+  requiresEmailCode.value ? /^[0-9]{6}$/.test(form.emailCode) : captchaReady.value
+))
+const resendPending = computed(() => waitingToResend.value && sentEmail.value === normalizedEmail.value)
 const previewTabs = [
   { id: 'prepare', label: '课前准备' },
   { id: 'focus', label: '专注时刻' },
@@ -170,6 +218,39 @@ const preparationDone = ref(false)
 const focusDone = ref(false)
 const noticeConfirmed = ref(false)
 
+async function loadAuthConfig() {
+  configError.value = ''
+  try {
+    authConfig.value = await authApi.config()
+  } catch (error) {
+    configError.value = error?.message || '暂时无法加载身份验证，请重试'
+  }
+}
+
+async function sendCode() {
+  if (formBusy.value || resendPending.value || !captchaReady.value || !emailField.value?.reportValidity()) return
+  errorMessage.value = ''
+  const email = normalizedEmail.value
+  sendingCode.value = true
+  try {
+    const result = await authApi.requestRegistrationCode({
+      email: form.email,
+      turnstile_token: turnstileToken.value || undefined,
+    })
+    if (!active || !isRegister.value || email !== normalizedEmail.value) return
+    form.emailCode = ''
+    sentEmail.value = email
+    waitingToResend.value = true
+    clearTimeout(resendTimer)
+    resendTimer = setTimeout(() => { waitingToResend.value = false }, result.retry_after_seconds * 1000)
+  } catch (error) {
+    if (isRegister.value) errorMessage.value = error?.message || '验证码发送失败，请重试'
+  } finally {
+    sendingCode.value = false
+    if (isRegister.value) challenge.value?.reset()
+  }
+}
+
 function safeRedirect() {
   const value = typeof route.query.redirect === 'string' ? route.query.redirect : ''
   if (!value.startsWith('/') || value.startsWith('//') || ['/login', '/register'].includes(value.split('?')[0])) return '/app'
@@ -177,7 +258,7 @@ function safeRedirect() {
 }
 
 async function startDemo() {
-  if (submitting.value || demoLoading.value) return
+  if (formBusy.value) return
   errorMessage.value = ''
   demoLoading.value = true
   try {
@@ -191,22 +272,27 @@ async function startDemo() {
 }
 
 async function submitForm() {
-  if (submitting.value || demoLoading.value) return
+  if (formBusy.value || !canSubmit.value) return
   errorMessage.value = ''
-  if (isRegister.value && form.password !== form.confirmPassword) {
-    errorMessage.value = '两次输入的密码不一致'
-    return
-  }
   submitting.value = true
+  const registration = isRegister.value
+  const turnstile_token = turnstileToken.value || undefined
   try {
-    if (isRegister.value) {
-      await register({ display_name: form.display_name, email: form.email, password: form.password })
+    if (registration) {
+      await register({
+        display_name: form.display_name || '同学',
+        email: form.email,
+        password: form.password,
+        email_code: requiresEmailCode.value ? form.emailCode : undefined,
+        turnstile_token: requiresEmailCode.value ? undefined : turnstile_token,
+      })
     } else {
-      await login({ email: form.email, password: form.password })
+      await login({ email: form.email, password: form.password, turnstile_token })
     }
     await router.replace(safeRedirect())
   } catch (error) {
-    errorMessage.value = error?.message || (isRegister.value ? '注册失败，请检查填写内容' : '登录失败，请检查邮箱和密码')
+    errorMessage.value = error?.message || (registration ? '注册失败，请检查填写内容' : '登录失败，请检查邮箱和密码')
+    if (turnstile_token && !requiresEmailCode.value) challenge.value?.reset()
   } finally {
     submitting.value = false
   }
@@ -216,11 +302,23 @@ watch(() => props.mode, () => {
   errorMessage.value = ''
   showPassword.value = false
   form.password = ''
-  form.confirmPassword = ''
+  form.emailCode = ''
+  turnstileToken.value = ''
+})
+watch(() => form.email, () => { form.emailCode = '' })
+onMounted(loadAuthConfig)
+onBeforeUnmount(() => {
+  active = false
+  clearTimeout(resendTimer)
 })
 </script>
 
 <style scoped>
+.email-code-input { display: flex; gap: 8px; }
+.email-code-input input { flex: 1; min-width: 0; }
+.email-code-input button { flex-shrink: 0; padding: 0 12px; color: var(--auth-green); background: #fff; border: 1px solid #cddbd1; border-radius: 7px; font: inherit; cursor: pointer; }
+.email-code-input button:disabled { opacity: .6; cursor: default; }
+.verification-retry { color: inherit; background: none; border: 0; text-decoration: underline; font: inherit; cursor: pointer; }
 .auth-page { --auth-ink: var(--ledger-ink); --auth-green: var(--ledger-primary); --auth-muted: var(--ledger-muted); --auth-line: var(--ledger-line); min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.07fr) minmax(0, 1fr); color: var(--auth-ink); background: #fff; font-family: var(--font-ui); }
 .auth-page * { box-sizing: border-box; }
 .auth-page a { color: inherit; text-decoration: none; }
@@ -312,11 +410,11 @@ watch(() => props.mode, () => {
 .form-alert { margin-bottom: 18px; padding: 11px 13px; border: 1px solid #e7c8c0; border-radius: 7px; color: #a2463e; background: #fdf3ef; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
 form { display: grid; gap: 15px; }
 .form-field { display: grid; gap: 7px; color: #466151; font-size: 13px; font-weight: 600; }
-.form-field > input, .password-input { min-height: 48px; width: 100%; border: 1px solid #cddbd1; border-radius: 8px; background: #fff; transition: border-color .2s ease, box-shadow .2s ease; }
+.form-field > input, .email-code-input input, .password-input { min-height: 48px; width: 100%; border: 1px solid #cddbd1; border-radius: 8px; background: #fff; transition: border-color .2s ease, box-shadow .2s ease; }
 .form-field input { color: var(--auth-ink); font: inherit; font-size: 14px; font-weight: 400; }
-.form-field > input { padding: 0 13px; }
+.form-field > input, .email-code-input input { padding: 0 13px; }
 .form-field input::placeholder { color: #607268; }
-.form-field > input:focus, .password-input:focus-within { outline: none; border-color: var(--auth-green); box-shadow: 0 0 0 3px #eaf2ed; }
+.form-field > input:focus, .email-code-input input:focus, .password-input:focus-within { outline: none; border-color: var(--auth-green); box-shadow: 0 0 0 3px #eaf2ed; }
 .password-input { display: flex; align-items: center; }
 .password-input input { min-width: 0; flex: 1; align-self: stretch; padding: 0 13px; border: 0; border-radius: 7px; outline: none; background: transparent; }
 .password-input button { min-width: 54px; min-height: 40px; margin-right: 3px; border: 0; border-radius: 4px; color: #617c6b; background: transparent; font: inherit; font-size: 11px; cursor: pointer; }

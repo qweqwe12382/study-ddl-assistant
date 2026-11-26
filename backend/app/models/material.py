@@ -18,6 +18,7 @@ class Material(Base):
     revision: Mapped[int] = mapped_column(nullable=False, default=1)
     course_id: Mapped[int | None] = mapped_column(ForeignKey("courses.id", ondelete="CASCADE"), nullable=True, index=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     stored_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     file_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
     file_size: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -43,6 +44,10 @@ class Material(Base):
     tasks = relationship("Task", back_populates="material")
 
     __mapper_args__ = {"version_id_col": revision}
+
+    @property
+    def label(self) -> str:
+        return self.display_name or self.original_filename
 
 
 event.listen(Material.navigation_key, "set", prevent_navigation_key_change, retval=True, active_history=True)

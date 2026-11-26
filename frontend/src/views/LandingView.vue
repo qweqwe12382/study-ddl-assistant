@@ -32,8 +32,8 @@
       <section class="hero-section" aria-labelledby="hero-title">
         <div class="hero-copy">
           <h1 id="hero-title">
-            让学习有序，<br />让行动<span class="hero-emphasis"
-              >清晰<svg viewBox="0 0 220 22" aria-hidden="true">
+            粘贴课程通知，<br />整理<span class="hero-emphasis"
+              >作业与考试<svg viewBox="0 0 220 22" aria-hidden="true">
                 <path
                   pathLength="1"
                   d="M5 15Q97 2 214 9M24 21Q118 11 184 17"
@@ -41,9 +41,7 @@
             >。
           </h1>
           <p class="hero-lead">
-            把分散的资料、变化的截止、待完成的计划，<br
-              class="desktop-break"
-            />收进一个清晰的学习空间。<br />从容一点，从今天的下一步开始。
+            给大学生用的学习工具。从课程群通知提取作业、截止和考试，核对后安排到每天。默认使用本站规则，也可按需选择已启用的外部 AI。
           </p>
           <div class="hero-actions">
             <router-link
@@ -60,7 +58,7 @@
               >探索学习日常</a
             >
             <button
-              v-else
+              v-else-if="demoSpaceEnabled"
               class="button button-secondary"
               type="button"
               :disabled="demoLoading"
@@ -71,13 +69,13 @@
               >{{ demoLoading ? "正在准备演示…" : "体验示例空间" }}
             </button>
           </div>
-          <p v-if="demoError" class="demo-error" role="alert">
+          <p v-if="demoSpaceEnabled && demoError" class="demo-error" role="alert">
             {{ demoError }}
           </p>
-          <p v-else-if="!authSession.user" class="hero-hint">
+          <p v-else-if="demoSpaceEnabled && !authSession.user" class="hero-hint">
             演示无需注册，使用示例数据，仅本地开发环境提供。
           </p>
-          <p v-else class="hero-hint">
+          <p v-else-if="authSession.user" class="hero-hint">
             {{
               authSession.user.display_name
             }}，欢迎回来。今天也按自己的节奏来。
@@ -544,7 +542,7 @@
         ></a>
       </div>
       <div class="footer-bottom">
-        <span>为认真学习的每一天。</span><span>本地开发版本</span>
+        <router-link to="/privacy">隐私与数据</router-link><span v-if="isDevelopment">本地开发版本</span>
       </div>
     </footer>
   </div>
@@ -554,9 +552,10 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 
-import { authSession, demoLogin } from "../auth/session";
-import studySculpture from "../assets/decor/study-sculpture-v2.webp";
+import { authSession, demoLogin, demoSpaceEnabled } from "../auth/session";
 import studySculptureSmall from "../assets/decor/study-sculpture-v2-small.webp";
+const studySculpture = "/study-preview.webp";
+const isDevelopment = import.meta.env.DEV;
 import BrandMark from "../components/BrandMark.vue";
 import { vFolioEnter } from "../directives/folioEnter";
 

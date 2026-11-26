@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.auth_database import get_auth_db
 from app.config import settings
 from app.models.user import User, UserSession
-from app.schemas.auth import LoginRequest, RegisterRequest, UserRead
+from app.schemas.auth import LoginRequest, RegisterRequest, RegistrationEmailRequest, UserRead
 from app.services.auth import (
     CSRF_COOKIE,
     SESSION_COOKIE,
@@ -23,6 +23,7 @@ from app.services.auth import (
     hash_token,
     verify_login_password,
 )
+from app.services.signup_verification import consume_registration_code, send_registration_code, verify_turnstile
 
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -68,26 +69,61 @@ def _clear_auth_cookies(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
 
 
-@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_auth_db)) -> User:
-    if payload.email == DEMO_ACCOUNT_EMAIL:
+def _require_available_email(db: Session, email: str) -> None:
+    if email == DEMO_ACCOUNT_EMAIL:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "EMAIL_RESERVED", "message": "这个邮箱用于演示模式，请使用自己的邮箱注册"},
         )
-    if db.scalar(select(User.id).where(User.email == payload.email)) is not None:
+    if db.scalar(select(User.id).where(User.email == email)) is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "EMAIL_EXISTS", "message": "这个邮箱已经注册，可以直接登录"},
         )
-    is_first_user = (db.scalar(select(func.count(User.id)).where(User.is_demo.is_(False))) or 0) == 0
+
+
+@router.get("/config")
+def auth_config(response: Response) -> dict[str, str | bool]:
+    if settings.auth_turnstile_enabled and not settings.auth_turnstile_site_key:
+        raise HTTPException(503, detail={"code": "TURNSTILE_UNAVAILABLE", "message": "人机验证暂不可用"})
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "turnstile_site_key": settings.auth_turnstile_site_key if settings.auth_turnstile_enabled else "",
+        "email_verification_required": settings.auth_email_verification_enabled,
+    }
+
+
+@router.post("/register/code")
+def request_registration_code(
+    payload: RegistrationEmailRequest, response: Response, db: Session = Depends(get_auth_db)
+) -> dict[str, int]:
+    if not settings.auth_email_verification_enabled:
+        raise HTTPException(404, detail={"code": "EMAIL_CODE_DISABLED", "message": "当前环境未启用邮箱验证码"})
+    verify_turnstile(payload.turnstile_token, "register_code")
+    _require_available_email(db, payload.email)
+    response.headers["Cache-Control"] = "no-store"
+    return {"retry_after_seconds": send_registration_code(db, payload.email)}
+
+
+@router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def register(payload: RegisterRequest, response: Response, db: Session = Depends(get_auth_db)) -> User:
+    if settings.auth_email_verification_enabled:
+        _require_available_email(db, payload.email)
+        consume_registration_code(db, payload.email, payload.email_code)
+    else:
+        verify_turnstile(payload.turnstile_token, "register")
+        _require_available_email(db, payload.email)
+    claim_local_workspace = (
+        settings.app_env.lower() in {"development", "test"}
+        and (db.scalar(select(func.count(User.id)).where(User.is_demo.is_(False))) or 0) == 0
+    )
     user = User(
         id=secrets.token_hex(16),
         email=payload.email,
         display_name=payload.display_name,
         password_hash=hash_password(payload.password),
-        workspace_key="legacy" if is_first_user else secrets.token_hex(16),
-        is_admin=is_first_user,
+        workspace_key="legacy" if claim_local_workspace else secrets.token_hex(16),
+        is_admin=claim_local_workspace,
     )
     db.add(user)
     try:
@@ -106,6 +142,7 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
 
 @router.post("/login", response_model=UserRead)
 def login(payload: LoginRequest, response: Response, db: Session = Depends(get_auth_db)) -> User:
+    verify_turnstile(payload.turnstile_token, "login")
     user = db.scalar(select(User).where(User.email == payload.email))
     if not verify_login_password(user, payload.password):
         raise HTTPException(

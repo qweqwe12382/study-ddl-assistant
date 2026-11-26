@@ -144,6 +144,7 @@ def _normalize_result(raw: dict[str, Any], material: Material, *, provider_name:
                 "learning_points": description["learning_points"],
                 "tags": raw_tags,
                 "tasks": normalized_tasks,
+                "calendar_candidates": _calendar_candidates(raw, material) if provider_name == "local-rules" else [],
                 "warnings": result_warnings,
                 "needs_review": bool(raw.get("needs_review")) or bool(result_warnings),
             }
@@ -164,6 +165,24 @@ def _normalize_result(raw: dict[str, Any], material: Material, *, provider_name:
         )
     except (TypeError, ValueError) as error:
         raise ExtractionError("INVALID_PROVIDER_JSON", "抽取结果未通过结构化字段校验") from error
+    return result
+
+
+def _calendar_candidates(raw: dict[str, Any], material: Material) -> list[dict[str, Any]]:
+    reference = as_local(material.source_time or utc_now()).replace(tzinfo=None)
+    source = material.extracted_text or ""
+    result = []
+    for index, candidate in enumerate(raw.get("calendar_candidates", []), start=1):
+        if candidate["source_quote"] not in source:
+            continue
+        starts_at, warnings = parse_deadline_text(candidate.get("time_text") or "", reference)
+        original, _ = parse_deadline_text(candidate.get("original_time_text") or "", reference)
+        result.append({
+            **candidate,
+            "candidate_id": f"calendar-{index}",
+            "starts_at": deadline_to_utc(starts_at) if starts_at and "TIME_DEFAULTED_TO_END_OF_DAY" not in warnings else None,
+            "original_date": original.date() if original else None,
+        })
     return result
 
 

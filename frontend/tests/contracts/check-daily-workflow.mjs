@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chooseHomeFocus, focusTaskTarget, isRoutineSetup, nextCourseExamDate, orderedPendingTasks, resolveFocusTask } from '../../src/utils/dailyWorkflow.js'
+import { chooseHomeFocus, examReviewScope, focusTaskTarget, isRoutineSetup, nextCourseExamDate, orderedPendingTasks, resolveFocusTask } from '../../src/utils/dailyWorkflow.js'
 
 const key = 'a'.repeat(32)
 const tasks = [
@@ -57,4 +57,7 @@ assert.equal(nextCourseExamDate(exams, 2, now), '2026-09-21')
 assert.equal(nextCourseExamDate(exams, 3, now), '')
 assert.equal(nextCourseExamDate(exams, null, now), '')
 assert.equal(nextCourseExamDate(null, 1, now), '')
+assert.equal(examReviewScope('考试范围：第1-6章'), '第1-6章')
+assert.equal(examReviewScope('第1–6章'), '第1–6章')
+assert.equal(examReviewScope('地点教三 204，记得带学生证'), '')
 console.log('Daily task, focus identity, and exam defaults checks passed.')

@@ -20,7 +20,7 @@
       <div v-if="expanded" class="source-options">
         <div class="source-tools">
           <label v-if="materials.length + tasks.length > 6" class="source-search"><span class="sr-only">搜索复习资料和待办</span><input v-model="search" type="search" placeholder="搜索资料或待办" :disabled="disabled" /></label>
-          <button type="button" :disabled="disabled || (!materials.some(item => item.recommended && item.available) && !tasks.some(item => item.available))" @click="selectRecommended">恢复推荐范围</button>
+          <button type="button" :disabled="disabled || !materials.some(item => item.recommended && item.available)" @click="selectRecommended">恢复推荐范围</button>
           <button type="button" :disabled="disabled || !selectedCount" @click="clearSelection">清空选择</button>
           <button type="button" :disabled="disabled" @click="loadSources(true)">刷新范围</button>
         </div>
@@ -35,6 +35,7 @@
         </div>
         <details class="source-group" :open="!materials.length || Boolean(selectedTasks.length) || Boolean(search)">
           <summary>同时安排待办 <span>{{ selectedTasks.length ? `${selectedTasks.length} 条已选` : '可选' }}</span></summary>
+          <p v-if="examReview && tasks.length">计划会为考试前到期的待办预留时间。可勾选要一并显示在计划里的待办。</p>
           <p v-if="!tasks.length">这门课没有未完成的待办。</p>
           <p v-else-if="!visibleTasks.length">没有匹配的待办。</p>
           <label v-for="item in visibleTasks" :key="item.navigation_key" class="source-row">
@@ -43,7 +44,7 @@
           </label>
         </details>
       </div>
-      <p v-if="!selectedCount" class="selection-summary" role="status">至少选择一份资料或一条待办，才能生成计划。</p>
+      <p v-if="!selectedCount && !hasTopics" class="selection-summary" role="status">填写章节或选择复习资料后即可生成计划。</p>
     </template>
   </section>
 </template>
@@ -53,7 +54,7 @@ import { computed, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { studyPlansApi } from '../api'
 import { formatDateTime } from '../utils/format'
-const props = defineProps({ courseId: { type: Number, default: null }, materialId: { type: Number, default: null }, materialKey: { type: String, default: '' }, examDate: { type: String, default: '' }, dailyMinutes: { type: Number, default: null }, disabled: Boolean })
+const props = defineProps({ courseId: { type: Number, default: null }, materialId: { type: Number, default: null }, materialKey: { type: String, default: '' }, examDate: { type: String, default: '' }, dailyMinutes: { type: Number, default: null }, examReview: Boolean, hasTopics: Boolean, disabled: Boolean })
 const emit = defineEmits(['change'])
 const loading = ref(false)
 const error = ref('')
@@ -81,7 +82,7 @@ function publish() {
 }
 function selectRecommended() {
   selectedMaterials.value = materials.value.filter(item => item.recommended && item.available).map(item => item.source_id)
-  selectedTasks.value = selectedMaterials.value.length ? [] : tasks.value.filter(item => item.available).map(item => item.source_id)
+  selectedTasks.value = []
 }
 function clearSelection() { selectedMaterials.value = []; selectedTasks.value = [] }
 async function loadSources(preserveSelection = false) {

@@ -59,6 +59,19 @@ _TASK_ENTITY_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _COURSE_LINE_PATTERN = re.compile(r"^(?:课程(?:名称)?|course)\s*[：:]\s*(.+)$", re.IGNORECASE)
+_NOTICE_COURSE_PREFIX = re.compile(r"^\s*【([^】\r\n]{1,120})】")
+_NOTICE_GREETING = re.compile(r"^\s*(?:各位同学好|各位同学|同学们好|同学们|通知)\s*[：:，,]\s*")
+_NOTICE_ENUMERATOR = re.compile(
+    r"(?:^|(?<=[：:；;。]))\s*(?:\d{1,2}[.．、](?!\d)|[（(]\d{1,2}[）)]|[一二三四五六七八九十]+、)\s*"
+    r"|[①②③④⑤⑥⑦⑧⑨⑩]\s*"
+)
+_NOTICE_EXAM = re.compile(r"(?P<name>(?:期中|期末|阶段性)?(?:考试|测验)|补考)\s*(?P<when>定于|定在|安排在|将于|于|在|时间[：:为])")
+_NOTICE_CLASS_CHANGE = re.compile(r"(?:的课|上课|课程|课时|课堂)[^，。；;！？]{0,18}?(?:调到|调整到|改到|改为)")
+_NOTICE_SUBMISSION = re.compile(
+    r"^(?P<title>[^，。；;！？]{1,100}?(?:报告|作业|习题|论文|任务)(?:（[^）]{1,60}）|\([^)]{1,60}\))?)"
+    r"\s*(?:请|需|须)?(?:于|在)(?P<deadline>[^，。；;！？]{1,70}?)前(?:提交|上交|上传)"
+    r"(?:到|至)?(?P<destination>[^，。；;！？]{0,60})"
+)
 _CLAUSE_SEPARATOR_PATTERN = re.compile(r"[，,；;]")
 
 # Student-owned actions.  These are intentionally narrower than arbitrary
@@ -434,14 +447,23 @@ class RuleBasedProvider:
             if match:
                 course_name = match.group(1).strip(" 。")[:120]
                 break
-        course_name = course_name or filename_course
+        bracketed = _NOTICE_COURSE_PREFIX.match(text)
+        heading = bracketed.group(1).strip() if bracketed else None
+        if heading in {"课程", "通知", "课程通知", "紧急通知", "公告", "提醒", "重要"}:
+            heading = None
+        course_name = course_name or heading or filename_course
 
         parts = _task_parts(text)
         tasks: list[dict[str, Any]] = []
+        calendar_candidates: list[dict[str, Any]] = []
         consumed: set[int] = set()
         for index, part in enumerate(parts):
             line, start, end = part.text, part.start, part.end
             if index in consumed or _COURSE_LINE_PATTERN.fullmatch(line.strip("。！？")):
+                continue
+            calendar_candidate = _notice_calendar_candidate(line, course_name)
+            if calendar_candidate:
+                calendar_candidates.append(calendar_candidate)
                 continue
             if is_learning_activity(line, filename) or not _is_task_part(line):
                 continue
@@ -485,7 +507,7 @@ class RuleBasedProvider:
 
         # A task-specific filename can conservatively label a bare deadline,
         # preserving the original local-provider behavior.
-        if not tasks and filename_course and _has_task_hint(filename_stem) and not REVIEW_OUTLINE.search(f"{filename}\n{text}") and not _clearly_informational_notice(text):
+        if not tasks and not calendar_candidates and filename_course and _has_task_hint(filename_stem) and not REVIEW_OUTLINE.search(f"{filename}\n{text}") and not _clearly_informational_notice(text):
             for part in parts:
                 if _is_deadline_only(part.text):
                     tasks.append(
@@ -513,7 +535,7 @@ class RuleBasedProvider:
         # expression with no attributable task is the case that needs review.
         result_warnings = (
             ["NO_TASK_CANDIDATE"]
-            if not tasks and find_deadline_mentions(text) and not REVIEW_OUTLINE.search(f"{filename}\n{text}") and not is_learning_activity(text) and not _clearly_informational_notice(text)
+            if not tasks and not calendar_candidates and find_deadline_mentions(text) and not REVIEW_OUTLINE.search(f"{filename}\n{text}") and not is_learning_activity(text) and not _clearly_informational_notice(text)
             else []
         )
         return {
@@ -521,6 +543,7 @@ class RuleBasedProvider:
             "material_type": describe_material(text, filename, tasks)["material_type"],
             "tags": tags,
             "tasks": tasks,
+            "calendar_candidates": calendar_candidates[:30],
             "warnings": result_warnings,
             "needs_review": bool(result_warnings),
         }
@@ -550,7 +573,10 @@ class RuleBasedProvider:
             warnings.append("DEADLINE_PENDING")
         if _VAGUE_DATE_PATTERN.search(quote) and not mentions:
             warnings.append("VAGUE_DUE_DATE")
-        name = _filename_task_name(filename) if use_filename_name else _task_name(quote)
+        submission = _notice_submission(quote)
+        name = _filename_task_name(filename) if use_filename_name else (
+            submission[0] if submission else _task_name(quote)
+        )
         task_type = self._task_type(quote)
         filename_task_type = self._task_type(filename_stem)
         if task_type in {"其他", "DDL"} and filename_task_type != "其他":
@@ -560,7 +586,7 @@ class RuleBasedProvider:
             "course_name": course_name,
             "name": (name or _filename_task_name(filename))[:200],
             "task_type": task_type,
-            "description": quote[:500],
+            "description": submission[1] if submission else quote[:500],
             "due_at": quote if mentions else None,
             "priority": 4 if any(word in combined for word in ("考试", "截止", "exam", "due", "ddl")) else 3,
             "source_quote": quote[:1000],
@@ -592,6 +618,74 @@ class SourcePart:
     end: int
 
 
+def _notice_body(value: str) -> str:
+    without_course = _NOTICE_COURSE_PREFIX.sub("", value, count=1).lstrip()
+    return _NOTICE_GREETING.sub("", without_course, count=1)
+
+
+def _notice_submission(value: str) -> tuple[str, str | None] | None:
+    matched = _NOTICE_SUBMISSION.match(_notice_body(value))
+    if not matched or not find_deadline_mentions(matched.group("deadline")):
+        return None
+    notes = []
+    if destination := matched.group("destination").strip():
+        notes.append(f"提交到{destination}")
+    if late_policy := re.search(r"(?:逾期|超时)(?:不予?受理|不接受|不收|不补交)", value):
+        notes.append(late_policy.group(0))
+    return matched.group("title").strip(), "。".join(notes) or None
+
+
+def _notice_calendar_candidate(value: str, course_name: str | None) -> dict[str, Any] | None:
+    if _NEGATED_OR_FINISHED_PATTERN.search(value):
+        return None
+    prefix = f"{course_name} " if course_name else ""
+    exam = _NOTICE_EXAM.search(value)
+    # A bare time field in imported forms keeps its existing task-preview semantics.
+    if exam and (exam.group("name") != "考试" or not exam.group("when").startswith("时间")):
+        mentions = find_deadline_mentions(value[exam.end():])
+        scope = re.search(r"(?:考试范围|范围|考查内容)\s*(?:是|为|[：:])?\s*([^，。；;！？]{1,120})", value)
+        return {
+            "kind": "exam",
+            "title": prefix + exam.group("name"),
+            "time_text": mentions[0].text if len(mentions) == 1 else None,
+            "scope": scope.group(1).strip() if scope else None,
+            "source_quote": value[:1000],
+        }
+    if change := _NOTICE_CLASS_CHANGE.search(value):
+        before, after = value[:change.start()], value[change.end():]
+        mentions = find_deadline_mentions(after)
+        location = re.search(r"(?:地点(?:不变)?|教室)[（(]([^）)]{1,120})[）)]", after)
+        return {
+            "kind": "class_change",
+            "title": prefix + "课程调课",
+            "time_text": mentions[0].text if len(mentions) == 1 else None,
+            "original_time_text": before.strip() or None,
+            "location": location.group(1).strip() if location else None,
+            "source_quote": value[:1000],
+        }
+    return None
+
+
+def _split_notice_enumerators(part: SourcePart) -> list[SourcePart]:
+    marks = list(_NOTICE_ENUMERATOR.finditer(part.text))
+    if not marks:
+        return [part]
+    boundaries = [(0, marks[0].start())]
+    boundaries.extend((mark.end(), marks[index + 1].start() if index + 1 < len(marks)
+                       else len(part.text)) for index, mark in enumerate(marks))
+    result = []
+    for index, (start, end) in enumerate(boundaries):
+        raw = part.text[start:end]
+        # A heading before the first numbered item still supplies the course
+        # hint, but is not an independent clause to attach to that item.
+        if not raw.strip() or (index == 0 and not _notice_body(raw).strip("：: ")):
+            continue
+        left = len(raw) - len(raw.lstrip())
+        right = len(raw.rstrip())
+        result.append(SourcePart(raw.strip(), part.start + start + left, part.start + start + right))
+    return result
+
+
 def _task_parts(text: str) -> list[SourcePart]:
     """Split prose at safe task boundaries while retaining exact source spans."""
 
@@ -601,7 +695,9 @@ def _task_parts(text: str) -> list[SourcePart]:
         left = len(raw) - len(raw.lstrip())
         right = len(raw.rstrip())
         if right > left:
-            sentences.append(SourcePart(raw[left:right], match.start() + left, match.start() + right))
+            sentences.extend(_split_notice_enumerators(
+                SourcePart(raw[left:right], match.start() + left, match.start() + right)
+            ))
 
     parts: list[SourcePart] = []
     for sentence in sentences:

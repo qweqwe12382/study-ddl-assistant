@@ -2,6 +2,8 @@ import { reactive } from 'vue'
 
 import { authApi } from '../api'
 
+export const demoSpaceEnabled = import.meta.env.VITE_ENABLE_DEMO_SPACE !== 'false'
+
 export const authSession = reactive({
   status: 'unknown',
   user: null,

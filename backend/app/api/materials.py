@@ -29,7 +29,7 @@ from app.services.agent_feedback import create_plan_delta_candidates
 from app.services.llm_provider import external_provider_available
 from app.services.edit_concurrency import check_edit_precondition
 from app.models.user import User
-from app.time import deadline_to_utc, utc_now
+from app.time import LOCAL_TIMEZONE, deadline_to_utc, utc_now
 from app.services.auth import get_current_user
 
 router = APIRouter(prefix="/api/materials", tags=["materials"])
@@ -143,7 +143,7 @@ def _search_material(material: Material, keyword: str | None) -> MaterialSearchR
     if not keyword:
         return result
     searchable = {
-        "filename": material.original_filename or "",
+        "filename": f"{material.label}\n{material.original_filename}",
         "summary": material.summary or "",
         "content": material.extracted_text or "",
         "tags": " ".join(material.tags or []),
@@ -244,6 +244,8 @@ def upload_materials(
     course_id: int | None = Form(default=None),
     material_type: str | None = Form(default=None),
     source_time: datetime | None = Form(default=None),
+    pasted_notice: bool = Form(default=False),
+    notice_title: str | None = Form(default=None, max_length=120),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Material]:
@@ -257,6 +259,7 @@ def upload_materials(
             detail={"code": "TOO_MANY_FILES", "message": f"一次最多上传 {settings.max_upload_files} 个文件"},
         )
     _validate_course(db, course_id)
+    confirmed_course = db.get(Course, course_id) if pasted_notice and course_id is not None else None
     # Relative deadlines belong to the notification's reference instant, not
     # the date of a later extraction/retry. Naive input denotes Shanghai time.
     reference_time = deadline_to_utc(source_time) if source_time is not None else utc_now()
@@ -300,6 +303,14 @@ def upload_materials(
             )
             _parse_and_update(material, prepared, db)
             _auto_extract_local(material)
+            if pasted_notice:
+                course_name = confirmed_course.name if confirmed_course else (material.extraction_result or {}).get("course_name")
+                date_label = reference_time.astimezone(LOCAL_TIMEZONE)
+                kind = "复习安排" if material_type == "复习安排" else "课程通知"
+                dated_title = f"{kind} · {date_label.month}/{date_label.day}"
+                if course_name:
+                    dated_title = f"{course_name[:11]} · {dated_title}"
+                material.display_name = (notice_title or "").strip() or dated_title
             materials.append(material)
         commit_or_rollback(db)
     except HTTPException:
@@ -478,7 +489,7 @@ def confirm_extraction(material_id: int, payload: ExtractionConfirm, db: Session
             Task(
                 course_id=_resolve_candidate_course(db, material, candidate, default_course_id),
                 material_id=material.id,
-                source_material_name=material.original_filename,
+                source_material_name=material.label,
                 name=candidate.name,
                 task_type=candidate.task_type,
                 description=candidate.description,
@@ -593,7 +604,7 @@ def delete_material(material_id: int, db: Session = Depends(get_db), if_match: s
     stored_path = _resolve_stored_path(material)
     for task in material.tasks:
         task.material_id = None
-        task.source_material_name = task.source_material_name or material.original_filename
+        task.source_material_name = material.label
     db.delete(material)
     commit_or_rollback(db)
     if stored_path and stored_path.is_file():

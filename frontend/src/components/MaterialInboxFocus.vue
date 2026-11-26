@@ -188,6 +188,7 @@ const stateDescription = computed(() => ({
 }[viewState.value]))
 
 function displayFilename(material) {
+  if (material?.display_name) return material.display_name
   return typeof material?.original_filename === 'string' && material.original_filename.trim()
     ? material.original_filename
     : '未命名资料'

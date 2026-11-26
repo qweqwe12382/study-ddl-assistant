@@ -26,9 +26,7 @@
           <div class="quick-add-due" role="group" aria-label="快捷截止时间">
             <span class="quick-due-label">截止日期（北京时间，可选）</span>
             <button v-for="chip in QUICK_DUE_CHIPS" :key="chip.key" type="button" class="quick-chip" :class="{ active: dueChip === chip.key }" :aria-pressed="dueChip === chip.key" :disabled="submitting" @click="dueChip = dueChip === chip.key ? '' : chip.key">{{ chip.label }}</button>
-            <label class="quick-custom-date" :class="{ active: dueChip === 'custom' }">
-              <input v-model="customDate" type="date" aria-label="自选截止日期" :disabled="submitting" @change="dueChip = customDate ? 'custom' : ''">
-            </label>
+            <ElDatePicker v-model="customDate" class="quick-custom-date" aria-label="自选截止日期" placeholder="自选日期" :disabled="submitting" :default-value="new Date(localReferenceDateTime().slice(0, 10) + 'T12:00:00')" value-format="YYYY-MM-DD" @change="dueChip = customDate ? 'custom' : ''" />
             <button v-if="dueChip" type="button" class="quick-add-toggle" :disabled="submitting" @click="clearDate">清除日期</button>
           </div>
         </div>
@@ -45,7 +43,9 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { ArrowDown } from '@element-plus/icons-vue'
+import { ElDatePicker } from 'element-plus'
 import { tasksApi } from '../api'
+import { localReferenceDateTime } from '../utils/pasteNotice'
 import { QUICK_DUE_CHIPS, buildQuickAddPayload } from '../utils/quickTaskAdd'
 
 defineProps({ courses: { type: Array, default: () => [] }, submitLabel: { type: String, default: '添加任务' } })
@@ -121,9 +121,7 @@ async function submitQuickAdd() {
 .quick-due-label { flex-basis: 100%; color: var(--ledger-muted); font-size: 12px; }
 .quick-chip { min-height: 44px; padding: 9px 14px; border: 1px solid #cbd4e0; border-radius: 8px; color: #51617f; background: #fff; font-size: 12px; cursor: pointer; }
 .quick-chip.active { color: var(--ledger-link); background: #f1f7f3; border-color: var(--ledger-indigo); box-shadow: inset 0 0 0 1px var(--ledger-indigo); }
-.quick-custom-date { display: flex; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid #cbd4e0; border-radius: 8px; }
-.quick-custom-date.active { border-color: var(--ledger-indigo); }
-.quick-custom-date input { min-width: 0; max-width: 100%; border: 0; background: transparent; color: var(--ledger-ink); }
+.quick-custom-date { width: min(145px, 100%); }
 .quick-add-feedback { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 0; color: #2e7156; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .quick-add-feedback.is-error { color: #b14242; }
 @media (max-width: 560px) { .quick-add { padding: 14px; } .quick-add-entry { gap: 8px; } .quick-add-submit { padding: 10px 12px; } .quick-add-name, .quick-add-course { font-size: 16px; } .quick-add-options-heading p { flex-basis: 100%; margin: 6px 0 0; } .quick-dates { margin-left: 0; margin-right: auto; } }

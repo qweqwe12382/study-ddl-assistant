@@ -10,7 +10,10 @@ COPY online/prepare-frontend.mjs /tmp/prepare-frontend.mjs
 RUN node /tmp/prepare-frontend.mjs /src/frontend/src/App.vue
 
 ARG VITE_API_BASE_URL=/api
-ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ARG VITE_PUBLIC_CONTACT_EMAIL=
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL} \
+    VITE_PUBLIC_CONTACT_EMAIL=${VITE_PUBLIC_CONTACT_EMAIL} \
+    VITE_ENABLE_DEMO_SPACE=false
 RUN npm run build
 
 FROM caddy:2-alpine

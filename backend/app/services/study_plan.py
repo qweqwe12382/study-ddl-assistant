@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import re
 from hashlib import sha256
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Sequence
 
 from app.models.material import Material
 from app.models.task import Task
@@ -67,7 +68,7 @@ def _material_focus(material: Material) -> dict[str, Any]:
     points = _material_points(material)
     return {
         "kind": "material",
-        "label": material.original_filename,
+        "label": material.label,
         "detail": "；".join(points)[:240],
         "knowledge_points": points,
         "material_id": material.id,
@@ -80,13 +81,74 @@ def _task_focus(task: Task) -> dict[str, Any]:
     return {
         "kind": "task",
         "label": task.name,
-        "detail": _short_text(task.description or task.source_quote, limit=100)
-        or "检查要求并完成提交准备",
+        "detail": "核对要求并处理该待办",
         "knowledge_points": [task.task_type] if task.task_type else [],
         "material_id": None,
         "task_id": task.id,
         "navigation_key": task.navigation_key,
     }
+
+
+def _review_topics(scope: str) -> list[str]:
+    topics = []
+    for value in re.split(r"[\n、；;]+", scope):
+        topic = _short_text(value, limit=120)
+        if not topic:
+            continue
+        chapter_range = re.fullmatch(r"第?\s*(\d{1,3})\s*章?\s*[-－–—~～至到]\s*第?\s*(\d{1,3})\s*章", topic)
+        if chapter_range:
+            first, last = map(int, chapter_range.groups())
+            if 1 <= first <= last and last - first < 50:
+                topics.extend(f"第 {number} 章" for number in range(first, last + 1))
+                continue
+        topics.append(topic)
+    return list(dict.fromkeys(topics))[:50]
+
+
+def _schedule_topics(
+    topics: list[str],
+    day_focuses: list[list[dict[str, Any]]],
+    day_remaining_minutes: list[int],
+) -> None:
+    available = [index for index, remaining in enumerate(day_remaining_minutes)
+                 if remaining >= 15 and len(day_focuses[index]) < MAX_FOCUSES_PER_DAY]
+    if not available:
+        return
+    session_limit = 2 * len(topics) + 5
+    if len(available) > session_limit:
+        available = [available[position * (len(available) - 1) // (session_limit - 1)] for position in range(session_limit)]
+    follow_up = min(5, max(0, len(available) - len(topics)))
+    first_pass = len(available) - follow_up
+    for position, index in enumerate(available):
+        if position < first_pass:
+            begin = position * len(topics) // first_pass
+            end = max(begin + 1, (position + 1) * len(topics) // first_pass)
+            points = topics[begin:end]
+            activity = "梳理与自测"
+        else:
+            step = position - first_pass
+            if step == follow_up - 1:
+                points, activity = topics, "轻量回顾"
+            elif step == follow_up - 2:
+                points, activity = topics, "综合模拟"
+            else:
+                group = follow_up - 2
+                begin = step * len(topics) // group
+                end = max(begin + 1, (step + 1) * len(topics) // group)
+                points, activity = topics[begin:end], "练习与订正"
+        label = "、".join(points[:3]) + ("等" if len(points) > 3 else "")
+        minutes = day_remaining_minutes[index]
+        if activity == "轻量回顾":
+            minutes = min(minutes, 30)
+        day_focuses[index].append({
+            "label": label if activity == "梳理与自测" else f"{activity} · {label}",
+            "detail": f"{activity}：{'、'.join(points)}",
+            "knowledge_points": points,
+            "allocated_minutes": minutes,
+            "task_id": None,
+            "material_id": None,
+        })
+        day_remaining_minutes[index] -= minutes
 
 
 def _allocate_focus(
@@ -153,6 +215,9 @@ def generate_review_schedule(
     tasks: list[Task],
     calibration_factor: float | None = None,
     evaluated_at: datetime | None = None,
+    review_scope: str = "",
+    reserve_tasks: Sequence[Task] = (),
+    exam_review: bool = False,
 ) -> tuple[list[StudyPlanItem], list[str], list[StudyPlanUnscheduledItem]]:
     """Generate one editable session per available day.
 
@@ -165,8 +230,16 @@ def generate_review_schedule(
         raise ValueError("考试日期不能早于今天")
     if total_days > MAX_PLAN_DAYS:
         raise ValueError(f"复习计划最多生成 {MAX_PLAN_DAYS} 天，请把考试日期设在一年内")
+    if exam_review and total_days > 1:
+        total_days -= 1
 
-    unfinished = [task for task in tasks if task.status not in {"completed", "canceled"}]
+    topics = _review_topics(review_scope)
+    selected_task_ids = {task.id for task in tasks}
+    reserved = {task.id for task in reserve_tasks if task.id not in selected_task_ids
+                and task.due_at is not None and start_date <= as_local(task.due_at).date() <= exam_date
+                and (evaluated_at is None or as_utc(task.due_at) > as_utc(evaluated_at))}
+    unfinished = [task for task in [*tasks, *(task for task in reserve_tasks if task.id in reserved)]
+                  if task.status not in {"completed", "canceled"}]
     material_focuses = [_material_focus(material) for material in materials]
     task_focuses = {task.id: _task_focus(task) for task in unfinished}
     task_requested_minutes = {
@@ -178,7 +251,7 @@ def generate_review_schedule(
     entry_count = len(material_focuses) + sum(minutes > 0 for minutes in task_requested_minutes.values())
     warnings: list[str] = []
     unscheduled_items: list[StudyPlanUnscheduledItem] = []
-    if not materials and not unfinished:
+    if not materials and not unfinished and not topics:
         warnings.append("当前课程还没有资料或未完成任务，建议先补充复习内容。")
     if total_days <= 7:
         warnings.append(f"距离考试仅 {total_days} 天，建议优先处理高优先级任务。")
@@ -314,8 +387,11 @@ def generate_review_schedule(
 
     if deadline_day_used:
         warnings.append(
-            "任务仅按 Asia/Shanghai 自然日排期；截止日当天的安排不代表已核验具体截止时刻前存在空闲时段。"
+            "待办按北京时间的日期排期，请核对截止时刻前的可用时间。"
         )
+    if reserved:
+        for focuses in day_focuses:
+            focuses[:] = [focus for focus in focuses if focus["task_id"] not in reserved]
 
     # Materials have no DDL. They use only capacity left after all unfinished
     # tasks, and each material's default review workload is consumed once.
@@ -354,6 +430,11 @@ def generate_review_schedule(
                 )
             )
 
+    if topics:
+        _schedule_topics(topics, day_focuses, day_remaining_minutes)
+        if not any(focus["task_id"] is None and focus["material_id"] is None for day in day_focuses for focus in day):
+            warnings.append("当前待办和资料占用了可用时间，考试章节未排入。")
+
     items: list[StudyPlanItem] = []
     for index in range(total_days):
         focuses = day_focuses[index]
@@ -380,10 +461,12 @@ def generate_review_schedule(
                 )
                 if focus["material_id"] not in source_material_ids:
                     source_material_ids.append(focus["material_id"])
+            else:
+                instructions.append(f"{focus['detail']}（{allocated_minutes} 分钟）")
             for point in focus["knowledge_points"]:
                 if point and point not in knowledge_points:
                     knowledge_points.append(point)
-        content = f"{phase}安排：{'；'.join(instructions)}。"
+        content = f"{phase}安排：{'；'.join(text.rstrip('。') for text in instructions)}。"
         items.append(
             StudyPlanItem(
                 id=f"day-{index + 1}",

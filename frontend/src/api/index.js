@@ -5,8 +5,10 @@ export const healthApi = {
 }
 
 export const authApi = {
+  config: () => http.get('/auth/config'),
   me: () => http.get('/auth/me'),
   register: (payload) => http.post('/auth/register', payload),
+  requestRegistrationCode: (payload) => http.post('/auth/register/code', payload),
   login: (payload) => http.post('/auth/login', payload),
   demoLogin: () => http.post('/auth/demo-login'),
   logout: () => http.post('/auth/logout'),
@@ -45,12 +47,16 @@ export const materialsApi = {
   },
   uploadPolicy: () => http.get('/materials/upload-policy'),
   create: (payload) => http.post('/materials', payload),
-  upload: (files, courseId = null, materialType = null, sourceTime = null) => {
+  upload: (files, courseId = null, materialType = null, sourceTime = null, notice = null) => {
     const formData = new window.FormData()
     files.forEach((file) => formData.append('files', file))
     if (courseId) formData.append('course_id', courseId)
     if (materialType) formData.append('material_type', materialType)
     if (sourceTime) formData.append('source_time', sourceTime)
+    if (notice) {
+      formData.append('pasted_notice', 'true')
+      if (notice.title) formData.append('notice_title', notice.title)
+    }
     return http.post('/materials/upload', formData)
   },
   retry: (id, config) => http.post(`/materials/${id}/retry`, undefined, config),

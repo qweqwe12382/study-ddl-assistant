@@ -67,7 +67,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db)) -> Task:
     task_data = payload.model_dump()
     if task_data["status"] in {"completed", "canceled"}:
         task_data["remaining_minutes"] = 0
-    task = Task(**task_data, source_material_name=material.original_filename if material else None)
+    task = Task(**task_data, source_material_name=material.label if material else None)
     db.add(task)
     db.flush()
     create_plan_delta_candidates(db, task, "task_created")
@@ -188,7 +188,7 @@ def update_task(
     _validate_duration_pair(target_estimated, target_remaining, status=target_status)
     check_edit_precondition(db, task, if_match)
     if "material_id" in changes and changes["material_id"] is not None:
-        task.source_material_name = material.original_filename if material else None
+        task.source_material_name = material.label if material else None
     before_due = as_utc(task.due_at) if task.due_at is not None else None
     before_status = task.status
     for field, value in changes.items():

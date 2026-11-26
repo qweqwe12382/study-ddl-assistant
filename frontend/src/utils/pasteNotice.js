@@ -46,14 +46,17 @@ export function validLocalReferenceDateTime(value) {
 
 /** Validate the student-facing draft before creating the in-memory UTF-8 file. */
 export function buildPastedNotice({ title, text, sourceTime }) {
-  const content = typeof text === 'string' ? text.trim() : ''
-  if (!content) return { error: '请粘贴通知正文' }
+  const content = typeof text === 'string' ? text : ''
+  if (!content.trim()) return { error: '请粘贴通知正文' }
   if (content.length > MAX_PASTE_NOTICE_CHARACTERS) return { error: `通知正文不能超过 ${MAX_PASTE_NOTICE_CHARACTERS.toLocaleString('zh-CN')} 字` }
   if (!validLocalReferenceDateTime(sourceTime)) {
     return { error: '请填写通知的参考时间' }
   }
+  const displayName = typeof title === 'string' ? title.trim() : ''
+  const [year, month, day] = sourceTime.slice(0, 10).split('-')
   return {
-    filename: pasteNoticeFilename(typeof title === 'string' && title.trim() ? title : content.split(/\r?\n/, 1)[0]),
+    filename: pasteNoticeFilename(displayName || `课程通知 ${year}-${month}-${day}`),
+    title: displayName,
     content,
     sourceTime,
   }

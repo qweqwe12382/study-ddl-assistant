@@ -88,7 +88,7 @@
               <span class="radar-station__label">通知证据</span>
               <strong>{{ preview.evidence.marker }}</strong>
               <blockquote>{{ preview.evidence.quote }}</blockquote>
-              <p v-if="preview.evidence.warnings?.length" class="radar-warning">解析提示：{{ preview.evidence.warnings.join('、') }}</p>
+              <p v-if="preview.evidence.warnings?.length" class="radar-warning">{{ preview.evidence.warnings.map(extractionWarningLabel).join('。') }}</p>
             </div>
           </li>
 
@@ -114,14 +114,15 @@
           <li class="radar-station radar-station--pressure">
             <span class="radar-station__number">03</span>
             <div class="radar-station__body">
-              <span class="radar-station__label">七日压力</span>
+              <span class="radar-station__label">任务压力对比</span>
               <strong>{{ preview.impact.summary }}</strong>
-              <div class="pressure-legend" aria-hidden="true">
+              <p v-if="!pressureHasEstimates" class="radar-warning">这些日期暂无可用的任务用时。补充预计用时后即可比较负荷。</p>
+              <div v-else class="pressure-legend" aria-hidden="true">
                 <span><i class="is-before"></i>变更前</span>
                 <span><i class="is-after"></i>变更后</span>
                 <span><i class="is-capacity"></i>当日容量</span>
               </div>
-              <div class="pressure-days" aria-label="未来七日任务压力对比">
+              <div class="pressure-days" aria-label="原截止和新截止期间的任务压力对比">
                 <div
                   v-for="day in preview.pressure_days"
                   :key="day.local_date"
@@ -130,15 +131,16 @@
                   :aria-label="pressureAriaLabel(day)"
                 >
                   <span class="pressure-day__date">{{ shortDate(day.local_date) }}</span>
-                  <div class="pressure-day__plot">
+                  <div v-if="pressureHasEstimates" class="pressure-day__plot">
                     <i class="pressure-day__capacity" :style="capacityStyle(day)" aria-hidden="true"></i>
                     <span class="pressure-bar pressure-bar--before" :style="barStyle(day, 'before_minutes')"></span>
                     <span class="pressure-bar pressure-bar--after" :style="barStyle(day, 'after_minutes')"></span>
                   </div>
-                  <strong>{{ day.after_minutes }}<small> 分</small></strong>
+                  <strong v-if="pressureHasEstimates && day.after_task_count > (day.after_unestimated_count || 0)">{{ day.after_minutes }}<small> 分</small></strong>
+                  <span v-if="day.after_unestimated_count || day.before_unestimated_count" class="pressure-day__quiet">用时待估</span>
+                  <span v-if="day.original_deadline" class="pressure-day__changed">原截止</span>
+                  <span v-if="day.proposed_deadline" class="pressure-day__changed">新截止</span>
                   <span v-if="day.after_overload_minutes" class="pressure-day__overload">超 {{ day.after_overload_minutes }}</span>
-                  <span v-else-if="day.affected" class="pressure-day__changed">有变化</span>
-                  <span v-else class="pressure-day__quiet">—</span>
                 </div>
               </div>
             </div>
@@ -181,7 +183,7 @@
       <section v-if="executionResult" ref="receiptElement" class="radar-receipt" tabindex="-1" aria-labelledby="radar-receipt-title">
         <span class="radar-receipt__check" aria-hidden="true">✓</span>
         <div>
-          <span class="radar-step">已执行 · 回执 {{ executionResult.receipt.id }}</span>
+          <span class="radar-step">执行回执</span>
           <h2 id="radar-receipt-title">通知变更已经落到任务上</h2>
           <p>{{ executionResult.message }}</p>
           <p class="radar-receipt__meta">任务版本已更新为 {{ executionResult.task.revision }}；产生 {{ executionResult.plan_delta_count }} 条待确认的复习计划调整。</p>
@@ -204,6 +206,7 @@ import {
   pressureBarWidth,
 } from '../utils/deadlineRadar'
 import { formatDateTime } from '../utils/format'
+import { extractionWarningLabel } from '../utils/extractionWarning'
 
 const tasks = ref([])
 const tasksLoading = ref(false)
@@ -214,6 +217,9 @@ const previewLoading = ref(false)
 const applyLoading = ref(false)
 const radarError = ref('')
 const preview = ref(null)
+const pressureHasEstimates = computed(() => preview.value?.pressure_days?.some(day =>
+  day.before_task_count > (day.before_unestimated_count || 0)
+  || day.after_task_count > (day.after_unestimated_count || 0)))
 const previewPayload = ref(null)
 const confirmed = ref(false)
 const executionKey = ref('')
@@ -364,9 +370,14 @@ function capacityStyle(day) {
 }
 
 function pressureAriaLabel(day) {
-  const affected = day.affected ? '这一天受到变更影响' : '这一天负荷不变'
+  const markers = [day.original_deadline && '原截止', day.proposed_deadline && '新截止'].filter(Boolean)
   const overload = day.after_overload_minutes ? `，变更后超载 ${day.after_overload_minutes} 分钟` : ''
-  return `${day.local_date}，变更前 ${day.before_minutes} 分钟，变更后 ${day.after_minutes} 分钟，当日容量 ${day.effective_capacity_minutes} 分钟，${affected}${overload}`
+  const amount = (minutes, count, unknown = 0) => {
+    if (!count) return '无任务'
+    if (count === unknown) return '用时待估'
+    return `${minutes} 分钟${unknown ? '，另有任务用时待估' : ''}`
+  }
+  return [day.local_date, ...markers, `变更前 ${amount(day.before_minutes, day.before_task_count, day.before_unestimated_count)}`, `变更后 ${amount(day.after_minutes, day.after_task_count, day.after_unestimated_count)}`, `当日容量 ${day.effective_capacity_minutes} 分钟`].join('，') + overload
 }
 
 function basisLabel(key) {
@@ -377,7 +388,7 @@ function basisLabel(key) {
     workload_formula: '工作量口径',
     capacity_formula: '容量口径',
     execution_boundary: '执行边界',
-  }[key] || key
+  }[key] || '其他依据'
 }
 </script>
 
@@ -451,7 +462,7 @@ function basisLabel(key) {
 .pressure-legend i { display: inline-block; width: 13px; height: 3px; background: #a7afbd; }
 .pressure-legend .is-after { background: var(--radar-red); }
 .pressure-legend .is-capacity { height: 9px; width: 1px; background: var(--radar-amber); }
-.pressure-days { display: grid; grid-template-columns: repeat(7, minmax(46px, 1fr)); gap: 5px; min-width: 0; }
+.pressure-days { display: grid; grid-template-columns: repeat(auto-fit, minmax(59px, 1fr)); gap: 5px; min-width: 0; }
 .pressure-day { min-width: 0; padding: 7px 5px 6px; background: #f5f8f7; border-bottom: 2px solid transparent; }
 .pressure-day.is-affected { background: #fff8f2; border-color: var(--radar-amber); }
 .pressure-day.is-overloaded { background: #fff0ed; border-color: var(--radar-red); }
@@ -505,7 +516,6 @@ function basisLabel(key) {
   .radar-form__footer { grid-column: auto; align-items: stretch; flex-direction: column; }
   .radar-track { grid-template-columns: minmax(0, 1fr); }
   .radar-station { padding: 27px 14px 17px; }
-  .pressure-days { grid-template-columns: repeat(7, minmax(0, 1fr)); padding-bottom: 8px; overflow-x: auto; }
   .radar-basis dl { grid-template-columns: minmax(0, 1fr); }
   .radar-receipt { grid-template-columns: auto minmax(0, 1fr); align-items: start; padding: 17px 14px; }
   .radar-receipt > a { grid-column: 2; justify-self: start; }

@@ -12,12 +12,11 @@ from app.schemas.timestamps import UtcDateTime
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
-class RegisterRequest(BaseModel):
+class RegistrationEmailRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     email: str = Field(min_length=5, max_length=254)
-    password: str = Field(min_length=8, max_length=128)
-    display_name: str = Field(min_length=1, max_length=40)
+    turnstile_token: str | None = Field(default=None, max_length=2048, repr=False)
 
     @field_validator("email")
     @classmethod
@@ -26,6 +25,12 @@ class RegisterRequest(BaseModel):
         if not EMAIL_PATTERN.fullmatch(normalized):
             raise ValueError("请输入有效的邮箱地址")
         return normalized
+
+
+class RegisterRequest(RegistrationEmailRequest):
+    password: str = Field(min_length=8, max_length=128)
+    display_name: str = Field(min_length=1, max_length=40)
+    email_code: str | None = Field(default=None, pattern=r"^[0-9]{6}$", repr=False)
 
     @field_validator("password")
     @classmethod
@@ -42,6 +47,7 @@ class LoginRequest(BaseModel):
 
     email: str = Field(min_length=5, max_length=254)
     password: str = Field(min_length=1, max_length=128)
+    turnstile_token: str | None = Field(default=None, max_length=2048, repr=False)
 
     @field_validator("email")
     @classmethod

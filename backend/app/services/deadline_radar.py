@@ -1,4 +1,4 @@
-"""Evidence-bound notice change detection and seven-day pressure previews."""
+"""Evidence-bound notice change detection and daily pressure previews."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.models.task import Task
 from app.schemas.deadline_radar import DeadlineRadarPreviewRead
 from app.services.agent_feedback import create_plan_delta_candidates, task_feedback_snapshot
 from app.services.llm_provider import parse_deadline_text
-from app.services.study_preferences import build_capacity, build_capacity_with_overrides
+from app.services.study_preferences import build_capacity, build_capacity_with_overrides, daily_workload
 from app.time import as_local, as_utc, deadline_to_utc, utc_now
 
 
@@ -223,7 +223,11 @@ def build_deadline_radar_preview(
         )
         proposed_due_at = detected.detected_due_at
 
-    pressure_days = _pressure_days(before, after, evaluated_at=evaluated_at)
+    pressure_days = _pressure_days(
+        db, task, proposed_due_at,
+        evaluated_at=evaluated_at,
+        daily_capacity=before.calculation_basis.effective_daily_capacity_minutes,
+    )
     direction, day_shift = _direction(task.due_at, proposed_due_at, detected.intent)
     overload_delta = sum(
         day["after_overload_minutes"] - day["before_overload_minutes"]
@@ -268,11 +272,11 @@ def build_deadline_radar_preview(
         },
         action_label="确认取消任务" if detected.intent == "cancel" else "确认更新截止时间",
         calculation_basis={
-            "timezone": "Asia/Shanghai",
-            "window": "从同一评估时刻起的未来 7 天",
+            "timezone": "北京时间",
+            "window": "逐日图至少显示未来 7 个日期，并纳入原截止和新截止日。整体风险按未来 7 天计算。",
             "task_binding": "由用户选择任务，并校验不可复用身份与版本",
-            "workload_formula": "remaining_minutes ?? estimated_minutes；缺失估时不补造分钟数",
-            "capacity_formula": "min(每周可用时间, 每日上限 × 7) × (1 - 缓冲比例)",
+            "workload_formula": "按任务的剩余用时计算，其次使用预计用时。用时待估的任务单独提示。",
+            "capacity_formula": "每日可用时间扣除缓冲后得到当日容量。",
             "execution_boundary": "预览不修改任务；确认时服务端重新解析通知并再次校验任务版本",
         },
     )
@@ -448,25 +452,30 @@ def _direction(current: datetime | None, proposed: datetime | None, intent: str)
     return ("earlier" if as_utc(proposed) < as_utc(current) else "later"), shift
 
 
-def _pressure_days(before, after, *, evaluated_at: datetime) -> list[dict[str, Any]]:
-    before_groups = {item.local_date: item for item in before.daily_risk_groups}
-    after_groups = {item.local_date: item for item in after.daily_risk_groups}
-    daily_capacity = before.calculation_basis.effective_daily_capacity_minutes
+def _pressure_days(db, changed_task, proposed_due_at, *, evaluated_at: datetime, daily_capacity: int) -> list[dict[str, Any]]:
     first_day = as_local(evaluated_at).date()
+    original = as_local(changed_task.due_at).date() if changed_task.due_at is not None else None
+    proposed = as_local(proposed_due_at).date() if proposed_due_at is not None else None
+    landmarks = {day for day in (original, proposed) if day is not None}
+    nearby = [day for day in landmarks if 0 <= (day - first_day).days < 14]
+    count = max([7, *((day - first_day).days + 1 for day in nearby)])
+    dates = {first_day + timedelta(days=offset) for offset in range(count)} | landmarks
+    by_date = {day: [] for day in dates}
+    rows = db.scalars(select(Task).where(Task.status.not_in(["completed", "canceled"]), Task.due_at.is_not(None))).all()
+    for task in rows:
+        if task.id == changed_task.id:
+            continue
+        local_date = as_local(task.due_at).date()
+        if local_date in by_date:
+            by_date[local_date].append(task.remaining_minutes if task.remaining_minutes is not None else task.estimated_minutes)
+    changed_minutes = changed_task.remaining_minutes if changed_task.remaining_minutes is not None else changed_task.estimated_minutes
     result = []
-    for offset in range(7):
-        local_date = first_day + timedelta(days=offset)
-        key = local_date.isoformat()
-        old = before_groups.get(key)
-        new = after_groups.get(key)
-        old_minutes = old.known_workload_minutes if old else 0
-        new_minutes = new.known_workload_minutes if new else 0
-        old_count = len(old.task_ids) if old else 0
-        new_count = len(new.task_ids) if new else 0
-        old_overload = old.overload_minutes if old else 0
-        new_overload = new.overload_minutes if new else 0
-        old_risk = old.risk_level if old else "low"
-        new_risk = new.risk_level if new else "low"
+    for local_date in sorted(dates):
+        unchanged = by_date[local_date]
+        old = [*unchanged, changed_minutes] if local_date == original else unchanged
+        new = [*unchanged, changed_minutes] if local_date == proposed else unchanged
+        old_minutes, old_overload, old_risk = daily_workload(old, daily_capacity)
+        new_minutes, new_overload, new_risk = daily_workload(new, daily_capacity)
         result.append({
             "local_date": local_date,
             "effective_capacity_minutes": daily_capacity,
@@ -476,9 +485,13 @@ def _pressure_days(before, after, *, evaluated_at: datetime) -> list[dict[str, A
             "after_overload_minutes": new_overload,
             "before_risk": old_risk,
             "after_risk": new_risk,
-            "before_task_count": old_count,
-            "after_task_count": new_count,
-            "affected": (old_minutes, old_count, old_risk) != (new_minutes, new_count, new_risk),
+            "before_task_count": len(old),
+            "after_task_count": len(new),
+            "before_unestimated_count": old.count(None),
+            "after_unestimated_count": new.count(None),
+            "original_deadline": local_date == original,
+            "proposed_deadline": local_date == proposed,
+            "affected": local_date in landmarks,
         })
     return result
 
@@ -488,17 +501,19 @@ def _impact_summary(*, task: Task, direction: str, day_shift: int | None, before
         reduced = max(0, before.known_workload_minutes - after.known_workload_minutes)
         if reduced:
             return f"取消“{task.name}”后，未来 7 天已知负荷减少 {reduced} 分钟；确认前不会修改任务。"
-        return f"取消“{task.name}”后，该任务会退出未来 7 天压力计算；其估时缺失时不补造分钟数。"
+        return f"确认后，“{task.name}”会从逐日压力中移除。"
     if direction == "new_deadline":
         lead = "新增截止时间后"
     else:
         magnitude = abs(day_shift or 0)
-        lead = f"截止时间{'提前' if direction == 'earlier' else '延后'} {magnitude} 天后"
-    risk_change = "整体风险不变"
+        verb = '提前' if direction == 'earlier' else '延后'
+        lead = f"截止时间{verb} {magnitude} 天后" if magnitude else f"截止时间同日{verb}后"
+    risk_change = "未来 7 天整体风险不变"
     if before.risk_level != after.risk_level:
-        risk_change = f"整体风险由 {before.risk_level} 变为 {after.risk_level}"
+        labels = {"low": "低", "medium": "中", "high": "高", "unknown": "待估"}
+        risk_change = f"未来 7 天整体风险由{labels[before.risk_level]}变为{labels[after.risk_level]}"
     if overload_delta > 0:
-        return f"{lead}，{risk_change}，七日逐日超载增加 {overload_delta} 分钟。"
+        return f"{lead}，{risk_change}，图中日期的超载合计增加 {overload_delta} 分钟。"
     if overload_delta < 0:
-        return f"{lead}，{risk_change}，七日逐日超载减少 {abs(overload_delta)} 分钟。"
+        return f"{lead}，{risk_change}，图中日期的超载合计减少 {abs(overload_delta)} 分钟。"
     return f"{lead}，{risk_change}，当前没有新增可确认的逐日超载分钟数。"

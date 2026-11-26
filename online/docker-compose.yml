@@ -9,7 +9,7 @@ services:
       APP_ENV: production
       DATABASE_URL: sqlite:////app/data/app.db
       AUTH_DATABASE_URL: sqlite:////app/data/auth.db
-      AUTH_COOKIE_SECURE: "true"
+      AUTH_COOKIE_SECURE: "${AUTH_COOKIE_SECURE:-true}"
       UPLOAD_DIR: /app/data/uploads
       DEMO_MODE: "false"
     volumes:
@@ -23,6 +23,8 @@ services:
     build:
       context: ..
       dockerfile: online/frontend.Dockerfile
+      args:
+        VITE_PUBLIC_CONTACT_EMAIL: "${VITE_PUBLIC_CONTACT_EMAIL:-}"
     env_file:
       - .env
     environment:

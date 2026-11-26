@@ -20,12 +20,13 @@
           </el-table-column>
           <el-table-column label="截止时间" width="205">
             <template #default="{ row }">
-              <el-date-picker v-model="row.due_at" type="datetime" value-format="YYYY-MM-DDTHH:mm:ss" size="small" placeholder="待补充" :aria-label="`截止时间：${row.name || '未命名任务'}`" />
+              <BeijingDatePicker v-model="row.due_at" size="small" placeholder="待补充" :aria-label="`截止时间：${row.name || '未命名任务'}`" />
             </template>
           </el-table-column>
           <el-table-column label="来源 / 提示" min-width="230">
             <template #default="{ row }">
               <div class="row-meta">{{ row.source_quote || '无来源原文' }}</div>
+              <div v-if="row.description" class="row-meta">{{ row.description }}</div>
               <el-tag v-for="warning in row.warnings || []" :key="warning" size="small" type="warning" class="tag-gap extraction-warning-tag">{{ extractionWarningLabel(warning) }}</el-tag>
               <details class="task-extra-fields"><summary>类型、用时与识别信息</summary><label>类型<el-input v-model="row.task_type" size="small" :aria-label="`任务类型：${row.name || '未命名任务'}`" /></label><label>预计用时（分钟）<el-input-number v-model="row.estimated_minutes" :min="15" :max="10080" :step="15" size="small" controls-position="right" placeholder="可留空" :aria-label="`预计用时：${row.name || '未命名任务'}`" /></label><p>识别置信度 {{ `${Math.round((row.confidence || 0) * 100)}%` }}</p></details>
             </template>
@@ -35,14 +36,41 @@
         <ExtractionCandidatesEditor :tasks="tasks" />
     </template>
   </section>
-  <p v-else class="no-tasks" role="status">{{ result.status === 'confirmed' ? '已按你的选择保存资料，未创建任务。' : '没有需要提交或参加的明确事项，保留为学习资料即可。' }}<span v-if="result.status !== 'confirmed' && result.warnings?.length">{{ result.warnings.map(extractionWarningLabel).join('；') }}</span></p>
+  <p v-else-if="!result.calendar_candidates?.length" class="no-tasks" role="status">{{ result.status === 'confirmed' ? '已按你的选择保存资料，未创建任务。' : '没有识别到待提交的任务。' }}<span v-if="result.status !== 'confirmed' && result.warnings?.length">{{ result.warnings.map(extractionWarningLabel).join('；') }}</span></p>
+  <section v-if="result.calendar_candidates?.length" aria-label="日程候选">
+    <h3>核对日程 <span>{{ result.calendar_candidates.length }} 条</span></h3>
+    <p>保留要核对的候选。日程使用北京时间。</p>
+    <article v-for="item in result.calendar_candidates" :key="item.candidate_id" class="calendar-candidate">
+      <el-checkbox :model-value="!skippedCalendar.has(item.candidate_id)" @change="value => toggleCalendar(item.candidate_id, value)">
+        <strong>{{ item.kind === 'exam' ? '考试' : '调课' }} · {{ item.title }}</strong>
+      </el-checkbox>
+      <p v-if="item.original_time_text">原时段 {{ item.original_date }} {{ item.original_time_text }}</p>
+      <p>{{ item.kind === 'exam' ? '开考时间' : '拟调整至' }} {{ item.starts_at ? formatDateTime(item.starts_at) : '待核对' }}</p>
+      <p v-if="item.location">地点 {{ item.location }}</p>
+      <p v-if="item.scope">范围 {{ item.scope }}</p>
+      <details><summary>查看通知原文</summary><p>{{ item.source_quote }}</p></details>
+      <el-button size="small" :disabled="calendarDisabled || skippedCalendar.has(item.candidate_id)" @click="emit('review-calendar', item)">{{ item.kind === 'exam' ? '核对考试' : '查看调课' }}</el-button>
+    </article>
+  </section>
 </template>
 <script setup>
-import { computed, defineAsyncComponent } from 'vue'
-import { ElTable, ElTableColumn, ElCheckbox, ElInput, ElInputNumber, ElDatePicker, ElTag } from 'element-plus'
+import { computed, defineAsyncComponent, reactive, watch } from 'vue'
+import { ElButton, ElTable, ElTableColumn, ElCheckbox, ElInput, ElInputNumber, ElTag } from 'element-plus'
+import BeijingDatePicker from './BeijingDatePicker.vue'
 import { extractionWarningLabel } from '../utils/extractionWarning'
 import { formatDateTime } from '../utils/format'
-const props = defineProps({ result: { type: Object, required: true }, tasks: { type: Array, required: true } })
+const props = defineProps({
+  result: { type: Object, required: true },
+  tasks: { type: Array, required: true },
+  calendarDisabled: Boolean,
+})
+const emit = defineEmits(['review-calendar'])
+const skippedCalendar = reactive(new Set())
+watch(() => props.result.calendar_candidates, () => skippedCalendar.clear())
+function toggleCalendar(id, selected) {
+  if (selected) skippedCalendar.delete(id)
+  else skippedCalendar.add(id)
+}
 const kindLabel = computed(() => ({ study_material: '学习资料', review_outline: '复习安排 · 参考', task_notice: '任务通知', mixed: '学习内容与任务要求' })[props.result.content_kind] || '资料内容')
 const ExtractionCandidatesEditor = defineAsyncComponent(() => import('./ExtractionCandidatesEditor.vue'))
 function displayDueAt(value) {
@@ -69,5 +97,8 @@ h3 { margin: 20px 0 12px; font-size: 15px; } h3 span { font-size: 12px; font-wei
 .confirmed-task-list li { padding: 12px 0; border-bottom: 1px solid var(--ledger-line, #d9e0ea); }
 .confirmed-task-list strong, .confirmed-task-list li > span { display: block; }
 .confirmed-task-list li > span { font-size: 13px; color: var(--ledger-muted); }
+.calendar-candidate { padding: 12px 0; border-bottom: 1px solid var(--ledger-line); overflow-wrap: anywhere; }
+.calendar-candidate .el-button { margin-top: 8px; }
+.calendar-candidate .el-checkbox { height: auto; white-space: normal; }
 @media (max-width: 680px) { .extraction-desktop-table { display: none; } }
 </style>

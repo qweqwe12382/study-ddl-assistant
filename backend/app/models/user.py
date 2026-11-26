@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.auth_database import AuthBase
@@ -44,3 +44,17 @@ class UserSession(AuthBase):
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
 
     user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class RegistrationEmailCode(AuthBase):
+    __tablename__ = "registration_email_codes"
+
+    email: Mapped[str] = mapped_column(String(254), primary_key=True)
+    challenge_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    delivered: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    expires_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    retry_at: Mapped[int] = mapped_column(Integer, nullable=False)
+    window_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    sends_in_window: Mapped[int] = mapped_column(Integer, nullable=False)
+    attempts_remaining: Mapped[int] = mapped_column(Integer, nullable=False)

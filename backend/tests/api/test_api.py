@@ -369,6 +369,7 @@ def test_m8_upload_auto_extracts_local_candidates_without_creating_tasks(client,
         "自动抽取通知.txt",
         "课程：数据库原理\n作业一：完成 SQL 练习，截止时间：2026年10月15日 23:59".encode(),
         "text/plain",
+        source_time="2026-10-01T09:00:00",
     )
 
     assert response.status_code == 201
@@ -674,6 +675,7 @@ def test_m4_extracts_structured_ddl_from_material_text(client):
         json={
             "original_filename": "数据结构通知.md",
             "extracted_text": "课程：数据结构\n作业一：完成二叉树遍历，截止时间：2026年10月15日 23:59",
+            "source_time": "2026-10-01T09:00:00",
         },
     ).json()
 
@@ -983,6 +985,7 @@ def test_m4_editing_metadata_does_not_reset_extraction_state(client):
         json={
             "original_filename": "可编辑通知.txt",
             "extracted_text": "作业一：完成 SQL 练习，截止时间：2026年10月15日 23:59",
+            "source_time": "2026-10-01T09:00:00",
         },
     ).json()
     extracted = client.post(f"/api/materials/{material['id']}/extract").json()

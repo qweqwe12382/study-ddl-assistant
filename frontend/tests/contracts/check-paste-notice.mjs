@@ -19,11 +19,12 @@ const validNotice = buildPastedNotice({
 })
 assert.deepEqual(validNotice, {
   filename: '高等数学 作业通知.txt',
-  content: '明天上午前提交第二章习题。',
+  title: '高等数学:作业通知',
+  content: ' 明天上午前提交第二章习题。 ',
   sourceTime: '2026-09-09T10:30:00',
 })
 assert.equal(pasteNoticeFilename('  '), '粘贴资料.txt')
-assert.deepEqual(buildPastedNotice({ title: '', text: '高数复习:第三章\n复习微分与积分。', sourceTime: '2026-09-09T10:30:00' }), { filename: '高数复习 第三章.txt', content: '高数复习:第三章\n复习微分与积分。', sourceTime: '2026-09-09T10:30:00' }, 'untitled pasted material receives a safe name from its first line without changing the content or reference time')
+assert.deepEqual(buildPastedNotice({ title: '', text: '高数复习:第三章\n复习微分与积分。', sourceTime: '2026-09-09T10:30:00' }), { filename: '课程通知 2026-09-09.txt', title: '', content: '高数复习:第三章\n复习微分与积分。', sourceTime: '2026-09-09T10:30:00' }, 'untitled pasted material receives a short file name and retains its body')
 assert.equal(localReferenceDateTime(new Date(Date.UTC(2026, 8, 8, 23, 5, 3))), '2026-09-09T07:05:03')
 assert.equal(validLocalReferenceDateTime('2024-02-29T23:59:59'), true)
 assert.equal(validLocalReferenceDateTime('0001-01-01T00:00:00'), true)
@@ -49,14 +50,14 @@ baseParse(dialog.descriptor.template.content)
 assert.match(dialogSource, /通知标题（可选）/)
 assert.match(dialogSource, /通知正文/)
 assert.match(dialogSource, /通知参考时间/)
-assert.match(dialogSource, /按北京时间（Asia\/Shanghai）处理/)
+assert.match(dialogSource, /北京时间/)
 assert.match(dialogSource, /保留草稿并关闭/)
 assert.match(dialogSource, /查看已有资料/)
 assert.match(dialogSource, /:disabled="submitting"/)
 assert.doesNotMatch(dialogSource, /<form\b/, 'the dialog keeps one Element Plus form instead of nesting native forms')
 
 const apiSource = await readFile(new URL('../../src/api/index.js', import.meta.url), 'utf8')
-assert.match(apiSource, /upload: \(files, courseId = null, materialType = null, sourceTime = null\)/)
+assert.match(apiSource, /upload: \(files, courseId = null, materialType = null, sourceTime = null, notice = null\)/)
 assert.match(apiSource, /if \(sourceTime\) formData\.append\('source_time', sourceTime\)/)
 
 const materialsSource = await readFile(new URL('../../src/views/MaterialsView.vue', import.meta.url), 'utf8')
@@ -67,7 +68,7 @@ assert.ok(conversionSource)
 const convertDeadline = new Function('localReferenceDateTime', `${conversionSource}; return toLocalDateTimeInput`)(localReferenceDateTime)
 const priorTimezone = process.env.TZ
 try {
-  for (const timezone of ['America/Los_Angeles', 'Asia/Shanghai', 'UTC']) {
+  for (const timezone of ['America/Los_Angeles', 'Europe/Madrid', 'Asia/Shanghai', 'UTC']) {
     process.env.TZ = timezone
     for (const [instant, wallClock] of [
       ['2026-10-15T12:00:00Z', '2026-10-15T20:00:00'],
@@ -87,7 +88,7 @@ try {
 assert.match(materialsSource, /action === 'paste-notice'/)
 assert.match(materialsSource, /<PasteNoticeDialog/)
 assert.match(materialsSource, /new File\(\[notice\.content\], notice\.filename, \{ type: 'text\/plain;charset=utf-8' \}\)/)
-assert.match(materialsSource, /materialsApi\.upload\(\[file\], uploadCourseId\.value \|\| positiveRouteId\(route\.query\.course_id\), route\.query\.intent === 'plan' \? '复习安排' : null, notice\.sourceTime\)/, 'pasted content preserves reference time and course or plan-import context, while ordinary text is classified from its content')
+assert.match(materialsSource, /materialsApi\.upload\(\[file\], uploadCourseId\.value \|\| positiveRouteId\(route\.query\.course_id\), route\.query\.intent === 'plan' \? '复习安排' : null, notice\.sourceTime, \{ title: notice\.title \}\)/, 'pasted content preserves reference time and course or plan-import context')
 assert.match(materialsSource, /err\?\.status === 409 && err\?\.code === 'DUPLICATE_FILE'/)
 assert.match(materialsSource, /await openExtraction\(savedMaterial\)/)
 assert.match(materialsSource, /const existingMaterials = await materialsApi\.list\(\)/)

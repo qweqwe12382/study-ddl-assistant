@@ -241,7 +241,7 @@ def _today_actions(
         reasons = [deadline_reason, f"当前优先级为 {task.priority}", f"课程权重为 {weight:g}"]
         if counted is None:
             reason_codes.append("missing_estimate")
-            reasons.append("尚未填写预计时长，未伪造分钟数")
+            reasons.append("用时待估")
         else:
             reason_codes.append("workload_known")
             reasons.append(f"待处理时长约 {counted} 分钟")

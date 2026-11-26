@@ -11,16 +11,17 @@ export function useHomeTasks() {
   const completing = ref(false)
   let requestId = 0
 
-  async function load() {
+  async function load({ background = false } = {}) {
     const request = ++requestId
-    state.value = 'loading'
+    if (!background) state.value = 'loading'
     const [taskResult, courseResult] = await Promise.allSettled([tasksApi.list(), coursesApi.list()])
     if (request !== requestId) return
-    courses.value = courseResult.status === 'fulfilled' && Array.isArray(courseResult.value) ? courseResult.value : []
+    if (courseResult.status === 'fulfilled' && Array.isArray(courseResult.value)) courses.value = courseResult.value
     if (taskResult.status === 'fulfilled' && Array.isArray(taskResult.value)) {
       tasks.value = taskResult.value
       state.value = 'ready'
-    } else {
+      error.value = ''
+    } else if (!background) {
       tasks.value = []
       state.value = 'error'
       error.value = '任务暂时无法读取，请重试。仍可先记下新任务。'

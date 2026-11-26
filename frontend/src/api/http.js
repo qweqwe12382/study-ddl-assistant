@@ -10,7 +10,7 @@ const http = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-function readCookie(name) {
+export function readCookie(name) {
   if (typeof document === 'undefined') return ''
   const prefix = `${encodeURIComponent(name)}=`
   const entry = document.cookie.split('; ').find((item) => item.startsWith(prefix))

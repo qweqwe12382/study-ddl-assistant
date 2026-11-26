@@ -7,6 +7,39 @@ def _due_at(local_date: date, hour: int = 18) -> str:
     return datetime.combine(local_date, time(hour, 0), tzinfo=LOCAL_TIMEZONE).isoformat()
 
 
+def test_exam_review_spreads_scope_before_exam_and_reserves_submission_time(client, monkeypatch):
+    from app.api import study_plans as study_plans_api
+
+    monkeypatch.setattr(study_plans_api, "utc_now", lambda: datetime(2026, 11, 26, 1, 45, tzinfo=timezone.utc))
+    course = client.post("/api/courses", json={"name": "数据结构"}).json()
+    task = client.post("/api/tasks", json={
+        "course_id": course["id"], "name": "第五次实验报告（二叉树遍历）",
+        "due_at": "2026-12-04T20:00:00+08:00", "description": "提交到学习通。逾期不收。",
+    })
+    assert task.status_code == 201
+    payload = {
+        "course_id": course["id"], "exam_date": "2026-12-10", "daily_minutes": 60,
+        "exam_review": True, "material_sources": [], "task_sources": [],
+    }
+    empty = client.post("/api/study-plans/generate", json=payload)
+    assert empty.status_code == 422
+    assert "章节" in empty.json()["error"]["message"]
+    generated = client.post("/api/study-plans/generate", json={**payload, "review_scope": "第1-6章"})
+    assert generated.status_code == 201, generated.text
+    plan = generated.json()
+    items = plan["items"]
+    assert len(items) == 14
+    assert items[0]["date"] == "2026-11-26"
+    assert items[0]["minutes"] == 30
+    assert items[-1]["date"] == "2026-12-09"
+    assert all(0 < item["minutes"] <= 60 for item in items)
+    assert plan["task_count"] == 0
+    assert all(not item["source_task_ids"] and "实验报告" not in item["content"] for item in items)
+    assert {topic for item in items for topic in item["knowledge_points"]} == {f"第 {number} 章" for number in range(1, 7)}
+    assert "综合模拟" in items[-2]["content"]
+    assert "轻量回顾" in items[-1]["content"]
+
+
 def test_plan_start_date_uses_shanghai_day_at_utc_day_boundary(client, monkeypatch):
     from app.api import study_plans as study_plans_api
 
@@ -163,7 +196,7 @@ def test_plan_splits_minutes_once_and_reports_deadline_overflow(client, fixed_pl
         "任务乙" in warning and "60 分钟未排入" in warning and "每日容量不足" in warning
         for warning in plan["warnings"]
     )
-    assert any("仅按 Asia/Shanghai 自然日排期" in warning for warning in plan["warnings"])
+    assert any("按北京时间的日期排期" in warning for warning in plan["warnings"])
     assert plan["unscheduled_items"][0]["source_id"] == tasks[1]["id"]
     assert plan["unscheduled_items"][0]["requested_minutes"] == 60
     assert plan["unscheduled_items"][0]["scheduled_minutes"] == 0

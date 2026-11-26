@@ -25,6 +25,7 @@ class MaterialUpdate(BaseModel):
 
     course_id: int | None = None
     original_filename: str | None = Field(default=None, min_length=1, max_length=255)
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
     file_type: str | None = Field(default=None, max_length=30)
     extracted_text: str | None = None
     material_type: str | None = Field(default=None, max_length=50)
@@ -40,6 +41,7 @@ class MaterialRead(BaseModel):
     revision: int = Field(ge=1)
     course_id: int | None
     original_filename: str
+    display_name: str | None = None
     stored_path: str | None
     file_type: str | None
     file_size: int | None

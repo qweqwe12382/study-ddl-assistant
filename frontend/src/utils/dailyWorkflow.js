@@ -51,3 +51,10 @@ export function nextCourseExamDate(exams, courseId, now = new Date()) {
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
   return `${values.year}-${values.month}-${values.day}`
 }
+
+export function examReviewScope(note) {
+  const text = typeof note === 'string' ? note.trim() : ''
+  const explicit = text.match(/(?:^|[\n。；])\s*(?:考试)?范围\s*(?:[：:]|为|是)\s*([^\n。；]+)/)?.[1]
+  const chapterRange = text.match(/^第\s*\d+\s*(?:章\s*[-－–—~～至到]\s*第?\s*\d+\s*|[-－–—~～至到]\s*第?\s*\d+\s*)?章$/)?.[0]
+  return explicit?.trim() || chapterRange || ''
+}

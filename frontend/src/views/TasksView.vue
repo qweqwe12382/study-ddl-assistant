@@ -30,6 +30,7 @@
         <div v-if="completedNotice" ref="completionNoticeElement" class="completion-notice" tabindex="-1">
           <svg :key="`${completedNotice.name}:${completedNotice.task?.revision}`" class="completion-check" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="15" /><path d="m9 16 5 5 9-10" /></svg>
           <div><strong>{{ completedNotice.updated ? '完成反馈已更新' : '又完成了一件事' }}</strong><p>{{ completedNotice.name }}</p></div>
+          <button v-if="completedNotice.task && !completedNotice.updated" type="button" :disabled="isCompletionLoading(completedNotice.task.id)" @click="reopenTask(completedNotice.task, completedNotice.previous)">撤销完成</button>
           <button v-if="completedNotice.task" type="button" @click="openCompletionFeedback(completedNotice.task)">{{ completedNotice.task.actual_minutes != null || completedNotice.task.difficulty != null ? '查看或更新反馈' : '补充用时（可选）' }}</button>
           <button type="button" class="notice-dismiss" aria-label="收起完成提示" @click="completedNotice = null">×</button>
         </div>
@@ -258,11 +259,8 @@
             <el-input v-model="form.task_type" placeholder="例如：作业、实验、考试或报告" />
         </el-form-item>
         <el-form-item label="截止时间（北京时间）">
-          <el-date-picker
+          <BeijingDatePicker
             v-model="form.due_at"
-            type="datetime"
-            format="YYYY-MM-DD HH:mm"
-            value-format="YYYY-MM-DDTHH:mm:ss"
             placeholder="选择日期和时间（精确到分钟）"
             style="width: 100%"
           />
@@ -298,7 +296,7 @@
         </el-form-item>
         <el-form-item label="来源资料">
           <el-select v-model="form.material_id" clearable placeholder="关联资料" style="width: 100%">
-            <el-option v-for="material in materials" :key="material.id" :label="material.original_filename" :value="material.id" />
+            <el-option v-for="material in materials" :key="material.id" :label="material.display_name || material.original_filename" :value="material.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="备注">
@@ -363,7 +361,6 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   ElAlert,
   ElCard,
-  ElDatePicker,
   ElDialog,
   ElForm,
   ElFormItem,
@@ -390,6 +387,7 @@ import { useViewMode } from '../composables/useViewMode'
 import { downloadFile } from '../utils/download'
 import { localReferenceDateTime, validLocalReferenceDateTime } from '../utils/pasteNotice'
 import { formatDateTime, isOverdue, statusLabel, statusType } from '../utils/format'
+import BeijingDatePicker from '../components/BeijingDatePicker.vue'
 import { navigationKey, navigationSourceCacheKey, validatedMaterialTarget } from '../utils/materialSourceNavigation'
 import { editBaseline, editRequestConfig, isEditConflict, isEntityGone, preconditionMessage } from '../utils/editPrecondition'
 import { filterTaskCollection, hasTaskFilters } from '../utils/taskFilters'
@@ -1041,7 +1039,12 @@ async function completeTask(task, feedback = {}) {
     ElMessage.success(message)
     completionIdempotencyKeys.delete(String(task.id))
     await loadData()
-    completedNotice.value = { name: task.name, updated: task.status === 'completed', task: tasks.value.find(item => item.id === task.id && item.status === 'completed') || null }
+    completedNotice.value = {
+      name: task.name,
+      updated: task.status === 'completed',
+      task: result.task.id === task.id && result.task.navigation_key === task.navigation_key ? result.task : null,
+      previous: { status: task.status, remaining_minutes: task.remaining_minutes },
+    }
     await nextTick()
     if (!completionDialogVisible.value) completionNoticeElement.value?.focus({ preventScroll: true })
     return true
@@ -1057,8 +1060,8 @@ async function completeTask(task, feedback = {}) {
   }
 }
 
-async function reopenTask(task) {
-  if (!task?.id || task.status !== 'canceled' || hasAnyCompletionLoading()) return
+async function reopenTask(task, previous = null) {
+  if (!task?.id || task.status !== (previous ? 'completed' : 'canceled') || hasAnyCompletionLoading()) return
   const baseline = editBaseline(task)
   const config = editRequestConfig(baseline)
   if (!config) {
@@ -1067,7 +1070,8 @@ async function reopenTask(task) {
   }
   setCompletionLoading(task.id, true)
   try {
-    await tasksApi.update(task.id, { status: 'not_started' }, config)
+    await tasksApi.update(task.id, previous || { status: 'not_started' }, config)
+    if (completedNotice.value?.task?.id === task.id) completedNotice.value = null
     completionIdempotencyKeys.delete(String(task.id))
     ElMessage.success('任务已恢复为待办，可以继续处理。')
     await loadData()

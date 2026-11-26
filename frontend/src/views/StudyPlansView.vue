@@ -43,9 +43,12 @@
       <p>清除当前定位后，可以重新选择计划。</p>
       <el-button plain type="primary" @click="clearExpiredPlanLocation">清除当前定位</el-button>
     </section>
-    <div v-if="loading || plansLoading" class="sr-only" role="status" aria-live="polite">正在加载复习计划…</div>
+    <section v-if="(loading || plansLoading) && !currentPlan" class="plan-loading content-card" role="status" aria-live="polite">
+      <span>正在加载复习计划…</span>
+      <el-skeleton :rows="4" aria-hidden="true" />
+    </section>
 
-    <el-card v-if="!planNavigationMismatch && (creatingPlan || (!loading && !plansLoading && !currentPlan))" class="content-card plan-config" shadow="never" v-loading="loading" :aria-busy="loading">
+    <el-card v-else-if="!planNavigationMismatch && (creatingPlan || (!loading && !plansLoading && !currentPlan))" class="content-card plan-config" shadow="never" :aria-busy="loading">
       <div class="card-heading config-heading">
         <div class="card-heading-copy">
           <h2>新建复习计划</h2>
@@ -57,7 +60,10 @@
           <el-form-item label="课程" required class="plan-form-course">
             <CourseSelect :model-value="planForm.course_id" :courses="courses" :disabled="generating" @created="onCourseCreated" @update:model-value="changeCourse" />
           </el-form-item>
-          <PlanSourcePicker ref="sourcePicker" :course-id="planForm.course_id" :material-id="positiveRouteId(route.query.course_id) === planForm.course_id ? positiveRouteId(route.query.material_id) : null" :material-key="String(route.query.material_key || '')" :exam-date="planForm.exam_date" :daily-minutes="planForm.daily_minutes" :disabled="generating" @change="sourceSelection = $event" />
+          <el-form-item label="章节或复习主题">
+            <el-input v-model="reviewScope" type="textarea" :rows="2" maxlength="2000" placeholder="如第1-6章，多个主题可以分行填写" />
+          </el-form-item>
+          <PlanSourcePicker ref="sourcePicker" :course-id="planForm.course_id" :material-id="positiveRouteId(route.query.course_id) === planForm.course_id ? positiveRouteId(route.query.material_id) : null" :material-key="String(route.query.material_key || '')" :exam-date="planForm.exam_date" :daily-minutes="planForm.daily_minutes" :exam-review="examReview" :has-topics="Boolean(reviewScope.trim())" :disabled="generating" @change="sourceSelection = $event" />
         </section>
         <section class="plan-form-section" aria-labelledby="plan-time-heading">
           <h3 id="plan-time-heading"><span aria-hidden="true">2</span>什么时候复习</h3>
@@ -95,7 +101,7 @@
         </div>
         <el-form-item class="plan-form-submit">
           <el-button native-type="submit" type="primary" :loading="generating" :disabled="loading || plansLoading || !planForm.course_id || generating || !sourcesReady || !planForm.exam_date">生成并保存计划</el-button>
-          <span class="submit-hint">{{ sourcesReady ? '仅安排已选内容，生成后可修改。' : '先选好复习内容，再生成计划。' }}</span>
+          <span class="submit-hint">{{ sourcesReady ? '生成后可修改每天的安排。' : '请填写章节或选择资料。' }}</span>
         </el-form-item>
       </el-form>
     </el-card>
@@ -308,6 +314,7 @@ import {
   ElOption,
   ElProgress,
   ElSelect,
+  ElSkeleton,
   ElTable,
   ElTableColumn,
 } from 'element-plus'
@@ -320,7 +327,7 @@ import { downloadFile } from '../utils/download'
 import { toDateInputValue } from '../utils/format'
 import { navigationKey, positiveMaterialId, validatedSourceNavigationTarget } from '../utils/materialSourceNavigation'
 import { editBaseline, editRequestConfig, isEditConflict, isEntityGone, preconditionMessage } from '../utils/editPrecondition'
-import { nextCourseExamDate } from '../utils/dailyWorkflow'
+import { examReviewScope, nextCourseExamDate } from '../utils/dailyWorkflow'
 
 const PlanSourcePicker = defineAsyncComponent(() => import('../components/PlanSourcePicker.vue'))
 const creatingPlan = ref(false)
@@ -328,7 +335,12 @@ const sourceSelection = ref(null)
 const sourcePicker = ref(null)
 const generationError = ref('')
 const sourceRefreshRequired = ref(false)
-const sourcesReady = computed(() => sourceSelection.value?.ready && sourceSelection.value.courseId === planForm.course_id && (sourceSelection.value.material_sources.length + sourceSelection.value.task_sources.length > 0))
+const scopeDraft = ref(null)
+const reviewScope = computed({
+  get: () => scopeDraft.value && scopeDraft.value.courseId === planForm.course_id ? scopeDraft.value.text : examReviewScope(knownExam.value?.note),
+  set: text => { scopeDraft.value = { courseId: planForm.course_id, text } },
+})
+const sourcesReady = computed(() => sourceSelection.value?.ready && sourceSelection.value.courseId === planForm.course_id && (reviewScope.value.trim() || sourceSelection.value.material_sources.length + sourceSelection.value.task_sources.length > 0))
 const StudyWeekBoard = defineAsyncComponent(() => import('../components/StudyWeekBoard.vue'))
 const loading = ref(false)
 const plansLoading = ref(false)
@@ -338,7 +350,14 @@ const error = ref('')
 const courses = ref([])
 const knownExams = ref([])
 const examDateEdited = ref(false)
-const knownExamDate = computed(() => nextCourseExamDate(knownExams.value, planForm.course_id))
+const knownExam = computed(() => {
+  const courseId = planForm.course_id
+  const examId = positiveRouteId(route.query.exam_id)
+  const future = knownExams.value.filter(exam => exam.course_id === courseId && Date.parse(exam.starts_at) > Date.now())
+  return future.find(exam => exam.id === examId) || future.sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))[0]
+})
+const knownExamDate = computed(() => nextCourseExamDate(knownExam.value ? [knownExam.value] : [], planForm.course_id))
+const examReview = computed(() => Boolean(knownExam.value && planForm.exam_date <= knownExamDate.value))
 const plans = ref([])
 const currentPlan = ref(null)
 const planBaseline = ref(null)
@@ -480,19 +499,17 @@ function planOptionLabel(plan) {
 const deepLinkLabel = computed(() => {
   const filters = routeFilters.value
   if (filters.planId) {
-    if (loading.value || plansLoading.value) return `正在定位复习计划 #${filters.planId}…`
-    if (routePlanNotFound.value) return `未找到链接中的复习计划 #${filters.planId}`
-    if (routePlanError.value || plansError.value) return `无法读取链接中的复习计划 #${filters.planId}`
-    if (!currentPlan.value) return `未找到链接中的复习计划 #${filters.planId}`
-    if (planNavigationMismatch.value) return '这个来源已失效，未打开同编号的新计划；可清除定位后重新选择。'
-    if (currentPlan.value.id !== filters.planId) return `已切换当前计划；原始深链计划 #${filters.planId} 未选中`
+    if (loading.value || plansLoading.value) return '正在打开复习计划…'
+    if (routePlanNotFound.value) return '未找到链接中的复习计划'
+    if (routePlanError.value || plansError.value) return '无法读取链接中的复习计划'
+    if (!currentPlan.value) return '未找到链接中的复习计划'
+    if (planNavigationMismatch.value) return '这条计划链接已失效，可以清除定位后重新选择。'
+    if (currentPlan.value.id !== filters.planId) return `已切换到「${currentPlan.value.title}」`
     if (filters.itemId) {
-      const hasItem = Array.isArray(currentPlan.value.items) && currentPlan.value.items.some((item) => item.id === filters.itemId)
-      return hasItem
-        ? `已${filters.navigationKey ? '按来源记录' : ''}定位复习计划 #${filters.planId} 的计划项：${filters.itemId}`
-        : `已打开复习计划 #${filters.planId}，但未找到计划项：${filters.itemId}`
+      const item = currentPlan.value.items?.find(item => item.id === filters.itemId)
+      return item ? `已定位「${item.title}」` : `已打开「${currentPlan.value.title}」，链接中的安排已找不到。`
     }
-    return filters.navigationKey ? `已按来源记录定位复习计划：计划 #${filters.planId}` : `已定位复习计划：计划 #${filters.planId}`
+    return `已打开「${currentPlan.value.title}」`
   }
   if (filters.view === 'weekly_plan_delays') {
     const currentDelayCount = loading.value || plansLoading.value
@@ -842,6 +859,7 @@ function routeDailyMinutes() {
 async function togglePlanCreator() {
   creatingPlan.value = !creatingPlan.value
   if (creatingPlan.value) {
+    scopeDraft.value = null
     planForm.title = ''
     examDateEdited.value = false
     planForm.exam_date = routeExamDate() || knownExamDate.value || defaultExamDate()
@@ -960,7 +978,7 @@ async function generatePlan() {
     return
   }
   if (!sourcesReady.value) {
-    ElMessage.warning('请选择本次复习范围')
+    ElMessage.warning('请填写要复习的章节或选择资料')
     return
   }
   if (planForm.exam_date < chinaLocalDateKey()) {
@@ -982,6 +1000,8 @@ async function generatePlan() {
       title: planForm.title.trim() || null,
       material_sources: sourceSelection.value.material_sources,
       task_sources: sourceSelection.value.task_sources,
+      review_scope: reviewScope.value.trim() || null,
+      exam_review: examReview.value,
     })
     plans.value = [generated, ...plans.value]
     currentPlan.value = generated
@@ -1264,6 +1284,7 @@ onMounted(loadData)
 </script>
 
 <style scoped>
+.plan-loading { display: grid; gap: 18px; margin-block: 20px; padding: 22px; color: var(--ledger-muted); }
 .plan-date-presets { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; }
 .plan-date-presets button { min-height: 44px; padding: 6px 0; color: var(--ledger-link); background: transparent; border: 0; font: inherit; font-size: 12px; cursor: pointer; }
 .plan-date-hint { margin: 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.6; }

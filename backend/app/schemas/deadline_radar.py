@@ -64,6 +64,10 @@ class DeadlinePressureDayRead(BaseModel):
     after_risk: DeadlineRisk
     before_task_count: int = Field(ge=0)
     after_task_count: int = Field(ge=0)
+    before_unestimated_count: int = Field(default=0, ge=0)
+    after_unestimated_count: int = Field(default=0, ge=0)
+    original_deadline: bool = False
+    proposed_deadline: bool = False
     affected: bool
 
 
@@ -83,7 +87,7 @@ class DeadlineRadarPreviewRead(BaseModel):
     intent: DeadlineChangeIntent
     task: DeadlineRadarTaskRead
     evidence: DeadlineRadarEvidenceRead
-    pressure_days: list[DeadlinePressureDayRead] = Field(min_length=7, max_length=7)
+    pressure_days: list[DeadlinePressureDayRead] = Field(min_length=7, max_length=16)
     impact: DeadlineRadarImpactRead
     action_label: str = Field(max_length=80)
     calculation_basis: dict[str, object]

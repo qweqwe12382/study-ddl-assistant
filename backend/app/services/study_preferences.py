@@ -64,6 +64,20 @@ def build_capacity_with_overrides(
     )
 
 
+def daily_workload(entries: list[int | None], daily_capacity: int) -> tuple[int, int, str]:
+    known = sum(minutes or 0 for minutes in entries)
+    overload = max(0, known - daily_capacity)
+    if overload:
+        risk = "high"
+    elif None in entries:
+        risk = "unknown"
+    elif entries and known >= daily_capacity * 0.8:
+        risk = "medium"
+    else:
+        risk = "low"
+    return known, overload, risk
+
+
 def _build_capacity(
     preference: StudyPreference,
     tasks: list[Task],

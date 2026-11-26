@@ -19,7 +19,7 @@
       <button class="focus-action primary" type="button" @click="loadTasks">重新加载任务</button>
     </section>
 
-    <section v-else-if="pendingTasks.length === 0" class="focus-board is-empty">
+    <section v-else-if="pendingTasks.length === 0 && !sessionLocked" class="focus-board is-empty">
       <h3>现在没有待办任务</h3>
       <p>记下要做的事，直接开始 25 分钟专注。</p>
       <QuickTaskAdd submit-label="添加并开始" @created="startCreatedTask" />
@@ -31,6 +31,7 @@
           <span>这次要专注什么？</span>
           <select v-model="selectedId" :disabled="sessionLocked" data-testid="focus-task-select" @change="errorMessage = ''">
             <option v-if="selectedId === null" :value="null" disabled>请选择要专注的任务</option>
+            <option v-if="activeSession && !selectedTask" :value="activeSession.taskId" disabled>{{ activeSession.taskName }}</option>
             <option v-for="task in pendingTasks" :key="task.id" :value="task.id">
               {{ task.name }}
             </option>
@@ -73,7 +74,7 @@
         <p class="focus-meta">{{ phaseLabel }} · 目标 {{ durationMinutes }} 分钟</p>
 
         <div class="control-row">
-          <button v-if="phase === 'idle' || phase === 'paused'" class="focus-action primary" type="button" @click="startTimer">
+          <button v-if="phase === 'idle' || phase === 'paused'" class="focus-action primary" type="button" :disabled="!selectedTask" @click="startTimer">
             {{ phase === 'paused' ? '继续专注' : '开始专注' }}
           </button>
           <button v-if="phase === 'running'" class="focus-action" type="button" @click="pauseTimer">暂停</button>
@@ -96,26 +97,27 @@
           <el-icon class="focus-record-icon" aria-hidden="true"><Timer /></el-icon>
           <h3>{{ phase === 'running' ? '这段时间，留给眼前的事' : '准备好就开始吧' }}</h3>
           <p>满 15 分钟后，可确认记录用时。</p>
-          <details class="focus-record-help"><summary>计时与保存说明</summary><small>暂停不计时。记录或放弃前，任务和时长保持锁定；离开或刷新会丢失未保存计时。</small></details>
+           <details class="focus-record-help"><summary>计时与保存说明</summary><small>暂停期间停止计时。同一标签页内切换页面或刷新后可继续。</small></details>
         </template>
         <template v-else-if="!canRecord">
           <h3>这次不足 15 分钟</h3>
           <p>系统最少记录 15 分钟。可以放弃本次，或继续专注到 15 分钟以上。</p>
           <div class="record-actions">
-            <button class="focus-action primary" type="button" @click="startTimer">继续专注</button>
+            <button class="focus-action primary" type="button" :disabled="!selectedTask" @click="startTimer">继续专注</button>
             <button class="focus-action quiet" type="button" @click="resetTimer">放弃本次</button>
           </div>
         </template>
         <template v-else>
           <h3>本次专注 {{ recordedLabel }}</h3>
-          <p>把这段真实用时记入「{{ selectedTask?.name }}」。</p>
+          <p>把本次用时记入「{{ activeSession?.taskName }}」。</p>
+          <p v-if="!selectedTask && !pendingRecord">这项待办已发生变更，请核对任务或放弃本次计时。</p>
           <p>本次 {{ recordedLabel }} 会累加到已有记录；仅记录用时不会完成任务。</p>
           <p v-if="pendingRecord">上次保存结果尚未确认，请重试同一操作，避免重复记录。</p>
           <div class="record-actions">
-            <button class="focus-action primary" type="button" :disabled="recording || pendingRecord && !pendingRecord.asComplete" @click="record(true)">
+            <button class="focus-action primary" type="button" :disabled="recording || (pendingRecord ? !pendingRecord.asComplete : !selectedTask)" @click="record(true)">
               {{ recording ? '正在记录' : '完成并记录' }}
             </button>
-            <button class="focus-action" type="button" :disabled="recording || pendingRecord && pendingRecord.asComplete" @click="record(false)">仅记录用时</button>
+            <button class="focus-action" type="button" :disabled="recording || (pendingRecord ? pendingRecord.asComplete : !selectedTask)" @click="record(false)">仅记录用时</button>
           </div>
         </template>
       </aside>
@@ -124,17 +126,15 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
-import { ElMessageBox } from 'element-plus'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { Timer } from '@element-plus/icons-vue'
 
 import http from '../api/http'
 import { tasksApi } from '../api'
-import { authSession } from '../auth/session'
+import { useFocusSession } from '../composables/useFocusSession'
 import {
   FOCUS_PRESET_MINUTES,
-  activeElapsedSeconds,
   formatClock,
   isRecordable,
   normalizeCustomMinutes,
@@ -147,6 +147,10 @@ import { orderedPendingTasks, resolveFocusTask } from '../utils/dailyWorkflow'
 
 const route = useRoute()
 const router = useRouter()
+const {
+  session: activeSession, recording, elapsed: elapsedSeconds,
+  start: startSession, pause: pauseSession, reset: resetSession, rememberAttempt,
+} = useFocusSession()
 let incomingFocusPending = true
 let taskRequestId = 0
 
@@ -155,21 +159,21 @@ const loadFailed = ref(false)
 const errorMessage = ref('')
 const tasks = ref([])
 const selectedId = ref(null)
-const durationMinutes = ref(25)
+const chosenDuration = ref(activeSession.value?.duration || 25)
+const durationMinutes = computed(() => activeSession.value?.duration || chosenDuration.value)
 const customMinutesDraft = ref('')
-const phase = ref('idle')
-const elapsedSeconds = ref(0)
-const recording = ref(false)
-const pendingRecord = ref(null)
+const phase = computed(() => activeSession.value?.phase || 'idle')
+const pendingRecord = computed(() => activeSession.value?.attempt)
 const notice = ref('')
-
-let ticker = null
-let startedAtMs = 0
-let accumulatedSeconds = 0
 
 const sessionLocked = computed(() => phase.value !== 'idle' || recording.value)
 const pendingTasks = computed(() => orderedPendingTasks(tasks.value))
-const selectedTask = computed(() => pendingTasks.value.find((task) => task.id === selectedId.value) || null)
+const selectedTask = computed(() => {
+  const current = activeSession.value
+  return pendingTasks.value.find(task => current
+    ? task.id === current.taskId && task.navigation_key === current.taskKey
+    : task.id === selectedId.value) || null
+})
 const clock = computed(() => formatClock(Math.max(0, durationMinutes.value * 60 - elapsedSeconds.value)))
 const progressPercent = computed(() => {
   const total = Math.max(1, durationMinutes.value * 60)
@@ -185,22 +189,6 @@ const phaseLabel = computed(() => {
   return `准备开始 · 从 ${clock.value} 倒计时`
 })
 
-function stopTicker() {
-  if (ticker) {
-    clearInterval(ticker)
-    ticker = null
-  }
-}
-
-function tick() {
-  elapsedSeconds.value = activeElapsedSeconds(accumulatedSeconds, startedAtMs, performance.now(), durationMinutes.value * 60)
-  if (elapsedSeconds.value >= durationMinutes.value * 60) {
-    stopTicker()
-    elapsedSeconds.value = durationMinutes.value * 60
-    phase.value = 'finished'
-  }
-}
-
 function startTimer() {
   if (recording.value || phase.value === 'running' || (phase.value === 'finished' && canRecord.value)) return
   if (!selectedTask.value) {
@@ -209,36 +197,28 @@ function startTimer() {
   }
   errorMessage.value = ''
   notice.value = ''
-  stopTicker()
-  accumulatedSeconds = elapsedSeconds.value
-  startedAtMs = performance.now()
-  phase.value = 'running'
-  ticker = setInterval(tick, 1000)
+  startSession(selectedTask.value, durationMinutes.value)
 }
 
 function pauseTimer() {
-  tick()
-  stopTicker()
-  if (phase.value !== 'finished') phase.value = 'paused'
+  pauseSession()
 }
 
 function stopTimer() {
-  if (phase.value === 'running') tick()
-  stopTicker()
-  phase.value = 'finished'
+  pauseSession('finished')
 }
 
 function resetTimer() {
   if (recording.value) return
-  stopTicker()
-  elapsedSeconds.value = 0
-  phase.value = 'idle'
-  pendingRecord.value = null
+  resetSession()
+  if (!pendingTasks.value.some(task => task.id === selectedId.value)) {
+    selectedId.value = pendingTasks.value[0]?.id ?? null
+  }
 }
 
 function applyPreset(minutes) {
   if (sessionLocked.value) return
-  durationMinutes.value = minutes
+  chosenDuration.value = minutes
   resetTimer()
 }
 
@@ -257,34 +237,34 @@ function applyCustomMinutes() {
 
 async function record(asComplete) {
   const task = selectedTask.value
-  if (!task || recording.value || phase.value !== 'finished') return
+  if ((!task && !pendingRecord.value) || recording.value || phase.value !== 'finished') return
   const minutes = sessionMinutes(elapsedSeconds.value)
   if (!isRecordable(elapsedSeconds.value)) return
   if (pendingRecord.value && pendingRecord.value.asComplete !== asComplete) return
   recording.value = true
   errorMessage.value = ''
+  let attempt = pendingRecord.value
   try {
-    if (!pendingRecord.value) {
+    if (!attempt) {
       const key = globalThis.crypto?.randomUUID?.() || `focus-${Date.now()}-${Math.random().toString(36).slice(2)}`
-      pendingRecord.value = buildFocusSaveAttempt(task, minutes, asComplete, key)
+      attempt = buildFocusSaveAttempt(task, minutes, asComplete, key)
+      rememberAttempt(attempt)
     }
-    await sendFocusSaveAttempt(pendingRecord.value, {
+    await sendFocusSaveAttempt(attempt, {
       recordFocus: tasksApi.recordFocusSession,
       completeFocus: (id, payload, config) => http.post(`/tasks/${id}/complete`, payload, config),
     })
-    notice.value = asComplete ? `已完成「${task.name}」，记录 ${recordLabel(minutes)}` : `已记录 ${recordLabel(minutes)}`
+    if (pendingRecord.value !== attempt) return
+    notice.value = asComplete ? `已完成「${attempt.taskName}」，记录 ${recordLabel(minutes)}` : `已记录 ${recordLabel(minutes)}`
     // The write succeeded; consume the session before a refresh can fail.
-    stopTicker()
-    elapsedSeconds.value = 0
-    phase.value = 'idle'
-    pendingRecord.value = null
+    resetSession()
     await loadTasks()
   } catch (error) {
     errorMessage.value = error?.code === 'EDIT_CONFLICT'
       ? '任务刚被其他页面更新过，请返回任务页刷新后再试'
       : error?.message || '记录失败，请稍后重试'
   } finally {
-    recording.value = false
+    if (!pendingRecord.value || pendingRecord.value === attempt) recording.value = false
   }
 }
 
@@ -297,6 +277,17 @@ async function loadTasks() {
     const listed = await tasksApi.list()
     if (request !== taskRequestId) return
     tasks.value = listed
+    if (activeSession.value) {
+      incomingFocusPending = false
+      selectedId.value = activeSession.value.taskId
+      if (route.query.start) {
+        notice.value = '已有一次专注计时。记录或放弃后，可以开始新的待办。'
+        const query = { ...route.query }
+        delete query.start
+        await router.replace({ path: route.path, query })
+      }
+      return
+    }
     if (incomingFocusPending) {
       incomingFocusPending = false
       const incoming = resolveFocusTask(listed, route.query)
@@ -331,56 +322,12 @@ async function startCreatedTask(task) {
   startTimer()
 }
 
-function protectUnsavedSession(event) {
-  if (!sessionLocked.value) return
-  event.preventDefault()
-  event.returnValue = ''
-}
-
-async function canLeaveFocus() {
-  // Expired sessions and completed sign-outs must always reach the public pages.
-  if (!authSession.user) {
-    ElMessageBox.close()
-    return true
-  }
-  if (recording.value) {
-    notice.value = '正在保存专注记录，完成后再离开。'
-    return false
-  }
-  if (!sessionLocked.value) return true
-  try {
-    await ElMessageBox.confirm('本次专注尚未记录，离开后计时会丢失。', '离开专注计时？', {
-      confirmButtonText: '放弃并离开',
-      cancelButtonText: '继续专注',
-      type: 'warning',
-      autofocus: false,
-    })
-    return true
-  } catch {
-    return false
-  }
-}
-
-onBeforeRouteLeave(canLeaveFocus)
-onBeforeRouteUpdate((to, from) => {
-  if (to.query.task_id === from.query.task_id && to.query.navigation_key === from.query.navigation_key) return true
-  return canLeaveFocus()
-})
 watch(() => [route.query.task_id, route.query.navigation_key], () => {
-  resetTimer()
   incomingFocusPending = true
   loadTasks()
 })
 
-onMounted(() => {
-  loadTasks()
-  window.addEventListener('beforeunload', protectUnsavedSession)
-})
-
-onUnmounted(() => {
-  stopTicker()
-  window.removeEventListener('beforeunload', protectUnsavedSession)
-})
+onMounted(loadTasks)
 </script>
 
 <style scoped>

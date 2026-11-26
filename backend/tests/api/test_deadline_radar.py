@@ -38,6 +38,23 @@ def _radar_payload(task, notice_text: str) -> dict:
     }
 
 
+@pytest.mark.parametrize("estimate", [None, 90])
+def test_pressure_includes_both_deadlines_outside_week_and_preserves_missing_estimates(client, estimate):
+    task = _create_task(client, due_at="2026-12-04T12:00:00Z", estimated_minutes=estimate)
+    payload = _radar_payload(task, "实验报告延后至12月7日晚上8点。")
+    payload["reference_time"] = "2026-11-26T01:45:00Z"
+    response = client.post("/api/deadline-radar/preview", json=payload)
+    assert response.status_code == 200, response.text
+    days = {day["local_date"]: day for day in response.json()["pressure_days"]}
+    original = days["2026-12-04"]
+    proposed = days["2026-12-07"]
+    assert original["original_deadline"] and not original["proposed_deadline"]
+    assert proposed["proposed_deadline"] and not proposed["original_deadline"]
+    assert original["before_minutes"] == proposed["after_minutes"] == (estimate or 0)
+    assert original["before_unestimated_count"] == proposed["after_unestimated_count"] == (estimate is None)
+    assert original["after_task_count"] == proposed["before_task_count"] == 0
+
+
 @pytest.mark.parametrize(
     "wall_time",
     [REFERENCE_TIME, "2030-01-01T00:00:00Z"],

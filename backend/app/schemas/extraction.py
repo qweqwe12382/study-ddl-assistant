@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -98,6 +98,20 @@ class ExtractionFieldEvidenceSet(BaseModel):
     tags: list[ExtractionFieldEvidence] = Field(default_factory=list, max_length=30)
 
 
+class NoticeCalendarCandidate(BaseModel):
+    """A reviewable calendar suggestion. Extraction never edits the calendar."""
+
+    candidate_id: str
+    kind: Literal["exam", "class_change"]
+    title: str = Field(min_length=1, max_length=160)
+    starts_at: UtcDateTime | None = None
+    original_date: date | None = None
+    original_time_text: str | None = None
+    scope: str | None = None
+    location: str | None = None
+    source_quote: str = Field(min_length=1, max_length=1000)
+
+
 class ExtractionResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -105,6 +119,7 @@ class ExtractionResult(BaseModel):
     material_type: str | None = Field(default=None, max_length=50)
     tags: list[str] = Field(default_factory=list)
     tasks: list[ExtractionTaskCandidate] = Field(default_factory=list)
+    calendar_candidates: list[NoticeCalendarCandidate] = Field(default_factory=list, max_length=30)
     warnings: list[str] = Field(default_factory=list)
     needs_review: bool = False
     batch_id: str | None = None

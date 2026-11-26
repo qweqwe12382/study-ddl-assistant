@@ -13,11 +13,9 @@
       </div>
       <div class="extraction-candidate-card__field">
         <label :for="fieldId(index, 'due-at')">截止时间</label>
-        <el-date-picker
+        <BeijingDatePicker
           :id="fieldId(index, 'due-at')"
           v-model="task.due_at"
-          type="datetime"
-          value-format="YYYY-MM-DDTHH:mm:ss"
           placeholder="待补充"
           :aria-label="`截止时间：${task.name || '未命名任务'}`"
         />
@@ -26,6 +24,7 @@
       <div class="extraction-candidate-card__source">
         <span>来源原文</span>
         <p>{{ task.source_quote || '无来源原文' }}</p>
+        <p v-if="task.description">{{ task.description }}</p>
         <div v-if="task.warnings?.length" class="extraction-candidate-card__warnings" aria-label="需要留意的提示">
           <span>需要留意</span>
           <el-tag v-for="warning in task.warnings" :key="warning" size="small" type="warning" class="extraction-warning-tag">{{ extractionWarningLabel(warning) }}</el-tag>
@@ -59,7 +58,8 @@
 </template>
 
 <script setup>
-import { ElCheckbox, ElDatePicker, ElInput, ElInputNumber, ElTag } from 'element-plus'
+import { ElCheckbox, ElInput, ElInputNumber, ElTag } from 'element-plus'
+import BeijingDatePicker from './BeijingDatePicker.vue'
 import { extractionWarningLabel } from '../utils/extractionWarning'
 
 defineProps({

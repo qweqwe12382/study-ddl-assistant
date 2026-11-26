@@ -24,7 +24,7 @@ async def validation_exception_handler(_request: Request, exc: RequestValidation
 
 async def http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
     detail = exc.detail if isinstance(exc.detail, dict) else {"code": "HTTP_ERROR", "message": str(exc.detail)}
-    return JSONResponse(status_code=exc.status_code, content={"error": detail})
+    return JSONResponse(status_code=exc.status_code, content={"error": detail}, headers=exc.headers)
 
 
 async def stale_data_exception_handler(_request: Request, _exc: StaleDataError) -> JSONResponse:

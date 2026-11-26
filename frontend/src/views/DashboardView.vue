@@ -1,5 +1,5 @@
 <template>
-  <div v-loading="loading" :aria-busy="loading">
+  <div>
     <div class="page-intro dashboard-intro">
       <div>
         <h1>今天</h1>
@@ -106,12 +106,11 @@
         @close="clearAgentMessage"
       />
 
-      <nav class="learning-ledger-index" aria-label="今日安排导航">
+      <nav v-if="learningLedgerIndex.length" class="learning-ledger-index" aria-label="今日安排导航">
         <div class="ledger-index-heading">
           <div>
             <strong>今日导航</strong>
           </div>
-          <span>跳到对应区块</span>
         </div>
         <div class="ledger-index-tabs">
           <template v-for="entry in learningLedgerIndex" :key="entry.target">
@@ -133,6 +132,7 @@
       </nav>
 
       <div
+        v-if="detailedDataStatusMessage"
         class="detailed-data-status"
         :class="`is-${detailedDataState}`"
         role="status"
@@ -144,7 +144,7 @@
 
       <div v-if="agentLoading && !briefingLoaded" class="briefing-loading" role="status" aria-live="polite">正在整理资料和今天的安排…</div>
       <template v-else>
-        <section id="today-decision-desk" class="decision-desk-section" aria-labelledby="decision-desk-title" tabindex="-1">
+        <section v-if="showDecisionDesk" id="today-decision-desk" class="decision-desk-section" aria-labelledby="decision-desk-title" tabindex="-1">
           <div class="decision-desk-heading">
             <div>
               <h3 id="decision-desk-title">今日确认台</h3>
@@ -215,7 +215,7 @@
           </template>
         </section>
 
-        <section id="learning-inbox" class="briefing-section inbox-section" aria-labelledby="learning-inbox-title" tabindex="-1">
+        <section v-if="showLearningInbox" id="learning-inbox" class="briefing-section inbox-section" aria-labelledby="learning-inbox-title" tabindex="-1">
           <div class="briefing-section-heading">
             <div>
               <h3 id="learning-inbox-title">学习收件箱</h3>
@@ -247,7 +247,7 @@
           <div v-else class="briefing-inline-empty">当前服务尚未返回收件箱摘要，原有建议仍可继续确认。</div>
         </section>
 
-        <section id="today-actions" class="briefing-section today-section" aria-labelledby="today-actions-title" tabindex="-1">
+        <section v-if="todayActions.length" id="today-actions" class="briefing-section today-section" aria-labelledby="today-actions-title" tabindex="-1">
           <div class="briefing-section-heading">
             <div>
               <h3 id="today-actions-title">今日三件事</h3>
@@ -270,7 +270,7 @@
                 <span>排入：{{ minutesLabel(action.counted_minutes) }}<template v-if="action.minute_source">（{{ minuteSourceLabel(action.minute_source) }}）</template></span>
                 <span>建议时段：{{ slotLabel(action.suggested_slot) }}</span>
               </div>
-              <div class="today-sort-basis"><strong>排序原因</strong>{{ sortBasisLabel(action.sort_basis) }}</div>
+              <details v-if="action.sort_basis.length" class="today-sort-basis"><summary>排序依据</summary>{{ sortBasisLabel(action.sort_basis) }}</details>
               <EvidenceSourceList
                 v-if="actionSourceRefs(action).length"
                 :items="evidenceSourceItems(actionSourceRefs(action), `今日行动${action.task_name || ''}`)"
@@ -374,7 +374,7 @@
         </section>
 
         <template v-if="isDetailedView">
-        <section class="briefing-section recent-results-section">
+        <section v-if="recentResults.length" class="briefing-section recent-results-section">
           <div class="briefing-section-heading">
             <div>
               <h3>最近处理记录</h3>
@@ -389,14 +389,13 @@
                   {{ actionTypeLabel(result.action_type) }} · {{ result.updated_at ? formatDateTime(result.updated_at) : '时间待补充' }}
                 </div>
                 <div v-if="result.receipt?.message" class="recent-result-receipt">处理结果：{{ result.receipt.message }}</div>
-                <div v-else-if="result.receipt?.outcome" class="recent-result-receipt">结果：{{ result.receipt.outcome }}</div>
+                <div v-else-if="result.receipt?.outcome" class="recent-result-receipt">结果：{{ suggestionStatusLabel(result.receipt.outcome) }}</div>
               </div>
               <el-tag :type="suggestionStatusType(result.status)" size="small" effect="plain">
                 {{ suggestionStatusLabel(result.status) }}
               </el-tag>
             </article>
           </div>
-          <div v-else class="briefing-inline-empty">暂时没有可追踪的执行或处理记录。</div>
         </section>
 
         <LedgerDisclosure
@@ -426,20 +425,19 @@
       </template>
 
       <template v-if="isDetailedView">
-      <section id="plan-deltas" class="briefing-section plan-deltas-section" tabindex="-1" aria-labelledby="plan-deltas-title">
+      <section v-if="planDeltas.length" id="plan-deltas" class="briefing-section plan-deltas-section" tabindex="-1" aria-labelledby="plan-deltas-title">
         <div class="briefing-section-heading">
           <div>
             <h3 id="plan-deltas-title">计划差异提醒</h3>
             <span>完成反馈或新的截止任务改变后，只提出需要你确认的重排方案</span>
           </div>
         </div>
-        <p v-if="!planDeltas.length" class="muted">{{ detailedDataState === 'ready' ? '当前没有计划调整候选。' : '计划调整尚未确认，请查看加载状态。' }}</p>
         <div class="plan-delta-list">
           <article v-for="delta in planDeltas" :key="delta.ui_key" class="plan-delta-card">
             <div class="plan-delta-heading">
               <div>
                 <h4>{{ delta.title }}</h4>
-                <div class="suggestion-source">{{ delta.course_name || '未归类课程' }}<template v-if="delta.plan_id"> · 计划 #{{ delta.plan_id }}</template></div>
+                <div class="suggestion-source">{{ delta.course_name || '未归类课程' }}</div>
               </div>
               <el-tag :type="suggestionStatusType(delta.status)" size="small" effect="plain">{{ suggestionStatusLabel(delta.status) }}</el-tag>
             </div>
@@ -549,14 +547,10 @@
           </div>
         </article>
       </div>
-      <div v-else class="agent-empty-state">
-        <div class="agent-empty-title">当前没有待处理建议</div>
-        <div>学习助手会在任务临近截止或安排发生变化时提醒你。</div>
-      </div>
       </template>
     </el-card>
 
-    <el-card v-if="isDetailedView" id="risk-center" class="risk-center-card" shadow="never" aria-labelledby="risk-center-title" tabindex="-1">
+    <el-card v-if="isDetailedView && showRiskCenter" id="risk-center" class="risk-center-card" shadow="never" aria-labelledby="risk-center-title" tabindex="-1">
       <div class="risk-center-heading">
         <div>
           <div class="risk-title-row">
@@ -746,8 +740,10 @@ import { chooseHomeFocus, focusTaskTarget, isRoutineSetup } from '../utils/daily
 const homeQuickAdd = ref(null)
 const { tasks: homeTasks, courses: homeCourses, state: homeState, message: homeMessage, error: homeError, completing: homeCompleting, load: loadHomeTasks, complete: completeHomeTask, retry: retryHomeTasks } = useHomeTasks()
 
-async function refreshHomeTasks() {
-  await Promise.allSettled([loadHomeTasks(), loadDashboard(), loadAgentBriefing()])
+async function refreshHomeTasks(created) {
+  homeTasks.value = [created, ...homeTasks.value.filter(task => task.id !== created.id)]
+  homeState.value = 'ready'
+  await Promise.allSettled([loadHomeTasks({ background: true }), loadDashboard(), loadAgentBriefing()])
 }
 async function retryToday() { await Promise.allSettled([retryHomeTasks(), refreshAgent(false)]) }
 async function completeHomeFocus() {
@@ -755,7 +751,6 @@ async function completeHomeFocus() {
   if (await completeHomeTask(focusStageSource.value.item)) await Promise.allSettled([loadDashboard(), loadAgentBriefing()])
 }
 
-const loading = ref(true)
 const dashboardState = ref('loading')
 const router = useRouter()
 const todayLabel = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', month: 'long', day: 'numeric', weekday: 'long' }).format(new Date())
@@ -935,15 +930,12 @@ const firstLoopMaterialRef = computed(() => {
 })
 const detailedDataStatusMessage = computed(() => {
   if (detailedDataState.value === 'loading') {
-    return '正在加载完整记录：复盘、历史、趋势、活动、计划差异和依据入口会在本次请求完成后显示。'
+    return '正在加载学习记录…'
   }
   if (detailedDataState.value === 'error') {
-    return `部分完整记录未能加载：${detailedDataFailures.value.join('、')}。已保留本次成功返回的数据；可刷新建议后重试。`
+    return `部分学习记录未能加载（${detailedDataFailures.value.join('、')}）。可以刷新后重试。`
   }
-  if (detailedDataState.value === 'ready') {
-    return '完整记录已加载；复盘、历史、趋势、活动、计划差异和依据入口均来自本次查询。'
-  }
-  return '完整记录尚未加载。'
+  return ''
 })
 const focusStageState = computed(() => {
   if (isConciseView.value && homeState.value === 'ready' && homeTasks.value.some(task => !['completed', 'canceled'].includes(task.status))) return 'ready'
@@ -1041,6 +1033,11 @@ const visibleReminders = computed(() => {
   const visible = new Set([...highRisk, ...ordinary])
   return reminders.value.filter((reminder) => visible.has(reminder))
 })
+const showDecisionDesk = computed(() => decisionQueue.value.length > 0 || ['invalid', 'unavailable'].includes(decisionQueueStatus.value))
+const showLearningInbox = computed(() => inbox.value.available
+  && Boolean(inbox.value.ready_count + inbox.value.needs_review_count + inbox.value.failed_count + inbox.value.materials.length))
+const showRiskCenter = computed(() => Boolean(capacityError.value || capacityActions.value.length
+  || capacity.value.known_workload_minutes || capacity.value.missing_estimates_count))
 const learningLedgerIndex = computed(() => {
   const briefingReady = briefingLoaded.value
   const inboxTotal = inbox.value.ready_count + inbox.value.needs_review_count + inbox.value.failed_count
@@ -1071,11 +1068,11 @@ const learningLedgerIndex = computed(() => {
         ? capacityRisk.value.label
         : '待载入'
   return [
-    { target: 'today-decision-desk', label: '今日确认', status: decisionStatus, targetReady: briefingReady },
-    { target: 'learning-inbox', label: '学习收件箱', status: inboxStatus, targetReady: briefingReady },
-    { target: 'today-actions', label: '今日行动', status: todayStatus, targetReady: briefingReady },
-    { target: 'risk-center', label: '风险中心', status: riskStatus, targetReady: true },
-  ]
+    showDecisionDesk.value && { target: 'today-decision-desk', label: '今日确认', status: decisionStatus, targetReady: briefingReady },
+    showLearningInbox.value && { target: 'learning-inbox', label: '学习收件箱', status: inboxStatus, targetReady: briefingReady },
+    todayActions.value.length && { target: 'today-actions', label: '今日行动', status: todayStatus, targetReady: briefingReady },
+    showRiskCenter.value && { target: 'risk-center', label: '风险中心', status: riskStatus, targetReady: true },
+  ].filter(Boolean)
 })
 
 function goToTasks() {
@@ -1706,14 +1703,14 @@ function reminderSeverityLabel(level) {
 
 function minutesLabel(value) {
   const minutes = numberOrNull(value)
-  return minutes === null ? '待补估时' : `${Math.max(0, Math.round(minutes))} 分钟`
+  return minutes === null ? '用时待估' : `${Math.max(0, Math.round(minutes))} 分钟`
 }
 
 function minuteSourceLabel(value) {
   return {
     remaining_minutes: '按剩余用时',
     estimated_minutes: '按预计用时',
-  }[String(value || '').toLowerCase()] || safeText(value, '已知用时')
+  }[String(value || '').toLowerCase()] || '已知用时'
 }
 
 function slotLabel(slot) {
@@ -1727,11 +1724,11 @@ function sortBasisLabel(value) {
 function targetLabel(action) {
   const ids = action.target_ids || {}
   const targets = []
-  if (ids.task_id) targets.push(`任务 #${ids.task_id}`)
-  if (ids.material_id) targets.push(`资料 #${ids.material_id}`)
-  if (ids.course_id) targets.push(`课程 #${ids.course_id}`)
+  if (ids.task_id) targets.push(homeTasks.value.find(task => task.id === ids.task_id)?.name || '相关任务')
+  if (ids.material_id) targets.push('相关资料')
+  if (ids.course_id) targets.push('相关课程')
   if (!targets.length && action.target_type === 'local_date' && action.target_id) targets.push(`日期 ${action.target_id}`)
-  if (!targets.length && action.target_type === 'task' && action.target_id) targets.push(`任务 #${action.target_id}`)
+  if (!targets.length && action.target_type === 'task' && action.target_id) targets.push('相关任务')
   return targets.length ? targets.join('、') : '目标待补充'
 }
 
@@ -2124,7 +2121,7 @@ function normalizeInbox(response) {
   })
   const bucketMaterials = ['ready', 'needs_review', 'failed'].flatMap((status) => buckets[status].ids.map((id) => ({
     id,
-    name: `资料 #${id}`,
+    name: '相关资料',
     status,
   })))
   const materials = [...listedMaterials, ...bucketMaterials]
@@ -2180,7 +2177,14 @@ function normalizeSortBasis(value) {
         }[key]
         if (key === 'deadline_hours') {
           const hours = numberOrNull(item)
-          return hours === null ? '距截止：未设置' : hours < 0 ? '距截止：已逾期' : `距截止：${hours} 小时`
+          if (hours === null) return '截止时间待补充'
+          if (hours < 0) return '已逾期'
+          if (hours < 1) return '不到一小时后截止'
+          const wholeHours = Math.floor(hours)
+          const days = Math.floor(wholeHours / 24)
+          const remainder = wholeHours % 24
+          const remaining = [days && `${days} 天`, remainder && `${remainder} 小时`].filter(Boolean).join(' ')
+          return `约 ${remaining}后截止`
         }
         if (key === 'course_weight') return `课程权重：${item} 倍`
         if (key === 'minute_source') return `用时依据：${minuteSourceLabel(item)}`
@@ -3482,12 +3486,14 @@ async function dismissSuggestion(suggestion) {
   }
 }
 
+let dashboardRequest = 0
 async function loadDashboard() {
-  loading.value = true
-  dashboardState.value = 'loading'
+  const request = ++dashboardRequest
+  if (dashboardState.value !== 'ready') dashboardState.value = 'loading'
   error.value = ''
   try {
     const normalized = normalizeDashboard(await dashboardApi.get())
+    if (request !== dashboardRequest) return
     if (!normalized) {
       dashboard.value = emptyDashboard()
       upcomingTasks.value = []
@@ -3503,14 +3509,13 @@ async function loadDashboard() {
     recentMaterials.value = normalized.recent_materials
     dashboardState.value = 'ready'
   } catch (err) {
+    if (request !== dashboardRequest || dashboardState.value === 'ready') return
     dashboard.value = emptyDashboard()
     upcomingTasks.value = []
     overdueTasks.value = []
     recentMaterials.value = []
     dashboardState.value = 'error'
     error.value = err.message
-  } finally {
-    loading.value = false
   }
 }
 
