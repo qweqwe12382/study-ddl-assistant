@@ -3,7 +3,6 @@
     <header class="focus-header">
       <div>
         <h1>专注计时</h1>
-        <p class="focus-lead">一次一件事，留点时间给专注。</p>
       </div>
       <router-link class="focus-back" to="/tasks">返回截止任务</router-link>
     </header>
@@ -26,7 +25,7 @@
     </section>
 
     <section v-else class="focus-board" :class="{ 'is-running': phase === 'running', 'is-finished': phase === 'finished' }">
-      <div class="focus-main">
+      <div class="focus-setup">
         <label class="focus-field">
           <span>这次要专注什么？</span>
           <select v-model="selectedId" :disabled="sessionLocked" data-testid="focus-task-select" @change="errorMessage = ''">
@@ -59,6 +58,7 @@
               max="240"
               step="5"
               inputmode="numeric"
+              placeholder="自定"
               aria-label="自定义专注分钟（15 到 240）"
               :disabled="sessionLocked"
               @change="applyCustomMinutes"
@@ -67,11 +67,19 @@
           </label>
         </div>
 
-        <p class="focus-clock" role="timer" aria-label="专注剩余时间">{{ clock }}</p>
-        <div class="focus-track" aria-hidden="true">
-          <span class="focus-fill" :style="{ transform: `scaleX(${progressPercent / 100})` }"></span>
+      </div>
+      <div class="dial-panel">
+        <div class="dial">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="dial-track" cx="60" cy="60" r="54" />
+            <circle class="dial-remaining" cx="60" cy="60" r="54" pathLength="100" stroke-dasharray="100" :stroke-dashoffset="progressPercent" transform="rotate(-90 60 60)" />
+          </svg>
+          <div class="dial-readout">
+            <span class="dial-state">{{ phaseLabel }}</span>
+            <p class="focus-clock" role="timer" aria-label="专注剩余时间">{{ clock }}</p>
+            <span class="dial-target">目标 {{ durationMinutes }} 分钟</span>
+          </div>
         </div>
-        <p class="focus-meta">{{ phaseLabel }} · 目标 {{ durationMinutes }} 分钟</p>
 
         <div class="control-row">
           <button v-if="phase === 'idle' || phase === 'paused'" class="focus-action primary" type="button" :disabled="!selectedTask" @click="startTimer">
@@ -95,7 +103,7 @@
       <aside class="focus-record" aria-live="polite">
         <template v-if="phase !== 'finished'">
           <el-icon class="focus-record-icon" aria-hidden="true"><Timer /></el-icon>
-          <h3>{{ phase === 'running' ? '这段时间，留给眼前的事' : '准备好就开始吧' }}</h3>
+          <h3>记录专注用时</h3>
           <p>满 15 分钟后，可确认记录用时。</p>
            <details class="focus-record-help"><summary>计时与保存说明</summary><small>暂停期间停止计时。同一标签页内切换页面或刷新后可继续。</small></details>
         </template>
@@ -177,17 +185,12 @@ const selectedTask = computed(() => {
 const clock = computed(() => formatClock(Math.max(0, durationMinutes.value * 60 - elapsedSeconds.value)))
 const progressPercent = computed(() => {
   const total = Math.max(1, durationMinutes.value * 60)
-  return Math.min(100, Math.round((elapsedSeconds.value / total) * 100))
+  return Math.min(100, (elapsedSeconds.value / total) * 100)
 })
 const canRecord = computed(() => isRecordable(elapsedSeconds.value))
 const recordedLabel = computed(() => recordLabel(sessionMinutes(elapsedSeconds.value)))
 const isCustomDuration = computed(() => !FOCUS_PRESET_MINUTES.includes(durationMinutes.value))
-const phaseLabel = computed(() => {
-  if (phase.value === 'running') return `正在专注 ${recordedLabel.value}`
-  if (phase.value === 'paused') return `已暂停于 ${recordedLabel.value}`
-  if (phase.value === 'finished') return `本次共 ${recordedLabel.value}`
-  return `准备开始 · 从 ${clock.value} 倒计时`
-})
+const phaseLabel = computed(() => ({ idle: '准备开始', running: '专注中', paused: '已暂停', finished: '本次已结束' })[phase.value])
 
 function startTimer() {
   if (recording.value || phase.value === 'running' || (phase.value === 'finished' && canRecord.value)) return
@@ -344,8 +347,17 @@ onMounted(loadTasks)
 .focus-back:hover { color: var(--ledger-indigo); border-color: var(--ledger-indigo); }
 .focus-alert { margin-bottom: 14px; padding: 11px 14px; border: 1px solid #e3b6b6; border-radius: 10px; background: #fdf1f1; color: #8c3b3b; font-size: 13px; }
 .focus-notice { margin-bottom: 14px; padding: 11px 14px; border: 1px solid var(--ledger-line); border-radius: 10px; background: var(--ledger-paper); color: var(--ledger-ink); font-size: 14px; }
-.focus-board { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(260px, .75fr); gap: 28px; padding: 24px; border: 1px solid var(--ledger-line); border-radius: 12px; background: var(--ledger-paper); transition: border-color .2s ease; }
-.focus-board.is-running { border-color: var(--ledger-indigo); }
+.focus-board { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(260px, 1fr); grid-template-areas: 'dial setup' 'dial record'; grid-template-rows: auto 1fr; gap: 24px; padding: 20px; border: 1px solid var(--ledger-line); border-radius: var(--ledger-radius); box-shadow: var(--ledger-shadow); background: var(--ledger-paper); }
+.focus-setup { grid-area: setup; min-width: 0; padding-top: 12px; }
+.dial-panel { grid-area: dial; display: grid; justify-items: center; align-content: center; min-width: 0; gap: 16px; padding: clamp(18px, 3vw, 32px); background: #193f34; color: #fff; border-radius: 12px; }
+.dial { display: grid; place-items: center; width: min(100%, 280px); aspect-ratio: 1; }
+.dial > * { grid-area: 1 / 1; }
+.dial svg { width: 100%; fill: none; stroke-width: 2.4; }
+.dial-track { stroke: #47675a; }
+.dial-remaining { stroke: #c7dcc4; stroke-linecap: round; transition: stroke-dashoffset .3s linear; }
+.is-running .dial-remaining { stroke: #dcecc3; }
+.dial-readout { display: grid; justify-items: center; gap: 6px; }
+.dial-state, .dial-target { color: #d6e4db; font-size: 13px; }
 .focus-board.is-loading, .focus-board.is-empty { display: block; color: var(--ledger-muted); font-size: 14px; }
 .focus-board.is-empty h3 { margin: 0 0 8px; color: var(--ledger-ink); }
 .focus-board.is-empty p { margin: 0 0 18px; }
@@ -355,25 +367,24 @@ onMounted(loadTasks)
 .preset-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .preset-chip { min-height: 44px; padding: 0 14px; border: 1px solid var(--ledger-line); border-radius: 7px; background: #fff; color: var(--ledger-muted); font-size: 13px; font-weight: 600; cursor: pointer; }
 .preset-chip.active { color: #fff; border-color: var(--ledger-indigo); background: var(--ledger-indigo); }
-.preset-chip:disabled { opacity: .55; cursor: default; }
+.preset-chip:disabled { cursor: default; }
+.preset-chip:disabled:not(.active) { color: var(--ledger-muted); background: var(--ledger-canvas); }
 .custom-minutes { display: inline-flex; align-items: center; gap: 5px; min-height: 44px; padding: 0 11px; border: 1px solid var(--ledger-line); border-radius: 7px; color: var(--ledger-muted); font-size: 13px; font-weight: 600; }
 .custom-minutes.active { color: #fff; border-style: solid; border-color: var(--ledger-indigo); background: var(--ledger-indigo); }
 .custom-minutes input { width: 58px; border: 0; background: transparent; color: inherit; font-size: 12.5px; font-weight: 700; text-align: center; }
 .custom-minutes input:disabled { opacity: .55; }
-.focus-clock { margin: 30px 0 14px; color: var(--ledger-ink); font-family: var(--font-ui); font-size: clamp(68px, 7vw, 92px); font-weight: 650; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
-.is-running .focus-clock { color: var(--ledger-indigo); animation: focus-state-settle .32s ease-out; }
+.focus-clock { margin: 0; font: 600 clamp(46px, 5vw, 64px)/1.15 var(--font-ui); font-variant-numeric: tabular-nums; }
 .is-finished .focus-record { border-color: #c8ddd1; animation: focus-state-settle .32s ease-out; }
-.focus-track { height: 5px; overflow: hidden; border-radius: 99px; background: #e5ede8; }
-.focus-fill { display: block; width: 100%; height: 100%; border-radius: 99px; background: var(--ledger-indigo); transform-origin: left; transition: transform 1s linear; }
-.focus-meta { margin: 10px 0 0; color: var(--ledger-muted); font-size: 12px; font-weight: 600; }
-.control-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.control-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.dial-panel .focus-action { color: #fff; background: transparent; border-color: #8ea99c; }
+.dial-panel .focus-action.primary, .dial-panel .focus-action:hover:not(:disabled) { color: #193f34; background: #e7f1e4; border-color: #e7f1e4; }
 .focus-action { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 18px; border: 1px solid var(--ledger-line); border-radius: 10px; background: #fff; color: var(--ledger-ink); font-size: 13px; font-weight: 750; cursor: pointer; }
 .focus-action:hover:not(:disabled) { color: var(--ledger-indigo); border-color: var(--ledger-indigo); }
 .focus-action.primary { color: #fff; border-color: var(--ledger-indigo); background: var(--ledger-indigo); }
 .focus-action.primary:hover:not(:disabled) { color: #fff; border-color: var(--ledger-indigo); filter: brightness(1.05); }
 .focus-action:disabled { opacity: .55; cursor: default; }
 .focus-action.quiet { border-style: dashed; }
-.focus-record { align-self: stretch; padding: 8px 0 8px 24px; border-left: 1px solid var(--ledger-line); }
+.focus-record { grid-area: record; padding-top: 20px; border-top: 1px solid var(--ledger-line); }
 .focus-record h3 { margin: 0 0 9px; color: var(--ledger-ink); font-size: 15px; }
 .focus-record p { margin: 0; color: var(--ledger-muted); font-size: 12.5px; line-height: 1.8; }
 .focus-record small { display: block; margin-top: 14px; color: var(--ledger-muted); font-size: 12px; line-height: 1.75; }
@@ -381,10 +392,12 @@ onMounted(loadTasks)
 @keyframes focus-state-settle { from { opacity: .7; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 760px) {
   .focus-page { padding: 0 0 28px; }
-  .focus-header { flex-direction: column; }
-  .focus-board { grid-template-columns: 1fr; padding: 18px; }
+  .focus-header { align-items: center; }
+  .focus-board { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; grid-template-areas: 'setup' 'dial' 'record'; gap: 16px; padding: 14px; }
+  .focus-setup { padding: 0; }
+  .dial { width: min(100%, 214px); }
   .focus-record { padding: 20px 0 0; border-left: 0; border-top: 1px solid var(--ledger-line); }
   .focus-clock { font-size: 52px; }
 }
-@media (prefers-reduced-motion: reduce) { .focus-board, .focus-fill { transition: none; } .is-running .focus-clock, .is-finished .focus-record { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .dial-remaining { transition: none; } .is-finished .focus-record { animation: none; } }
 </style>

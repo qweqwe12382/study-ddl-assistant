@@ -47,15 +47,14 @@
                   <span v-else class="task-agenda__check is-done" :aria-label="task.completed ? '已完成' : '已取消'"><el-icon v-if="task.completed" aria-hidden="true"><Check /></el-icon><span v-else aria-hidden="true">–</span></span>
                   <div class="task-agenda__card-topline">
                     <h4><button type="button" class="task-agenda__title-button" :disabled="hasBusyTasks" :aria-label="`编辑任务：${task.name}`" @click="emit('edit-task', task.source)">{{ task.name }}</button></h4>
-                    <span v-if="!task.terminal && task.statusLabel !== '逾期'" class="task-agenda__status">{{ task.statusLabel }}</span>
+                    <span v-if="task.remainingLabel" class="due-pill" :class="task.urgency">{{ task.remainingLabel }}</span>
+                    <span v-if="task.source.status === 'in_progress'" class="task-agenda__status">{{ task.statusLabel }}</span>
                   </div>
 
                   <p class="task-agenda__schedule">
-                    <span class="task-agenda__course" :aria-label="`课程：${task.courseName}`">{{ task.courseName }}</span>
+                    <CourseLabel :name="task.courseName" :color="task.source.course_color" />
                     <time v-if="task.dueIso" :datetime="task.dueIso">{{ task.dueLabel }}</time>
                     <span v-else>{{ task.dueLabel }}</span>
-                    <span v-if="task.remainingLabel" aria-hidden="true"> · </span>
-                    <span>{{ task.remainingLabel }}</span>
                     <template v-if="task.workloadLabel">
                       <span aria-hidden="true"> · </span>
                       <span>{{ task.workloadLabel }}</span>
@@ -137,6 +136,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Check } from '@element-plus/icons-vue'
+import CourseLabel from './CourseLabel.vue'
 import { focusTaskTarget } from '../utils/dailyWorkflow'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -274,6 +274,7 @@ function normalizeTask(source, sourceIndex, now, todayKey) {
   const dueDate = parsedDue?.date || null
   const dueDayKey = dueDate ? localDayKey(dueDate) : null
   const groupId = groupFor({ completed, canceled, dueDate, dueDayKey, hasTime: parsedDue?.hasTime, now, todayKey })
+  const daysLeft = dueDate && (parsedDue.hasTime ? (dueDate - now) / DAY : localDayDifference(dueDate, now))
   const remainingLabel = remainingText({ groupId, dueDate, dueDayKey, hasTime: parsedDue?.hasTime, now, todayKey })
   const remainingMinutes = validMinutes(source.remaining_minutes)
   const estimatedMinutes = validMinutes(source.estimated_minutes)
@@ -294,6 +295,7 @@ function normalizeTask(source, sourceIndex, now, todayKey) {
     dueIso: dueDate?.toISOString() || null,
     dueLabel: dueLabel(dueDate, parsedDue?.hasTime),
     remainingLabel,
+    urgency: daysLeft === null ? '' : daysLeft <= 1 ? 'due-soon' : daysLeft <= 3 ? 'due-near' : '',
     workloadLabel: canceled ? null : workloadText(remainingMinutes, estimatedMinutes, actualMinutes, completed),
     sourceContext: normalizeSourceContext(source.source_context),
     statusLabel: statusText(source.status, groupId),
@@ -505,13 +507,15 @@ function formatDateTime(date) {
 @keyframes task-saving { to { transform: rotate(360deg); } }
 .task-agenda__card-topline { display: flex; grid-column: 2; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; min-width: 0; }
 .task-agenda__card-topline h4 { margin: 0; min-width: 0; }
-.task-agenda__title-button { display: block; padding: 5px 0; min-height: 32px; border: 0; color: var(--ledger-ink); background: transparent; font-size: 14px; font-weight: 600; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.task-agenda__title-button { display: block; padding: 5px 0; min-height: 32px; border: 0; color: var(--ledger-ink); background: transparent; font: 600 15px/1.5 var(--font-content); text-align: left; overflow-wrap: anywhere; cursor: pointer; }
 .task-agenda__title-button:hover { color: var(--ledger-link); text-decoration: underline; text-underline-offset: 4px; }
 .task-agenda__card--completed .task-agenda__title-button { color: var(--ledger-muted); text-decoration: line-through; text-decoration-color: #9eb0a5; }
-.task-agenda__status { font-size: 11px; color: var(--ledger-muted); }
+.task-agenda__status { font-size: 12px; color: var(--ledger-muted); }
 .task-agenda__schedule { display: flex; grid-column: 2; flex-wrap: wrap; gap: 2px 6px; margin: 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .task-agenda__schedule time { font-variant-numeric: tabular-nums; }
-.task-agenda__course { margin-right: 4px; }
+.due-pill { display: inline-block; max-width: 100%; padding: 2px 9px; border-radius: 999px; background: var(--ledger-canvas); color: var(--ledger-muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.due-soon { background: var(--ledger-coral-soft); color: var(--ledger-coral-text); }
+.due-near { background: var(--ledger-amber-soft); color: var(--ledger-amber-text); }
 .task-agenda__source { grid-column: 2; min-width: 0; color: var(--ledger-muted); font-size: 12px; }
 .task-agenda__source--deleted { color: var(--ledger-amber-text); }
 .task-agenda__source-action { min-height: 32px; max-width: 100%; padding: 5px 0; border: 0; color: var(--ledger-link); background: transparent; font-size: 12px; overflow-wrap: anywhere; cursor: pointer; text-align: left; }

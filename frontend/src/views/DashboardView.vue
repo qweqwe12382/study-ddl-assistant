@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div :class="{ 'daily-layout': isConciseView && !firstLearningLoopPriority }">
     <div class="page-intro dashboard-intro">
       <div>
         <h1>今天</h1>
@@ -32,6 +32,7 @@
       @open-tasks="navigateFirstLearningLoop('complete')"
     />
 
+    <UpcomingExamCard v-if="isConciseView && !firstLearningLoopPriority" />
     <div v-if="isConciseView && !firstLearningLoopPriority" class="concise-flow-grid" aria-label="今日学习流">
       <DeadlineFlow
         :state="deadlineFlowState"
@@ -731,6 +732,7 @@ import FirstLearningLoop from '../components/FirstLearningLoop.vue'
 import LedgerDisclosure from '../components/LedgerDisclosure.vue'
 import DashboardDeferredPanel from '../components/dashboard/DashboardDeferredPanel.vue'
 import TodayFocusStage from '../components/TodayFocusStage.vue'
+import UpcomingExamCard from '../components/UpcomingExamCard.vue'
 import { shouldPrioritizeFirstLearningLoop } from '../utils/firstLearningLoopPlacement'
 import { normalizePlanDeltaLines, planStateLines } from '../utils/planDeltaDisplay'
 import QuickTaskAdd from '../components/QuickTaskAdd.vue'
@@ -961,7 +963,9 @@ const focusStageItem = computed(() => {
   if (!source) return null
   if (source.kind === 'task') return {
     title: source.item.name,
-    meta: `${source.item.course_name || homeCourses.value.find(course => course.id === source.item.course_id)?.name || '个人任务'} · ${source.item.due_at ? formatDateTime(source.item.due_at) + ' 截止' : '未定截止日期'}`,
+    course: homeCourses.value.find(course => course.id === source.item.course_id),
+    meta: [source.item.due_at ? formatDateTime(source.item.due_at) + ' 截止' : '未定截止日期',
+      source.item.estimated_minutes ? `预计 ${source.item.estimated_minutes} 分钟` : ''].filter(Boolean).join(' · '),
     detail: '先按截止时间，再按优先级排序。做完即可勾掉，无需填写预计时长。',
     badge: isOverdue(source.item) ? '已逾期' : '待完成',
     tone: isOverdue(source.item) ? 'coral' : 'neutral',
@@ -3538,6 +3542,14 @@ onMounted(async () => {
 .home-task-error { margin: 0 0 16px; color: #a12f25; font-size: 14px; }
 .home-task-error button { min-height: 44px; border: 0; background: transparent; color: var(--ledger-link); cursor: pointer; }
 .dashboard-intro { align-items: center; }
+.daily-layout > .exam-glance { margin-bottom: 24px; }
+@media (min-width: 1280px) {
+  .daily-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 30%); column-gap: 24px; align-content: start; }
+  .daily-layout > * { grid-column: 1 / -1; }
+  .daily-layout > .today-focus-stage { grid-column: 1; }
+  .daily-layout > .exam-glance { grid-column: 2; }
+  .daily-layout > .concise-flow-grid { grid-template-columns: subgrid; }
+}
 .dashboard-intro-actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 12px; }
 .quick-task-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 16px; color: var(--ledger-link); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 8px; font: inherit; font-size: 14px; cursor: pointer; }
 .quick-task-button:hover { border-color: var(--ledger-indigo); }

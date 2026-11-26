@@ -28,6 +28,7 @@
         </div>
         <div class="ticket-content">
           <h3>{{ focus.title }}</h3>
+          <CourseLabel v-if="focus.course" :name="focus.course.name" :color="focus.course.color" />
           <p v-if="focus.meta" class="ticket-meta">{{ focus.meta }}</p>
           <details v-if="focus.detail" class="ticket-context">
             <summary>为什么先做这件事</summary>
@@ -45,7 +46,7 @@
             {{ focus.actionLoading ? '正在处理…' : focus.actionLabel }}
           </button>
           <button v-if="focus.canComplete" type="button" class="secondary-action" :disabled="focus.completing" :aria-busy="Boolean(focus.completing)" @click="$emit('complete-focus')">
-            {{ focus.completing ? '正在完成…' : '已完成' }}
+            {{ focus.completing ? '正在完成…' : '标记完成' }}
           </button>
         </div>
       </article>
@@ -98,6 +99,7 @@
 <script setup>
 import { computed } from 'vue'
 import studyMoment from '../assets/study-moment.webp'
+import CourseLabel from './CourseLabel.vue'
 
 const props = defineProps({
   state: { type: String, default: 'loading' },
@@ -125,7 +127,7 @@ const stateDetail = computed(() => ({
 <style scoped>
 .ticket-actions { display: flex; grid-column: 1; align-items: center; flex-wrap: wrap; clear: both; gap: 10px; margin-top: 12px; }
 .ticket-actions .primary-action { margin: 0; }
-.today-focus-stage { min-width: 0; margin: 0 0 24px; padding: 20px 28px; color: var(--ledger-ink); background: var(--ledger-paper); border: 1px solid var(--ledger-line); border-radius: 10px; border-top: 3px solid var(--ledger-primary); box-shadow: 0 5px 20px -16px #182e2933; }
+.today-focus-stage { min-width: 0; margin: 0 0 24px; padding: 20px 28px; color: var(--ledger-ink); background: linear-gradient(116deg, var(--ledger-paper) 55%, #f1f6f2); border-radius: var(--ledger-radius); box-shadow: var(--ledger-shadow); }
 .stage-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .stage-heading h2 { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.5; }
 .details-link { min-height: 44px; flex: 0 0 auto; padding: 0 4px; color: var(--ledger-muted); background: transparent; border: 0; font: inherit; font-size: 13px; cursor: pointer; }
@@ -151,7 +153,7 @@ const stateDetail = computed(() => ({
 .tone-amber .ticket-badge, .tone-amber .attention-badge { color: #805d22; background: #faf4e8; }
 .tone-coral .ticket-badge, .tone-coral .attention-badge { color: #a24a42; background: #fcf0ee; }
 .ticket-content { display: grid; grid-column: 1; align-content: center; min-width: 0; padding: 10px 0 12px; }
-.ticket-content h3 { grid-column: 1; margin: 0; overflow-wrap: anywhere; font-family: var(--font-display); font-size: 28px; font-weight: 700; line-height: 1.45; letter-spacing: -.025em; }
+.ticket-content h3 { grid-column: 1; margin: 0 0 6px; overflow-wrap: anywhere; font-family: var(--font-content); font-size: clamp(22px, 2vw, 28px); font-weight: 700; line-height: 1.4; }
 .ticket-detail { grid-column: 1; max-width: 65ch; margin: 10px 0 0; color: var(--ledger-muted); font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
 .ticket-meta { grid-column: 1; margin: 8px 0 0; color: var(--ledger-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .primary-action, .secondary-action { min-height: 44px; padding: 10px 18px; border-radius: 6px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
@@ -180,7 +182,7 @@ const stateDetail = computed(() => ({
 .summary-item dd { margin: 0; overflow-wrap: anywhere; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.5; }
 .details-link:focus-visible, .primary-action:focus-visible, .secondary-action:focus-visible { outline: 3px solid rgba(50, 120, 100, .35); outline-offset: 3px; }
 @media (min-width: 1100px) {
-  .today-focus-stage.has-attention { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); column-gap: 26px; }
+  :not(.daily-layout) > .today-focus-stage.has-attention { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); column-gap: 26px; }
   .has-attention .stage-heading, .has-attention .summary-list { grid-column: 1 / -1; }
   .has-attention .focus-ticket, .has-attention .focus-empty { grid-column: 1; }
   .has-attention .focus-ticket { grid-template-columns: minmax(0, 1fr) 120px; gap: 12px; }
@@ -188,6 +190,9 @@ const stateDetail = computed(() => ({
   .has-attention .attention-list { margin-top: 4px; }
   .has-attention .attention-item { padding: 8px 0; }
   .has-attention .summary-list { margin-top: 12px; }
+}
+@media (min-width: 1100px) {
+  .daily-layout > .has-attention .attention-section { margin-top: 16px; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--ledger-line); }
 }
 @media (max-width: 720px) { .focus-ticket { grid-template-columns: minmax(0, 1fr) 130px; gap: 12px; } .ticket-content { grid-template-columns: minmax(0, 1fr); } .primary-action { grid-column: 1; grid-row: auto; justify-self: start; margin-top: 12px; max-width: none; } }
 @media (max-width: 560px) { .today-focus-stage { padding: 16px; } .stage-heading { align-items: flex-start; } .details-link { padding-right: 0; text-align: right; } .focus-ticket { display: block; } .study-moment { float: right; width: 94px; margin: 8px 0 4px 12px; } .ticket-content { display: block; } .ticket-content h3 { font-size: 22px; } .summary-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; } .attention-item { gap: 10px; } .attention-action { padding: 8px; } .primary-action { max-width: none; } }

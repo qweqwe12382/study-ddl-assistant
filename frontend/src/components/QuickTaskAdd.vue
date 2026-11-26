@@ -1,7 +1,8 @@
 <template>
   <form class="quick-add" aria-label="快速添加任务" @submit.prevent="submitQuickAdd">
-    <label class="quick-add-label" for="quick-task-name">先记下来</label>
+    <label class="quick-add-label" for="quick-task-name">记下一项任务</label>
     <div class="quick-add-entry">
+      <el-icon class="entry-plus" aria-hidden="true"><Plus /></el-icon>
       <input id="quick-task-name" ref="nameInput" v-model="name" class="quick-add-name" name="quick_task_name" type="text" maxlength="200" placeholder="例如：完成高数第三章习题" :disabled="submitting" aria-describedby="quick-add-help quick-add-feedback" @keydown.enter="onEnter">
       <button class="quick-add-submit" type="submit" :disabled="submitting">{{ submitting ? '正在添加…' : submitLabel }}</button>
     </div>
@@ -25,7 +26,7 @@
           </label>
           <div class="quick-add-due" role="group" aria-label="快捷截止时间">
             <span class="quick-due-label">截止日期（北京时间，可选）</span>
-            <button v-for="chip in QUICK_DUE_CHIPS" :key="chip.key" type="button" class="quick-chip" :class="{ active: dueChip === chip.key }" :aria-pressed="dueChip === chip.key" :disabled="submitting" @click="dueChip = dueChip === chip.key ? '' : chip.key">{{ chip.label }}</button>
+            <button v-for="chip in QUICK_DUE_CHIPS.slice(2)" :key="chip.key" type="button" class="quick-chip" :class="{ active: dueChip === chip.key }" :aria-pressed="dueChip === chip.key" :disabled="submitting" @click="dueChip = dueChip === chip.key ? '' : chip.key">{{ chip.label }}</button>
             <ElDatePicker v-model="customDate" class="quick-custom-date" aria-label="自选截止日期" placeholder="自选日期" :disabled="submitting" :default-value="new Date(localReferenceDateTime().slice(0, 10) + 'T12:00:00')" value-format="YYYY-MM-DD" @change="dueChip = customDate ? 'custom' : ''" />
             <button v-if="dueChip" type="button" class="quick-add-toggle" :disabled="submitting" @click="clearDate">清除日期</button>
           </div>
@@ -42,7 +43,7 @@
 
 <script setup>
 import { computed, nextTick, ref } from 'vue'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ArrowDown, Plus } from '@element-plus/icons-vue'
 import { ElDatePicker } from 'element-plus'
 import { tasksApi } from '../api'
 import { localReferenceDateTime } from '../utils/pasteNotice'
@@ -103,8 +104,11 @@ async function submitQuickAdd() {
 .quick-dates .quick-chip.active { background: #f1f7f3; box-shadow: inset 0 0 0 1px var(--ledger-indigo); }
 .quick-add { min-width: 0; margin-bottom: 18px; padding: 16px 18px; border: 1px solid var(--ledger-line); border-radius: var(--ledger-radius); background: var(--ledger-paper); }
 .quick-add-label { display: block; margin-bottom: 9px; color: var(--ledger-ink); font-size: 14px; font-weight: 650; }
-.quick-add-entry { display: flex; align-items: stretch; gap: 10px; }
-.quick-add-name { width: 100%; min-width: 0; min-height: 46px; padding: 10px 13px; border: 1px solid #cbd4e0; border-radius: 8px; color: var(--ledger-ink); background: #fff; font-size: 14px; }
+.quick-add-entry { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 14px; border: 1px solid var(--ledger-line); border-radius: 12px; }
+.quick-add-entry:focus-within { border-color: var(--ledger-primary); box-shadow: 0 0 0 3px var(--ledger-soft); }
+.entry-plus { flex: none; color: var(--ledger-primary); font-size: 18px; }
+.quick-add-name { flex: 1; min-width: 0; min-height: 44px; padding: 6px 0; border: 0; color: var(--ledger-ink); background: transparent; font: 15px/1.5 var(--font-content); }
+.quick-add-name:focus-visible { outline: none; }
 .quick-add-submit { flex-shrink: 0; min-height: 46px; padding: 10px 20px; border: 0; border-radius: 8px; background: var(--ledger-indigo); color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
 .quick-add-submit:hover:not(:disabled) { background: var(--ledger-link); }
 .quick-add-submit:disabled { opacity: .6; cursor: wait; }
@@ -124,5 +128,15 @@ async function submitQuickAdd() {
 .quick-custom-date { width: min(145px, 100%); }
 .quick-add-feedback { display: flex; align-items: baseline; gap: 8px; margin: 10px 0 0; color: #2e7156; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .quick-add-feedback.is-error { color: #b14242; }
+@media (min-width: 1100px) {
+  .daily-layout > .quick-add { display: grid; grid-template-columns: minmax(0,1fr) auto auto; column-gap: 14px; align-items: center; }
+  .daily-layout .quick-add-label { grid-area: 1 / 1; }
+  .daily-layout .quick-add-options-heading { display: contents; }
+  .daily-layout .quick-add-options-heading p { grid-area: 1 / 2 / 2 / 4; margin: 0 0 9px; text-align: right; font-size: 13px; }
+  .daily-layout .quick-add-entry { grid-area: 2 / 1; }
+  .daily-layout .quick-dates { grid-area: 2 / 2; }
+  .daily-layout .quick-add-toggle { grid-area: 2 / 3; }
+  .daily-layout .quick-add-options, .daily-layout #quick-add-feedback { grid-column: 1 / -1; }
+}
 @media (max-width: 560px) { .quick-add { padding: 14px; } .quick-add-entry { gap: 8px; } .quick-add-submit { padding: 10px 12px; } .quick-add-name, .quick-add-course { font-size: 16px; } .quick-add-options-heading p { flex-basis: 100%; margin: 6px 0 0; } .quick-dates { margin-left: 0; margin-right: auto; } }
 </style>

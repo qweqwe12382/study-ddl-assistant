@@ -10,8 +10,13 @@
   --ledger-coral: #b9514d;
   --ledger-line: #dce4df;
   --ledger-muted: #5c7066;
-  --ledger-shadow: none;
-  --ledger-radius: 10px;
+  --ledger-soft: #e8f1ec;
+  --ledger-coral-text: #983f39;
+  --ledger-coral-soft: #fbefec;
+  --ledger-amber-soft: #f7f0e3;
+  --ledger-shadow: 0 2px 4px #182e2905, 0 10px 26px -18px #182e2933;
+  --ledger-radius: 14px;
+  --font-content: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
   --font-ui: "Manrope", "Noto Sans SC UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-display: "Noto Sans SC UI", "Manrope", "PingFang SC", "Microsoft YaHei", sans-serif;
   --motion-fast: 140ms;
@@ -47,7 +52,7 @@
   --el-text-color-primary: var(--ledger-ink);
   --el-text-color-regular: #4c6158;
   --el-text-color-secondary: var(--ledger-muted);
-  --el-border-radius-base: 6px;
+  --el-border-radius-base: 8px;
   --el-font-family: var(--font-ui);
 }
 
@@ -87,8 +92,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .nav-group + .nav-group { margin-top: 28px; }
 .nav-group-label { margin: 0 0 8px; padding: 0 12px; color: var(--ledger-muted); font-size: 12px; line-height: 1.6; font-weight: 500; }
 .desktop-nav-link { position: relative; display: flex; align-items: center; min-height: 44px; margin: 4px 0; padding: 0 12px; color: #4c6158; border: 1px solid transparent; border-radius: 6px; transition: background-color .15s ease, color .15s ease; }
-.desktop-nav-link.router-link-exact-active { color: #fff; background: var(--ledger-primary); font-weight: 650; }
-.desktop-nav-link.router-link-exact-active:hover { color: #fff; background: var(--el-color-primary-dark-2); }
+.desktop-nav-link.router-link-exact-active { color: var(--ledger-primary); background: var(--ledger-soft); font-weight: 700; }
+.desktop-nav-link.router-link-exact-active::before { content: ''; position: absolute; left: 0; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: currentColor; }
+.desktop-nav-link.router-link-exact-active:hover { background: var(--el-color-primary-light-8); }
 .desktop-nav-link:hover { color: var(--ledger-ink); background: #f0f5f2; }
 .app-menu .el-icon { width: 20px; margin-right: 11px; font-size: 19px; }
 .nav-label { font-size: 14px; }

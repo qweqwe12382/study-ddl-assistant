@@ -22,6 +22,7 @@ export default defineConfig({
     noDiscovery: true,
     include: [
       'dayjs',
+      'dayjs/locale/zh-cn',
       'dayjs/plugin/advancedFormat.js',
       'dayjs/plugin/customParseFormat.js',
       'dayjs/plugin/dayOfYear.js',

@@ -22,6 +22,7 @@ export const coursesApi = {
 }
 
 export const academicCalendarApi = {
+  listExams: () => http.get('/academic-calendar/exams'),
   overview: (week = 1, includePastExams = false) => http.get('/academic-calendar/overview', {
     params: { week, include_past_exams: includePastExams },
   }),

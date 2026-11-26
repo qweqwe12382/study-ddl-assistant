@@ -562,6 +562,7 @@ const activeFilterSummary = computed(() => {
 const agendaTasks = computed(() => filteredTasks.value.map((task) => ({
   ...task,
   course_name: courseName(task.course_id),
+  course_color: courses.value.find(course => course.id === task.course_id)?.color,
   source_context: taskSourceContext(task),
 })))
 const completionBusyTaskIds = computed(() => Object.keys(completionLoading.value))
