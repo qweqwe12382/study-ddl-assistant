@@ -81,6 +81,7 @@ def _workspace_session_factory(workspace_key: str) -> sessionmaker:
         # just like init_db does for the shared database.
         with workspace_engine.begin() as connection:
             connection.exec_driver_sql("BEGIN IMMEDIATE")
+            _apply_material_migrations(connection)
             _apply_study_preference_migrations(connection)
         cached = sessionmaker(
             bind=workspace_engine, autoflush=False, autocommit=False, expire_on_commit=False
@@ -135,26 +136,12 @@ def _apply_lightweight_migrations() -> None:
     if not settings.database_url.startswith("sqlite"):
         return
 
-    columns = {column["name"] for column in inspect(engine).get_columns("materials")}
-    additions = {
-        "display_name": "VARCHAR(120)",
-        "file_size": "INTEGER",
-        "content_hash": "VARCHAR(64)",
-        "processing_error": "TEXT",
-        "extraction_status": "VARCHAR(30) NOT NULL DEFAULT 'not_started'",
-        "extraction_result": "JSON",
-        "extraction_provider": "VARCHAR(50)",
-        "extraction_error": "TEXT",
-        "extracted_at": "DATETIME",
-    }
-    missing = {name: definition for name, definition in additions.items() if name not in columns}
     with engine.begin() as connection:
         # sqlite3 legacy transaction control does not automatically begin a
         # transaction for DDL.  Begin explicitly so every ALTER/backfill/index
         # in this migration either commits together or is rolled back.
         connection.exec_driver_sql("BEGIN IMMEDIATE")
-        for name, definition in missing.items():
-            connection.execute(text(f'ALTER TABLE materials ADD COLUMN "{name}" {definition}'))
+        _apply_material_migrations(connection)
         _apply_task_migrations(connection)
         _apply_calibration_migrations(connection)
         connection.execute(
@@ -175,6 +162,24 @@ def _apply_lightweight_migrations() -> None:
         _apply_study_preference_migrations(connection)
         _apply_navigation_key_migrations(connection)
         _apply_revision_migrations(connection)
+
+
+def _apply_material_migrations(connection) -> None:
+    columns = {column["name"] for column in inspect(connection).get_columns("materials")}
+    additions = {
+        "display_name": "VARCHAR(120)",
+        "file_size": "INTEGER",
+        "content_hash": "VARCHAR(64)",
+        "processing_error": "TEXT",
+        "extraction_status": "VARCHAR(30) NOT NULL DEFAULT 'not_started'",
+        "extraction_result": "JSON",
+        "extraction_provider": "VARCHAR(50)",
+        "extraction_error": "TEXT",
+        "extracted_at": "DATETIME",
+    }
+    for name, definition in additions.items():
+        if name not in columns:
+            connection.execute(text(f'ALTER TABLE materials ADD COLUMN "{name}" {definition}'))
 
 
 def _apply_task_migrations(connection) -> None:

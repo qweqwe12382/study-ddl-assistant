@@ -5,10 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import create_engine, select, text
+from sqlalchemy.orm import Session
 
 import app.database as database
 from app.config import settings
+from app.models.material import Material
 
 
 KEY_A = "a" * 32
@@ -76,6 +78,31 @@ def test_same_workspace_key_uses_a_distinct_factory_after_directory_changes(conf
     assert _database_file(second_factory) == second_dir / f"{KEY_A}.db"
     assert _database_file(first_factory).is_file()
     assert _database_file(second_factory).is_file()
+
+
+def test_existing_workspace_migrates_material_display_name(configured_user_database_dir, tmp_path: Path):
+    workspace_dir = configured_user_database_dir(tmp_path / "users")
+    workspace_dir.mkdir()
+    path = workspace_dir / f"{KEY_A}.db"
+    old_engine = create_engine(f"sqlite:///{path.as_posix()}")
+    try:
+        database.Base.metadata.create_all(bind=old_engine)
+        with Session(old_engine) as session:
+            session.add(Material(original_filename="已有资料.txt"))
+            session.commit()
+        with old_engine.begin() as connection:
+            connection.execute(text("ALTER TABLE materials DROP COLUMN display_name"))
+    finally:
+        old_engine.dispose()
+
+    factory = database._workspace_session_factory(KEY_A)
+    with factory() as session:
+        existing = session.scalar(select(Material))
+        assert existing.label == "已有资料.txt"
+        assert existing.display_name is None
+        existing.display_name = "新的显示名"
+        session.commit()
+        assert session.scalar(select(Material)).label == "新的显示名"
 
 
 @pytest.mark.parametrize("workspace_key", ["", "legacy ", "../outside", "A" * 32, "a" * 31, "a" * 33, None])
