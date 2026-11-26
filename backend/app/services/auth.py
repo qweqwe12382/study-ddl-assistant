@@ -68,7 +68,13 @@ def hash_token(token: str) -> str:
 
 def create_session(db: Session, user: User) -> tuple[str, str, UserSession]:
     now = utc_now()
+    authenticated_hash = user.password_hash
     db.execute(delete(UserSession).where(UserSession.expires_at <= now))
+    # Once this SQLite write transaction starts, a concurrent password change
+    # either revoked our credential already or will revoke this session next.
+    if db.scalar(select(User.password_hash).where(User.id == user.id)) != authenticated_hash:
+        db.rollback()
+        raise authentication_error()
     session_token = secrets.token_urlsafe(32)
     csrf_token = secrets.token_urlsafe(24)
     session = UserSession(

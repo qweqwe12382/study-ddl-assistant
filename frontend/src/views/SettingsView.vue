@@ -15,10 +15,22 @@
         <h2 id="account-panel-heading">{{ authSession.user?.display_name }}</h2>
         <span>{{ authSession.user?.email }}{{ authSession.user?.is_admin ? ' · 实例管理员' : '' }}</span>
       </div>
-      <div class="account-panel-boundary">个人学习空间，退出后需重新登录。</div>
+      <div v-if="!authSession.user?.is_demo" class="account-panel-boundary">
+        <span>{{ authSession.user?.email_verified ? '找回邮箱已验证' : '找回邮箱待验证' }}</span>
+        <div class="account-security-actions">
+          <el-button link type="primary" @click="securityMode = 'change'">修改密码</el-button>
+          <el-button v-if="!authSession.user?.email_verified" link type="primary" @click="securityMode = 'verify'">验证找回邮箱</el-button>
+        </div>
+      </div>
+      <div v-else class="account-panel-boundary">示例学习空间</div>
       <el-button plain :loading="loggingOut" :disabled="loggingOut" @click="signOut">退出登录</el-button>
     </section>
 
+    <ElDialog :model-value="Boolean(securityMode)" :title="securityMode === 'verify' ? '验证找回邮箱' : '修改密码'"
+      width="min(440px, 92vw)" :close-on-click-modal="false" @update:model-value="value => { if (!value) securityMode = '' }">
+      <PasswordSecurityForm v-if="securityMode" :key="securityMode" :mode="securityMode"
+        @verified="finishSecurity('找回邮箱已验证')" @changed="finishSecurity('密码已更新，请使用新密码登录')" />
+    </ElDialog>
     <div v-if="error" class="settings-global-error">
       <el-alert :title="error" type="error" show-icon :closable="false" class="mb-18" />
       <el-button plain class="settings-retry-button" :loading="loading" :disabled="loading" @click="loadCourses">重新读取设置</el-button>
@@ -311,7 +323,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElSkeleton } from 'element-plus'
 import {
@@ -340,6 +352,12 @@ import { useViewMode } from '../composables/useViewMode'
 const { isConciseView, isDetailedView, setViewMode } = useViewMode()
 const route = useRoute()
 const router = useRouter()
+const PasswordSecurityForm = defineAsyncComponent(() => import('../components/PasswordSecurityForm.vue'))
+const securityMode = ref('')
+function finishSecurity(message) {
+  securityMode.value = ''
+  ElMessage.success(message)
+}
 const loggingOut = ref(false)
 const accountInitial = computed(() => authSession.user?.display_name?.trim()?.slice(0, 1)?.toUpperCase() || '学')
 
@@ -1008,6 +1026,8 @@ onMounted(loadCourses)
 </script>
 
 <style scoped>
+.account-security-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.account-security-actions .el-button { margin-left: 0; min-height: 36px; }
 .mb-18 { margin-bottom: 18px; }
 .settings-page { min-width: 0; }
 .account-panel { display: grid; grid-template-columns: auto minmax(180px, .7fr) minmax(260px, 1fr) auto; align-items: center; gap: 16px; margin-bottom: 18px; padding: 16px 18px; border: 1px solid var(--ledger-line); border-radius: 10px; background: #ffffff; }

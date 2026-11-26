@@ -63,6 +63,7 @@
             </span>
           </label>
 
+          <router-link v-if="!isRegister" class="forgot-link" to="/forgot-password">忘记密码？</router-link>
           <p v-if="isRegister" class="password-tip">请使用至少 8 位、包含字母和数字的密码。</p>
 
           <p v-if="configError" class="form-alert" role="alert">
@@ -314,6 +315,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.forgot-link { justify-self: end; color: var(--auth-green); font-size: 13px; text-underline-offset: 3px; }
 .email-code-input { display: flex; gap: 8px; }
 .email-code-input input { flex: 1; min-width: 0; }
 .email-code-input button { flex-shrink: 0; padding: 0 12px; color: var(--auth-green); background: #fff; border: 1px solid #cddbd1; border-radius: 7px; font: inherit; cursor: pointer; }

@@ -31,6 +31,7 @@ const router = createRouter({
       props: { mode: 'register' },
       meta: { title: '注册', publicLayout: true, guestOnly: true },
     },
+    { path: '/forgot-password', name: 'forgot-password', component: () => import('../views/ForgotPasswordView.vue'), meta: { title: '找回密码', publicLayout: true, guestOnly: true } },
     { path: '/privacy', name: 'privacy', component: () => import('../views/PrivacyView.vue'), meta: { title: '隐私与数据', publicLayout: true } },
     { path: '/app', name: 'dashboard', component: () => import('../views/DashboardView.vue'), meta: { title: '学习总览' } },
     { path: '/materials', name: 'materials', component: () => import('../views/MaterialsView.vue'), meta: { title: '资料库' } },

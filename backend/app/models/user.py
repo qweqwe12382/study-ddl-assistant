@@ -20,6 +20,7 @@ class User(AuthBase):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     workspace_key: Mapped[str] = mapped_column(String(40), nullable=False, unique=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="0")
     # Set only by the demo entry, never inferred from a public email/password.
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
@@ -46,9 +47,7 @@ class UserSession(AuthBase):
     user: Mapped[User] = relationship(back_populates="sessions")
 
 
-class RegistrationEmailCode(AuthBase):
-    __tablename__ = "registration_email_codes"
-
+class EmailCodeFields:
     email: Mapped[str] = mapped_column(String(254), primary_key=True)
     challenge_id: Mapped[str] = mapped_column(String(32), nullable=False)
     digest: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -58,3 +57,11 @@ class RegistrationEmailCode(AuthBase):
     window_start: Mapped[int] = mapped_column(Integer, nullable=False)
     sends_in_window: Mapped[int] = mapped_column(Integer, nullable=False)
     attempts_remaining: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class RegistrationEmailCode(EmailCodeFields, AuthBase):
+    __tablename__ = "registration_email_codes"
+
+
+class AccountEmailCode(EmailCodeFields, AuthBase):
+    __tablename__ = "account_email_codes"

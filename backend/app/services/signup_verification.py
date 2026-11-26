@@ -1,4 +1,4 @@
-"""Server-side Turnstile and one-time registration email verification."""
+"""Server-side Turnstile checks and single-use email challenges."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.user import RegistrationEmailCode
+from app.models.user import AccountEmailCode, RegistrationEmailCode, User
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ RESEND_DELAY = 60
 SEND_WINDOW = 60 * 60
 MAX_SENDS = 5
 MAX_ATTEMPTS = 5
+CodeTable = type[RegistrationEmailCode] | type[AccountEmailCode]
 
 
 def verify_turnstile(token: str | None, action: str) -> None:
@@ -76,7 +77,7 @@ def _code_digest(email: str, challenge_id: str, code: str) -> str:
     ).hexdigest()
 
 
-def _send_email_code(email: str, code: str) -> None:
+def _send_email_code(email: str, code: str, purpose: str = "注册") -> None:
     try:
         recipient = Address(addr_spec=email)
     except (ValueError, MessageError):
@@ -85,8 +86,8 @@ def _send_email_code(email: str, code: str) -> None:
         message = EmailMessage()
         message["From"] = Address(display_name="学伴管家", addr_spec=settings.auth_smtp_from)
         message["To"] = recipient
-        message["Subject"] = "学伴管家注册验证码"
-        message.set_content(f"你的注册验证码为 {code}，10 分钟内有效。\n如果你没有发起注册，可以忽略此邮件。")
+        message["Subject"] = f"学伴管家{purpose}验证码"
+        message.set_content(f"你的{purpose}验证码为 {code}，10 分钟内有效。\n如果你没有发起此操作，可以忽略此邮件。")
         context = ssl.create_default_context()
         if settings.auth_smtp_starttls:
             client = smtplib.SMTP(settings.auth_smtp_host, settings.auth_smtp_port, timeout=8)
@@ -100,7 +101,7 @@ def _send_email_code(email: str, code: str) -> None:
             client.login(settings.auth_smtp_username, settings.auth_smtp_password)
             client.send_message(message)
     except (OSError, smtplib.SMTPException, ValueError, MessageError) as exc:
-        logger.warning("registration_email_send_failed error_type=%s", type(exc).__name__)
+        logger.warning("verification_email_send_failed error_type=%s", type(exc).__name__)
         raise HTTPException(
             503, detail={"code": "EMAIL_CODE_UNAVAILABLE", "message": "暂时无法发送验证码，请稍后重试"}
         ) from None
@@ -114,13 +115,31 @@ def _rate_limited(wait_seconds: int) -> HTTPException:
     )
 
 
+def email_codes_available() -> bool:
+    return len(settings.auth_email_code_secret) >= 32 and all((
+        settings.auth_smtp_host, settings.auth_smtp_username, settings.auth_smtp_password, settings.auth_smtp_from,
+    ))
+
+
 def send_registration_code(db: Session, email: str) -> int:
-    if not all((settings.auth_smtp_host, settings.auth_smtp_username, settings.auth_smtp_password, settings.auth_smtp_from)):
+    return _issue_code(db, RegistrationEmailCode, email, email, "注册")
+
+
+def _account_binding(user: User, purpose: str) -> str:
+    return f"{purpose}\n{user.id}\n{user.password_hash}\n{user.email}"
+
+
+def send_account_code(db: Session, user: User, purpose: str) -> int:
+    return _issue_code(db, AccountEmailCode, user.email, _account_binding(user, purpose), purpose)
+
+
+def _issue_code(db: Session, model: CodeTable, email: str, binding: str, purpose: str) -> int:
+    if not email_codes_available():
         raise HTTPException(
             503, detail={"code": "EMAIL_CODE_UNAVAILABLE", "message": "邮箱验证暂不可用"}
         )
     now = int(time.time())
-    previous = db.get(RegistrationEmailCode, email)
+    previous = db.get(model, email)
     window_start = now
     sends_in_window = 0
     if previous is not None:
@@ -136,7 +155,7 @@ def send_registration_code(db: Session, email: str) -> int:
     code = f"{secrets.randbelow(1_000_000):06d}"
     values = {
         "challenge_id": challenge_id,
-        "digest": _code_digest(email, challenge_id, code),
+        "digest": _code_digest(binding, challenge_id, code),
         "delivered": False,
         "expires_at": now + CODE_LIFETIME,
         "retry_at": now + RESEND_DELAY,
@@ -145,11 +164,11 @@ def send_registration_code(db: Session, email: str) -> int:
         "attempts_remaining": MAX_ATTEMPTS,
     }
     if previous is None:
-        db.add(RegistrationEmailCode(email=email, **values))
+        db.add(model(email=email, **values))
     else:
         reserved = db.execute(
-            update(RegistrationEmailCode)
-            .where(RegistrationEmailCode.email == email, RegistrationEmailCode.challenge_id == previous.challenge_id)
+            update(model)
+            .where(model.email == email, model.challenge_id == previous.challenge_id)
             .values(**values)
         )
         if reserved.rowcount != 1:
@@ -161,10 +180,10 @@ def send_registration_code(db: Session, email: str) -> int:
         db.rollback()
         raise _rate_limited(RESEND_DELAY) from None
 
-    _send_email_code(email, code)
+    _send_email_code(email, code, purpose)
     delivered = db.execute(
-        update(RegistrationEmailCode)
-        .where(RegistrationEmailCode.email == email, RegistrationEmailCode.challenge_id == challenge_id)
+        update(model)
+        .where(model.email == email, model.challenge_id == challenge_id)
         .values(delivered=True)
     )
     db.commit()
@@ -176,13 +195,21 @@ def send_registration_code(db: Session, email: str) -> int:
 
 
 def consume_registration_code(db: Session, email: str, code: str | None) -> None:
+    _consume_code(db, RegistrationEmailCode, email, email, code)
+
+
+def consume_account_code(db: Session, user: User, purpose: str, code: str) -> None:
+    _consume_code(db, AccountEmailCode, user.email, _account_binding(user, purpose), code)
+
+
+def _consume_code(db: Session, model: CodeTable, email: str, binding: str, code: str | None) -> None:
     invalid = HTTPException(
         400, detail={"code": "EMAIL_CODE_INVALID", "message": "验证码错误或已失效，请检查或重新获取"}
     )
     if not code:
         raise invalid
     now = int(time.time())
-    challenge = db.get(RegistrationEmailCode, email)
+    challenge = db.get(model, email)
     if (
         challenge is None
         or not challenge.delivered
@@ -190,18 +217,18 @@ def consume_registration_code(db: Session, email: str, code: str | None) -> None
         or challenge.attempts_remaining <= 0
     ):
         raise invalid
-    active_challenge = update(RegistrationEmailCode).where(
-        RegistrationEmailCode.email == email,
-        RegistrationEmailCode.challenge_id == challenge.challenge_id,
-        RegistrationEmailCode.delivered.is_(True),
-        RegistrationEmailCode.expires_at > now,
-        RegistrationEmailCode.attempts_remaining > 0,
+    active_challenge = update(model).where(
+        model.email == email,
+        model.challenge_id == challenge.challenge_id,
+        model.delivered.is_(True),
+        model.expires_at > now,
+        model.attempts_remaining > 0,
     )
-    if not hmac.compare_digest(challenge.digest, _code_digest(email, challenge.challenge_id, code)):
-        db.execute(active_challenge.values(attempts_remaining=RegistrationEmailCode.attempts_remaining - 1))
+    if not hmac.compare_digest(challenge.digest, _code_digest(binding, challenge.challenge_id, code)):
+        db.execute(active_challenge.values(attempts_remaining=model.attempts_remaining - 1))
         db.commit()
         raise invalid
-    # This write is committed with account creation so only one registration can consume the code.
+    # The caller commits consumption together with the authorized account change.
     consumed = db.execute(active_challenge.values(delivered=False, digest="", attempts_remaining=0))
     if consumed.rowcount != 1:
         raise invalid

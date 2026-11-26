@@ -123,7 +123,7 @@ def registration_verification(monkeypatch):
     )
     monkeypatch.setattr(auth, "settings", configured)
     monkeypatch.setattr(signup_verification, "settings", configured)
-    monkeypatch.setattr(signup_verification, "_send_email_code", lambda email, code: send_log.append((email, code)))
+    monkeypatch.setattr(signup_verification, "_send_email_code", lambda email, code, purpose: send_log.append((email, code, purpose)))
 
     def siteverify(url, *, data, timeout):
         assert url == signup_verification.SITEVERIFY_URL
@@ -145,7 +145,8 @@ def test_register_requires_verified_email_and_login_checks_turnstile(auth_client
     code_request = {"email": email, "turnstile_token": "register_code@study.example.com"}
 
     config = auth_client.get("/api/auth/config").json()
-    assert config == {"turnstile_site_key": "public-test-key", "email_verification_required": True}
+    assert config == {"turnstile_site_key": "public-test-key", "email_verification_required": True,
+                      "password_recovery_available": True}
     assert auth_client.post("/api/auth/register", json=registration).status_code == 400
     rejected = auth_client.post(
         "/api/auth/register/code", json={**code_request, "turnstile_token": "login@study.example.com"}
@@ -166,6 +167,7 @@ def test_register_requires_verified_email_and_login_checks_turnstile(auth_client
         "/api/auth/register", json={**registration, "email": "other@example.com", "email_code": code}
     ).status_code == 400
     assert auth_client.post("/api/auth/register", json={**registration, "email_code": code}).status_code == 201
+    assert auth_client.get("/api/auth/me").json()["email_verified"] is True
     assert auth_client.get("/api/auth/me").json()["email"] == email
 
     credentials = {"email": email, "password": registration["password"]}
@@ -315,6 +317,136 @@ def test_first_public_registration_starts_with_an_isolated_non_admin_workspace(a
     local_demo = auth_client.post("/api/auth/demo-login")
     assert local_demo.status_code == 404
     assert auth_client.post("/api/dev/reset", headers=_csrf_headers(auth_client)).status_code == 404
+
+
+def test_password_change_requires_csrf_and_current_password_and_revokes_all_logins(auth_client):
+    client = auth_client
+    credentials = {"email": "student@example.com", "password": "InitialPwd7"}
+    user = client.post("/api/auth/register", json={**credentials, "display_name": "同学"}).json()
+    assert user["email_verified"] is False
+    client.post("/api/courses", headers=_csrf_headers(client), json={"name": "离散数学"}).raise_for_status()
+    first_cookie = client.cookies.get("study_session")
+    client.post("/api/auth/login", json=credentials).raise_for_status()
+    second_cookie = client.cookies.get("study_session")
+    payload = {"current_password": credentials["password"], "new_password": "UpdatedPwd8"}
+    assert client.post("/api/auth/password/change", json=payload).status_code == 403
+    for changes, status in [({"current_password": "wrong"}, 400), ({"new_password": "onlyletters"}, 422),
+                            ({"new_password": credentials["password"]}, 400)]:
+        assert client.post("/api/auth/password/change", headers=_csrf_headers(client),
+                           json={**payload, **changes}).status_code == status
+    assert client.post("/api/auth/password/change", headers=_csrf_headers(client), json=payload).status_code == 204
+    assert not client.cookies.get("study_session")
+    for cookie in [first_cookie, second_cookie]:
+        assert client.get("/api/auth/me", headers={"Cookie": f"study_session={cookie}"}).status_code == 401
+    assert client.post("/api/auth/login", json=credentials).status_code == 401
+    logged_in = client.post("/api/auth/login", json={**credentials, "password": payload["new_password"]})
+    assert logged_in.json()["id"] == user["id"]
+    assert client.get("/api/courses").json()[0]["name"] == "离散数学"
+
+
+def test_legacy_enrollment_and_password_reset(auth_client, request, monkeypatch):
+    client = auth_client
+    credentials = {"email": "owner@example.com", "password": "InitialPwd7"}
+    user = client.post("/api/auth/register", json={**credentials, "display_name": "老账号"}).json()
+    _, verify, sent = request.getfixturevalue("registration_verification")
+    now = 2_000_000_000
+    monkeypatch.setattr(verify, "time", SimpleNamespace(time=lambda: now))
+    request_url = "/api/auth/password/reset/code"
+    reset_url = "/api/auth/password/reset"
+    reset_request = {"email": credentials["email"], "turnstile_token": "password_reset@study.example.com"}
+    reset = {"email": credentials["email"], "new_password": "ChangedPass8"}
+    assert client.post(request_url, json={**reset_request, "turnstile_token": "login@study.example.com"}).status_code == 400
+    for email in ["absent@example.com", credentials["email"], "demo@study.local"]:
+        response = client.post(request_url, json={**reset_request, "email": email})
+        assert response.status_code == 202 and response.json() == {"retry_after_seconds": 60}
+    assert not sent
+    proof = {"current_password": credentials["password"]}
+    verify_code_url = "/api/auth/recovery-email/code"
+    assert client.post(verify_code_url, json=proof).status_code == 403
+    assert client.post(verify_code_url, headers=_csrf_headers(client), json={"current_password": "wrong"}).status_code == 400
+    assert client.post(verify_code_url, headers=_csrf_headers(client), json=proof).status_code == 200
+    enrollment_code = sent[-1][1]
+    assert sent[-1][2] == "验证找回邮箱"
+    assert client.post(reset_url, json={**reset, "email_code": enrollment_code}).status_code == 400
+    verified = client.post("/api/auth/recovery-email/verify", headers=_csrf_headers(client),
+                           json={**proof, "email_code": enrollment_code})
+    assert verified.json()["email_verified"] is True
+    assert client.post(request_url, json=reset_request).status_code == 202
+    assert sent[-1][2] == "找回密码"
+    assert client.post(request_url, json=reset_request).json() == {"retry_after_seconds": 60}
+    assert len(sent) == 2
+    now += verify.CODE_LIFETIME + 1
+    assert client.post(reset_url, json={**reset, "email_code": sent[-1][1]}).status_code == 400
+    assert client.post(request_url, json=reset_request).status_code == 202
+    code = sent[-1][1]
+    wrong = "000001" if code == "000000" else "000000"
+    for _ in range(verify.MAX_ATTEMPTS):
+        assert client.post(reset_url, json={**reset, "email_code": wrong}).status_code == 400
+    assert client.post(reset_url, json={**reset, "email_code": code}).status_code == 400
+    now += 61
+    assert client.post(request_url, json=reset_request).status_code == 202
+    valid = {**reset, "email_code": sent[-1][1]}
+    assert client.post(reset_url, json=valid).status_code == 204
+    assert client.post(reset_url, json=valid).status_code == 400
+    assert client.get("/api/auth/me").status_code == 401
+    login = {**credentials, "turnstile_token": "login@study.example.com"}
+    assert client.post("/api/auth/login", json=login).status_code == 401
+    assert client.post("/api/auth/login", json={**login, "password": reset["new_password"]}).json()["id"] == user["id"]
+
+
+def test_changing_password_invalidates_outstanding_reset_and_preserves_hourly_send_limit(
+    auth_client, registration_verification, monkeypatch,
+):
+    client = auth_client
+    _, verify, sent = registration_verification
+    now = 2_000_000_000
+    monkeypatch.setattr(verify, "time", SimpleNamespace(time=lambda: now))
+    email = "verified@example.com"
+    client.post("/api/auth/register/code", json={
+        "email": email, "turnstile_token": "register_code@study.example.com",
+    }).raise_for_status()
+    client.post("/api/auth/register", json={
+        "display_name": "同学", "email": email, "email_code": sent[-1][1], "password": "OldPassword7",
+    }).raise_for_status()
+    request_code = {"email": email, "turnstile_token": "password_reset@study.example.com"}
+    for _ in range(verify.MAX_SENDS):
+        client.post("/api/auth/password/reset/code", json=request_code).raise_for_status()
+        now += verify.RESEND_DELAY
+    count = len(sent)
+    assert count == 1 + verify.MAX_SENDS
+    client.post("/api/auth/password/reset/code", json=request_code).raise_for_status()
+    assert len(sent) == count
+    client.post("/api/auth/password/change", headers=_csrf_headers(client), json={
+        "current_password": "OldPassword7", "new_password": "ChangedPassword8",
+    }).raise_for_status()
+    assert client.post("/api/auth/password/reset", json={
+        "email": email, "email_code": sent[-1][1], "new_password": "AnotherPassword9",
+    }).status_code == 400
+
+
+def test_session_cannot_be_created_from_a_password_verified_before_a_change(auth_client):
+    from app.models.user import User
+    from app.services.auth import create_session, verify_login_password
+    from fastapi import HTTPException
+
+    client = auth_client
+    old_password = "BeforeChange7"
+    user = client.post("/api/auth/register", json={
+        "email": "race@example.com", "display_name": "同学", "password": old_password,
+    }).json()
+    dependency = app.dependency_overrides[get_auth_db]()
+    stale_db = next(dependency)
+    try:
+        stale_user = stale_db.get(User, user["id"])
+        assert verify_login_password(stale_user, old_password)
+        client.post("/api/auth/password/change", headers=_csrf_headers(client), json={
+            "current_password": old_password, "new_password": "AfterChange8",
+        }).raise_for_status()
+        with pytest.raises(HTTPException) as rejected:
+            create_session(stale_db, stale_user)
+        assert rejected.value.status_code == 401
+    finally:
+        dependency.close()
 
 
 def test_duplicate_email_is_rejected(auth_client: TestClient):

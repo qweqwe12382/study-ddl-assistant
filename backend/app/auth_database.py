@@ -68,3 +68,17 @@ def init_auth_db() -> None:
                         "SELECT id FROM users WHERE is_demo = 0 ORDER BY created_at ASC, id ASC LIMIT 1)"
                     )
                 )
+        with auth_engine.begin() as connection:
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+            if "email_verified" not in {c["name"] for c in inspect(connection).get_columns("users")}:
+                connection.exec_driver_sql("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 0")
+                # A consumed registration challenge is committed together with the new user.
+                connection.exec_driver_sql("""
+                    UPDATE users SET email_verified = 1 WHERE is_demo = 0 AND EXISTS (
+                        SELECT 1 FROM registration_email_codes AS c
+                        WHERE c.email = users.email AND c.delivered = 0 AND c.digest = ''
+                          AND c.attempts_remaining = 0
+                          AND CAST(strftime('%s', users.created_at) AS INTEGER)
+                              BETWEEN c.expires_at - 600 AND c.expires_at
+                    )
+                """)
